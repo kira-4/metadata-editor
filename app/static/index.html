@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>محرر الميتاداتا الصوتية</title>
+    <link rel="stylesheet" href="/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🎵 محرر الميتاداتا الصوتية</h1>
+            <p class="subtitle">معالجة ومراجعة الملفات الصوتية</p>
+        </header>
+
+        <main class="main-content">
+            <div class="queue-header">
+                <h2>قائمة الانتظار</h2>
+                <span class="count" id="itemCount">0 ملف</span>
+            </div>
+
+            <div id="pendingItems" class="items-grid">
+                <!-- Items will be loaded here -->
+            </div>
+
+            <div id="emptyState" class="empty-state">
+                <div class="empty-icon">📂</div>
+                <h3>لا توجد ملفات في الانتظار</h3>
+                <p>سيتم عرض الملفات الجديدة تلقائياً عند اكتشافها</p>
+            </div>
+        </main>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>

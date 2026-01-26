@@ -1,0 +1,193 @@
+"""FastAPI routes."""
+import logging
+from pathlib import Path
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+import asyncio
+import json
+
+from app.database import get_db, DatabaseManager
+from app.metadata_processor import metadata_processor
+from app.mover import file_mover
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api")
+
+# SSE clients
+sse_clients = []
+
+
+class UpdateItemRequest(BaseModel):
+    """Request to update item fields."""
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    genre: Optional[str] = None
+
+
+class ConfirmItemRequest(BaseModel):
+    """Request to confirm and move item."""
+    pass
+
+
+@router.get("/pending")
+def get_pending_items(db: Session = Depends(get_db)):
+    """Get all pending items."""
+    try:
+        items = DatabaseManager.get_pending_items(db)
+        return [item.to_dict() for item in items]
+    except Exception as e:
+        logger.error(f"Error getting pending items: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/pending/{item_id}/update")
+def update_item(
+    item_id: int,
+    request: UpdateItemRequest,
+    db: Session = Depends(get_db)
+):
+    """Update item fields."""
+    try:
+        item = DatabaseManager.update_item(
+            db,
+            item_id,
+            title=request.title,
+            artist=request.artist,
+            genre=request.genre
+        )
+        
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+        
+        return item.to_dict()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating item {item_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/pending/{item_id}/confirm")
+def confirm_item(
+    item_id: int,
+    db: Session = Depends(get_db)
+):
+    """Confirm item: apply final metadata and move to Navidrome."""
+    try:
+        item = DatabaseManager.get_item_by_id(db, item_id)
+        
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+        
+        if item.status != "pending":
+            raise HTTPException(status_code=400, detail="Item is not pending")
+        
+        # Validate required fields
+        if not item.current_title or not item.current_artist:
+            raise HTTPException(status_code=400, detail="Title and artist are required")
+        
+        if not item.genre:
+            raise HTTPException(status_code=400, detail="Genre is required")
+        
+        current_path = Path(item.current_path)
+        
+        if not current_path.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Apply final metadata with genre
+        success = metadata_processor.apply_metadata(
+            current_path,
+            title=item.current_title,
+            artist=item.current_artist,
+            genre=item.genre
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to apply metadata")
+        
+        # Move to Navidrome
+        new_path = file_mover.move_to_navidrome(
+            current_path,
+            artist=item.current_artist,
+            title=item.current_title,
+            extension=item.extension
+        )
+        
+        if not new_path:
+            raise HTTPException(status_code=500, detail="Failed to move file")
+        
+        # Mark as done
+        DatabaseManager.mark_as_done(db, item_id, str(new_path))
+        
+        # Notify SSE clients
+        asyncio.create_task(notify_sse_clients({"type": "item_confirmed", "id": item_id}))
+        
+        return {"success": True, "new_path": str(new_path)}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error confirming item {item_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/artwork/{item_id}")
+def get_artwork(item_id: int, db: Session = Depends(get_db)):
+    """Get artwork for an item."""
+    try:
+        item = DatabaseManager.get_item_by_id(db, item_id)
+        
+        if not item or not item.artwork_path:
+            raise HTTPException(status_code=404, detail="Artwork not found")
+        
+        artwork_path = Path(item.artwork_path)
+        
+        if not artwork_path.exists():
+            raise HTTPException(status_code=404, detail="Artwork file not found")
+        
+        return FileResponse(artwork_path)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting artwork for item {item_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def event_generator():
+    """SSE event generator."""
+    queue = asyncio.Queue()
+    sse_clients.append(queue)
+    
+    try:
+        while True:
+            data = await queue.get()
+            yield f"data: {json.dumps(data)}\n\n"
+    except asyncio.CancelledError:
+        sse_clients.remove(queue)
+
+
+@router.get("/events")
+async def sse_endpoint():
+    """Server-Sent Events endpoint for real-time updates."""
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        }
+    )
+
+
+async def notify_sse_clients(data: dict):
+    """Notify all SSE clients with data."""
+    for queue in sse_clients:
+        try:
+            await queue.put(data)
+        except Exception as e:
+            logger.error(f"Error notifying SSE client: {e}")
