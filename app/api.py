@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 import asyncio
 import json
 
+from app.config import config
 from app.database import get_db, DatabaseManager
 from app.metadata_processor import metadata_processor
 from app.mover import file_mover
@@ -98,6 +99,7 @@ async def confirm_item(
             raise HTTPException(status_code=400, detail="Genre is required")
         
         current_path = Path(item.current_path)
+        original_path = Path(item.original_path)
         
         if not current_path.exists():
             raise HTTPException(status_code=404, detail="File not found")
@@ -133,7 +135,26 @@ async def confirm_item(
         # Mark as done
         DatabaseManager.mark_as_done(db, item_id, str(new_path))
         
-        # Notify SSE clients - THIS IS NOW PROPERLY AWAITED
+        # CRITICAL: Clean up original file from /incoming ONLY after successful move
+        try:
+            if original_path.exists():
+                original_path.unlink()
+                logger.info(f"Deleted original file from incoming: {original_path}")
+        except Exception as e:
+            logger.warning(f"Failed to delete original file {original_path}: {e}")
+        
+        # Clean up staging directory
+        try:
+            staging_dir = current_path.parent
+            # Only delete if it's in staging directory (safety check)
+            if staging_dir.is_relative_to(config.STAGING_DIR):
+                import shutil
+                shutil.rmtree(staging_dir)
+                logger.info(f"Cleaned up staging directory: {staging_dir}")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup staging directory: {e}")
+        
+        # Notify SSE clients
         await notify_sse_clients({"type": "item_confirmed", "id": item_id})
         
         return {"success": True, "new_path": str(new_path)}

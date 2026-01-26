@@ -1,5 +1,8 @@
 """File scanner to detect new audio files."""
 import logging
+import hashlib
+import shutil
+import uuid
 from pathlib import Path
 from typing import List, Tuple, Optional
 import time
@@ -54,6 +57,24 @@ class FileScanner:
         
         return video_title, channel
     
+    @staticmethod
+    def compute_file_identifier(file_path: Path) -> str:
+        """
+        Compute a stable identifier for a file based on path, size, and mtime.
+        This identifier remains stable across renames if the file content is unchanged.
+        
+        Args:
+            file_path: Path to the file
+            
+        Returns:
+            SHA256 hash as hex string
+        """
+        stat = file_path.stat()
+        # Use original path + size + mtime for identification
+        # This ensures the same file gets the same identifier even if renamed
+        identifier_string = f"{file_path.absolute()}|{stat.st_size}|{stat.st_mtime}"
+        return hashlib.sha256(identifier_string.encode()).hexdigest()
+    
     def scan_directory(self) -> List[Path]:
         """
         Scan incoming directory for audio files.
@@ -75,19 +96,40 @@ class FileScanner:
     
     def process_file(self, file_path: Path):
         """
-        Process a single audio file.
+        Process a single audio file using staging directory to prevent duplicates.
         
         Args:
-            file_path: Path to audio file
+            file_path: Path to audio file in /incoming
         """
         db = SessionLocal()
+        staged_path = None
+        staging_dir = None
+        
         try:
-            # Check if already processed
+            # Compute stable file identifier
+            file_identifier = self.compute_file_identifier(file_path)
+            
+            # Check if already processed by identifier
+            existing = DatabaseManager.get_item_by_identifier(db, file_identifier)
+            if existing:
+                logger.debug(f"File already processed (identifier match): {file_path}")
+                return
+            
+            # Also check by original path (backward compatibility)
             if DatabaseManager.file_already_processed(db, str(file_path)):
-                logger.debug(f"File already processed: {file_path}")
+                logger.debug(f"File already processed (path match): {file_path}")
                 return
             
             logger.info(f"Processing new file: {file_path}")
+            
+            # Create unique staging directory
+            staging_dir = config.STAGING_DIR / str(uuid.uuid4())
+            staging_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Copy file to staging (NEVER modify files in /incoming)
+            staged_path = staging_dir / file_path.name
+            shutil.copy2(file_path, staged_path)
+            logger.info(f"Copied to staging: {file_path} -> {staged_path}")
             
             # Parse filename
             parsed = self.parse_filename(file_path.name)
@@ -96,43 +138,45 @@ class FileScanner:
                 DatabaseManager.create_pending_item(
                     db=db,
                     original_path=str(file_path),
-                    current_path=str(file_path),
-                    video_title=file_path.stem,  # Use full filename as fallback
+                    current_path=str(staged_path),
+                    video_title=file_path.stem,
                     channel="Unknown",
                     extension=file_path.suffix,
                     inferred_title=None,
                     inferred_artist=None,
-                    error_message="Failed to parse filename format (expected: title###channel.ext)"
+                    error_message="Failed to parse filename format (expected: title###channel.ext)",
+                    file_identifier=file_identifier
                 )
                 logger.warning(f"Created manual edit entry for unparsed file: {file_path}")
                 return
             
             video_title, channel = parsed
             
-            # Call Gemini to infer metadata
-            title, artist, error_msg = gemini_client.infer_metadata(video_title, channel)
+            # Call Gemini to infer metadata (now returns raw response)
+            title, artist, error_msg, raw_response = gemini_client.infer_metadata(video_title, channel)
             
-            # If Gemini failed, still create an item for manual editing
+            # If Gemini failed or parse failed, create needs_manual item
             if error_msg:
                 DatabaseManager.create_pending_item(
                     db=db,
                     original_path=str(file_path),
-                    current_path=str(file_path),
+                    current_path=str(staged_path),
                     video_title=video_title,
                     channel=channel,
                     extension=file_path.suffix,
-                    inferred_title=None,
-                    inferred_artist=None,
-                    error_message=f"Gemini inference failed: {error_msg}"
+                    inferred_title=title,  # May be partial or None
+                    inferred_artist=artist,  # May be partial or None
+                    error_message=f"Gemini parse failed: {error_msg}",
+                    file_identifier=file_identifier,
+                    raw_gemini_response=raw_response
                 )
-                logger.warning(f"Created manual edit entry for Gemini failure: {file_path}")
+                logger.warning(f"Created needs_manual entry for Gemini failure: {file_path}")
                 return
             
-            # Apply initial metadata (without genre)
-            new_path = file_path
+            # Apply initial metadata to STAGED file (without genre)
             if title and artist:
                 success = metadata_processor.apply_metadata(
-                    file_path,
+                    staged_path,
                     title=title,
                     artist=artist,
                     genre=None  # Genre set later in UI
@@ -143,66 +187,69 @@ class FileScanner:
                     DatabaseManager.create_pending_item(
                         db=db,
                         original_path=str(file_path),
-                        current_path=str(file_path),
+                        current_path=str(staged_path),
                         video_title=video_title,
                         channel=channel,
                         extension=file_path.suffix,
                         inferred_title=title,
                         inferred_artist=artist,
-                        error_message="Failed to apply metadata (file may be corrupted)"
+                        error_message="Failed to apply metadata (file may be corrupted)",
+                        file_identifier=file_identifier,
+                        raw_gemini_response=raw_response
                     )
                     logger.warning(f"Created manual edit entry for metadata failure: {file_path}")
                     return
-                
-                # Rename file
-                renamed_path = metadata_processor.rename_file(file_path, title)
-                if renamed_path:
-                    new_path = renamed_path
-                else:
-                    logger.warning(f"Failed to rename file: {file_path}")
             
-            # Extract artwork if present
+            # Extract artwork from staged file
             artwork_path = None
             if title:
-                # Use file hash for unique artwork filename
-                import hashlib
-                file_hash = hashlib.md5(str(file_path).encode()).hexdigest()[:8]
+                file_hash = hashlib.md5(file_identifier.encode()).hexdigest()[:8]
                 artwork_file = config.ARTWORK_DIR / f"{file_hash}_{file_path.stem}.jpg"
-                if metadata_processor.extract_artwork(new_path, artwork_file):
+                if metadata_processor.extract_artwork(staged_path, artwork_file):
                     artwork_path = str(artwork_file)
             
-            # Create pending item in database
+            # Create pending item in database pointing to STAGED file
             item = DatabaseManager.create_pending_item(
                 db=db,
                 original_path=str(file_path),
-                current_path=str(new_path),
+                current_path=str(staged_path),
                 video_title=video_title,
                 channel=channel,
                 extension=file_path.suffix,
                 inferred_title=title,
                 inferred_artist=artist,
-                artwork_path=artwork_path
+                artwork_path=artwork_path,
+                file_identifier=file_identifier,
+                raw_gemini_response=raw_response if title and artist else None
             )
             
-            logger.info(f"Successfully processed: {file_path} -> {new_path} (item_id={item.id})")
+            logger.info(f"Successfully processed: {file_path} -> staged (item_id={item.id})")
             
         except Exception as e:
             logger.error(f"Error processing file {file_path}: {e}", exc_info=True)
             # Try to create an error entry so the file appears in UI
             try:
+                file_identifier = self.compute_file_identifier(file_path)
                 DatabaseManager.create_pending_item(
                     db=db,
                     original_path=str(file_path),
-                    current_path=str(file_path),
+                    current_path=str(staged_path) if staged_path else str(file_path),
                     video_title=file_path.stem,
                     channel="Unknown",
                     extension=file_path.suffix,
                     inferred_title=None,
                     inferred_artist=None,
-                    error_message=f"Processing error: {str(e)}"
+                    error_message=f"Processing error: {str(e)}",
+                    file_identifier=file_identifier
                 )
             except Exception as inner_e:
                 logger.error(f"Failed to create error entry: {inner_e}")
+            # Clean up staging on error
+            if staging_dir and staging_dir.exists():
+                try:
+                    shutil.rmtree(staging_dir)
+                except:
+                    pass
         finally:
             db.close()
     

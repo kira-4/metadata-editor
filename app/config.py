@@ -34,11 +34,15 @@ class Config:
     # Artwork cache directory
     ARTWORK_DIR = DATA_DIR / "artwork"
     
+    # Staging directory for processing files
+    STAGING_DIR = DATA_DIR / "staging"
+    
     @classmethod
     def ensure_directories(cls):
         """Ensure all required directories exist."""
         cls.DATA_DIR.mkdir(parents=True, exist_ok=True)
         cls.ARTWORK_DIR.mkdir(parents=True, exist_ok=True)
+        cls.STAGING_DIR.mkdir(parents=True, exist_ok=True)
 
 
 config = Config()

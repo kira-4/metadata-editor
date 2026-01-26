@@ -28,8 +28,10 @@ class PendingItem(Base):
     genre = Column(String(200), nullable=True)
     extension = Column(String(10), nullable=False)
     artwork_path = Column(Text, nullable=True)
-    status = Column(String(20), default="pending")  # pending, done, error
+    status = Column(String(20), default="pending")  # pending, done, error, needs_manual
     error_message = Column(Text, nullable=True)
+    file_identifier = Column(Text, nullable=True, index=True)  # Stable hash for duplicate detection
+    raw_gemini_response = Column(Text, nullable=True)  # Raw response for debugging parse failures
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -50,6 +52,7 @@ class PendingItem(Base):
             "artwork_url": f"/api/artwork/{self.id}" if self.artwork_path else None,
             "status": self.status,
             "error_message": self.error_message,
+            "raw_gemini_response": self.raw_gemini_response,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -63,6 +66,25 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 def init_db():
     """Initialize the database."""
     Base.metadata.create_all(bind=engine)
+    
+    # Migrate existing databases: add new columns if they don't exist
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    columns = [col['name'] for col in inspector.get_columns('pending_items')]
+    
+    with engine.connect() as conn:
+        if 'file_identifier' not in columns:
+            conn.execute(text('ALTER TABLE pending_items ADD COLUMN file_identifier TEXT'))
+            conn.execute(text('CREATE INDEX IF NOT EXISTS idx_file_identifier ON pending_items(file_identifier)'))
+            conn.commit()
+            import logging
+            logging.getLogger(__name__).info("Added file_identifier column to database")
+        
+        if 'raw_gemini_response' not in columns:
+            conn.execute(text('ALTER TABLE pending_items ADD COLUMN raw_gemini_response TEXT'))
+            conn.commit()
+            import logging
+            logging.getLogger(__name__).info("Added raw_gemini_response column to database")
 
 
 def get_db() -> Session:
@@ -88,10 +110,19 @@ class DatabaseManager:
         inferred_title: Optional[str] = None,
         inferred_artist: Optional[str] = None,
         artwork_path: Optional[str] = None,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        file_identifier: Optional[str] = None,
+        raw_gemini_response: Optional[str] = None
     ) -> PendingItem:
         """Create a new pending item."""
-        # Check if item already exists (by original path)
+        # Check if item already exists (by file identifier first, then original path)
+        if file_identifier:
+            existing = db.query(PendingItem).filter(
+                PendingItem.file_identifier == file_identifier
+            ).first()
+            if existing:
+                return existing
+        
         existing = db.query(PendingItem).filter(
             PendingItem.original_path == original_path
         ).first()
@@ -99,7 +130,13 @@ class DatabaseManager:
         if existing:
             return existing
         
-        status = "error" if error_message else "pending"
+        # Determine status based on error_message and raw_gemini_response
+        if error_message and raw_gemini_response:
+            status = "needs_manual"
+        elif error_message:
+            status = "error"
+        else:
+            status = "pending"
         
         item = PendingItem(
             original_path=original_path,
@@ -113,7 +150,9 @@ class DatabaseManager:
             extension=extension,
             artwork_path=artwork_path,
             status=status,
-            error_message=error_message
+            error_message=error_message,
+            file_identifier=file_identifier,
+            raw_gemini_response=raw_gemini_response
         )
         db.add(item)
         db.commit()
@@ -197,3 +236,10 @@ class DatabaseManager:
         return db.query(PendingItem).filter(
             PendingItem.original_path == file_path
         ).first() is not None
+    
+    @staticmethod
+    def get_item_by_identifier(db: Session, file_identifier: str) -> Optional[PendingItem]:
+        """Get item by file identifier."""
+        return db.query(PendingItem).filter(
+            PendingItem.file_identifier == file_identifier
+        ).first()

@@ -73,7 +73,7 @@ artist: ...
 '''
 
 # ============================================================================
-
+	
 
 class GeminiClient:
     """Client for Gemini API to infer metadata."""
@@ -89,7 +89,7 @@ class GeminiClient:
         # For google-generativeai 0.3.2, we'll prepend system instructions to the prompt instead
         self.model = genai.GenerativeModel(model_name=config.GEMINI_MODEL)
     
-    def infer_metadata(self, video_title: str, channel: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    def infer_metadata(self, video_title: str, channel: str) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
         """
         Infer title and artist from video_title and channel.
         
@@ -98,9 +98,10 @@ class GeminiClient:
             channel: The channel name from filename
             
         Returns:
-            Tuple of (title, artist, error_message)
-            If successful, error_message is None
-            If failed, title and artist are None, error_message contains the error
+            Tuple of (title, artist, error_message, raw_response)
+            - If successful, error_message is None
+            - If failed, title and artist may be None or partial
+            - raw_response always contains the raw text from Gemini
         """
         try:
             # Format the prompt with system instructions prepended
@@ -118,16 +119,16 @@ class GeminiClient:
             title, artist = self._parse_response(response_text)
             
             if not title or not artist:
-                error_msg = f"Failed to parse Gemini response: {response_text}"
-                logger.error(error_msg)
-                return None, None, error_msg
+                error_msg = f"Failed to parse Gemini response"
+                logger.error(f"{error_msg}: {response_text}")
+                return title, artist, error_msg, response_text
             
-            return title, artist, None
+            return title, artist, None, response_text
             
         except Exception as e:
             error_msg = f"Gemini API error: {str(e)}"
             logger.error(error_msg)
-            return None, None, error_msg
+            return None, None, error_msg, ""
     
     def _parse_response(self, response_text: str) -> Tuple[Optional[str], Optional[str]]:
         """
