@@ -122,9 +122,9 @@ class DatabaseManager:
     
     @staticmethod
     def get_pending_items(db: Session) -> List[PendingItem]:
-        """Get all pending items (not done)."""
+        """Get all pending items (including error/needs_manual for UI display)."""
         return db.query(PendingItem).filter(
-            PendingItem.status == "pending"
+            PendingItem.status.in_(["pending", "error", "needs_manual"])
         ).order_by(PendingItem.created_at.desc()).all()
     
     @staticmethod
@@ -158,6 +158,25 @@ class DatabaseManager:
         return item
     
     @staticmethod
+    def update_item_error(
+        db: Session,
+        item_id: int,
+        error_message: str,
+        status: str = "error"
+    ) -> Optional[PendingItem]:
+        """Update item with error."""
+        item = db.query(PendingItem).filter(PendingItem.id == item_id).first()
+        if not item:
+            return None
+        
+        item.status = status
+        item.error_message = error_message
+        item.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(item)
+        return item
+    
+    @staticmethod
     def mark_as_done(db: Session, item_id: int, new_path: str) -> Optional[PendingItem]:
         """Mark item as done and update path."""
         item = db.query(PendingItem).filter(PendingItem.id == item_id).first()
@@ -166,6 +185,7 @@ class DatabaseManager:
         
         item.status = "done"
         item.current_path = new_path
+        item.error_message = None  # Clear any previous errors
         item.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(item)

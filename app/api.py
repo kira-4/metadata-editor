@@ -34,7 +34,7 @@ class ConfirmItemRequest(BaseModel):
 
 
 @router.get("/pending")
-def get_pending_items(db: Session = Depends(get_db)):
+async def get_pending_items(db: Session = Depends(get_db)):
     """Get all pending items."""
     try:
         items = DatabaseManager.get_pending_items(db)
@@ -45,7 +45,7 @@ def get_pending_items(db: Session = Depends(get_db)):
 
 
 @router.post("/pending/{item_id}/update")
-def update_item(
+async def update_item(
     item_id: int,
     request: UpdateItemRequest,
     db: Session = Depends(get_db)
@@ -63,6 +63,9 @@ def update_item(
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
         
+        # Notify SSE clients about the update
+        await notify_sse_clients({"type": "item_updated", "id": item_id})
+        
         return item.to_dict()
     except HTTPException:
         raise
@@ -72,7 +75,7 @@ def update_item(
 
 
 @router.post("/pending/{item_id}/confirm")
-def confirm_item(
+async def confirm_item(
     item_id: int,
     db: Session = Depends(get_db)
 ):
@@ -83,8 +86,9 @@ def confirm_item(
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
         
-        if item.status != "pending":
-            raise HTTPException(status_code=400, detail="Item is not pending")
+        # Allow pending or error/needs_manual status for retry
+        if item.status not in ["pending", "error", "needs_manual"]:
+            raise HTTPException(status_code=400, detail=f"Item cannot be confirmed (status: {item.status})")
         
         # Validate required fields
         if not item.current_title or not item.current_artist:
@@ -107,6 +111,9 @@ def confirm_item(
         )
         
         if not success:
+            # Update item with error
+            DatabaseManager.update_item_error(db, item_id, "Failed to apply metadata")
+            await notify_sse_clients({"type": "item_error", "id": item_id})
             raise HTTPException(status_code=500, detail="Failed to apply metadata")
         
         # Move to Navidrome
@@ -118,13 +125,16 @@ def confirm_item(
         )
         
         if not new_path:
+            # Update item with error
+            DatabaseManager.update_item_error(db, item_id, "Failed to move file")
+            await notify_sse_clients({"type": "item_error", "id": item_id})
             raise HTTPException(status_code=500, detail="Failed to move file")
         
         # Mark as done
         DatabaseManager.mark_as_done(db, item_id, str(new_path))
         
-        # Notify SSE clients
-        asyncio.create_task(notify_sse_clients({"type": "item_confirmed", "id": item_id}))
+        # Notify SSE clients - THIS IS NOW PROPERLY AWAITED
+        await notify_sse_clients({"type": "item_confirmed", "id": item_id})
         
         return {"success": True, "new_path": str(new_path)}
         
@@ -132,11 +142,17 @@ def confirm_item(
         raise
     except Exception as e:
         logger.error(f"Error confirming item {item_id}: {e}")
+        # Try to update item with error
+        try:
+            DatabaseManager.update_item_error(db, item_id, str(e))
+            await notify_sse_clients({"type": "item_error", "id": item_id})
+        except:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/artwork/{item_id}")
-def get_artwork(item_id: int, db: Session = Depends(get_db)):
+async def get_artwork(item_id: int, db: Session = Depends(get_db)):
     """Get artwork for an item."""
     try:
         item = DatabaseManager.get_item_by_id(db, item_id)
@@ -191,3 +207,4 @@ async def notify_sse_clients(data: dict):
             await queue.put(data)
         except Exception as e:
             logger.error(f"Error notifying SSE client: {e}")
+

@@ -92,16 +92,19 @@ class FileScanner:
             # Parse filename
             parsed = self.parse_filename(file_path.name)
             if not parsed:
-                # Create error entry
+                # Create error entry - still show in UI for manual edit
                 DatabaseManager.create_pending_item(
                     db=db,
                     original_path=str(file_path),
                     current_path=str(file_path),
-                    video_title="",
-                    channel="",
+                    video_title=file_path.stem,  # Use full filename as fallback
+                    channel="Unknown",
                     extension=file_path.suffix,
-                    error_message="Failed to parse filename format"
+                    inferred_title=None,
+                    inferred_artist=None,
+                    error_message="Failed to parse filename format (expected: title###channel.ext)"
                 )
+                logger.warning(f"Created manual edit entry for unparsed file: {file_path}")
                 return
             
             video_title, channel = parsed
@@ -109,8 +112,8 @@ class FileScanner:
             # Call Gemini to infer metadata
             title, artist, error_msg = gemini_client.infer_metadata(video_title, channel)
             
+            # If Gemini failed, still create an item for manual editing
             if error_msg:
-                # Create entry with error
                 DatabaseManager.create_pending_item(
                     db=db,
                     original_path=str(file_path),
@@ -118,11 +121,15 @@ class FileScanner:
                     video_title=video_title,
                     channel=channel,
                     extension=file_path.suffix,
-                    error_message=error_msg
+                    inferred_title=None,
+                    inferred_artist=None,
+                    error_message=f"Gemini inference failed: {error_msg}"
                 )
+                logger.warning(f"Created manual edit entry for Gemini failure: {file_path}")
                 return
             
             # Apply initial metadata (without genre)
+            new_path = file_path
             if title and artist:
                 success = metadata_processor.apply_metadata(
                     file_path,
@@ -132,6 +139,7 @@ class FileScanner:
                 )
                 
                 if not success:
+                    # Still create entry but mark as error
                     DatabaseManager.create_pending_item(
                         db=db,
                         original_path=str(file_path),
@@ -141,26 +149,30 @@ class FileScanner:
                         extension=file_path.suffix,
                         inferred_title=title,
                         inferred_artist=artist,
-                        error_message="Failed to apply metadata"
+                        error_message="Failed to apply metadata (file may be corrupted)"
                     )
+                    logger.warning(f"Created manual edit entry for metadata failure: {file_path}")
                     return
                 
                 # Rename file
-                new_path = metadata_processor.rename_file(file_path, title)
-                if not new_path:
-                    new_path = file_path
-            else:
-                new_path = file_path
+                renamed_path = metadata_processor.rename_file(file_path, title)
+                if renamed_path:
+                    new_path = renamed_path
+                else:
+                    logger.warning(f"Failed to rename file: {file_path}")
             
             # Extract artwork if present
             artwork_path = None
             if title:
-                artwork_file = config.ARTWORK_DIR / f"{DatabaseManager.file_already_processed.__hash__()}_{file_path.stem}.jpg"
+                # Use file hash for unique artwork filename
+                import hashlib
+                file_hash = hashlib.md5(str(file_path).encode()).hexdigest()[:8]
+                artwork_file = config.ARTWORK_DIR / f"{file_hash}_{file_path.stem}.jpg"
                 if metadata_processor.extract_artwork(new_path, artwork_file):
                     artwork_path = str(artwork_file)
             
             # Create pending item in database
-            DatabaseManager.create_pending_item(
+            item = DatabaseManager.create_pending_item(
                 db=db,
                 original_path=str(file_path),
                 current_path=str(new_path),
@@ -172,10 +184,25 @@ class FileScanner:
                 artwork_path=artwork_path
             )
             
-            logger.info(f"Successfully processed: {file_path} -> {new_path}")
+            logger.info(f"Successfully processed: {file_path} -> {new_path} (item_id={item.id})")
             
         except Exception as e:
             logger.error(f"Error processing file {file_path}: {e}", exc_info=True)
+            # Try to create an error entry so the file appears in UI
+            try:
+                DatabaseManager.create_pending_item(
+                    db=db,
+                    original_path=str(file_path),
+                    current_path=str(file_path),
+                    video_title=file_path.stem,
+                    channel="Unknown",
+                    extension=file_path.suffix,
+                    inferred_title=None,
+                    inferred_artist=None,
+                    error_message=f"Processing error: {str(e)}"
+                )
+            except Exception as inner_e:
+                logger.error(f"Failed to create error entry: {inner_e}")
         finally:
             db.close()
     

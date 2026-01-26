@@ -1,5 +1,6 @@
 """Gemini API client for metadata inference."""
 import re
+import json
 import logging
 from typing import Optional, Tuple
 import google.generativeai as genai
@@ -23,18 +24,53 @@ logger = logging.getLogger(__name__)
 # """
 # ============================================================================
 
-SYSTEM_INSTRUCTIONS = """
-You are an AI assistant that extracts accurate Arabic audio metadata.
+SYSTEM_INSTRUCTIONS = ''''
+//DSE_v7.0 :: ONLINE
+//SIGNATURE: Python_Arabic_Community_2025
+//ARCH: LLM-AGNOSTIC
+//STATUS: PROCESSING RAW INSTRUCTION VECTOR [م]...
 
-Given the video title and channel name from a downloaded audio file, 
-you must infer the proper title and artist for the audio track.
+//DSE_TRANSFORMATION_PAYLOAD
+//SOURCE_HASH: 9a7b3c2d-extraction-protocol-alpha
+//OPTIMIZATION_VECTORS: [Role_Injection, Noise_Filtering_Heuristics, Entity_Disambiguation_Logic, Strict_Format_Enforcement]
 
-Response format (exactly two lines):
-title: <Arabic title>
-artist: <Arabic artist>
+الدور (System Role):
+أنت خبير معالجة لغة طبيعية (NLP) متخصص في استخلاص البيانات الوصفية للمحتوى الفني العربي بدقة عالية. مهمتك استخراج كيانين فقط: (عنوان العمل) و(اسم المؤدي/الفنان).
 
-Be accurate and preserve Arabic text correctly.
-"""
+المدخلات (Inputs):
+video_title: عنوان المقطع (نص خام قد يحتوي ضوضاء).
+channel: اسم القناة (قد يكون اسم الفنان أو اسم شركة/قناة عامة).
+
+قواعد صارمة جداً لتنسيق المخرجات (Strict Output Rules):
+- ممنوع منعاً باتاً إخراج أي JSON أو أقواس أو كود أو Markdown أو علامات اقتباس ثلاثية أو أي شرح إضافي.
+- لا تكتب أي نص قبل أو بعد النتيجة.
+- اكتب سطرين فقط وبالضبط بهذا الشكل (وباللغة العربية):
+title: <العنوان_فقط>
+artist: <الفنان_فقط>
+- إذا لم تتمكن من الجزم 100%، ضع أفضل تخمين مع الالتزام بنفس السطرين فقط.
+- لا تستخدم كلمات مثل "json" أو "```" أو "{" أو "}" أو أي تنسيق آخر.
+
+منطق المعالجة (Processing Logic):
+1) التنقية (Cleaning):
+- أزل الضوضاء من video_title مثل: (فيديو كليب، حصري، كلمات، توزيع، ريمكس، HQ، 4K، Official، Live، Cover، Remix، السنة مثل 2024/2021/1442، الرموز التعبيرية، الأقواس التي تحتوي معلومات ثانوية).
+- أزل التكرار والفراغات الزائدة.
+
+2) استخراج الفنان (Artist Extraction):
+- قيّم channel: إذا كان اسم شخص (فنان/قارئ/شاعر/رادود) وليس قناة عامة/شركة، اعتبره المرشح الأساسي.
+- افحص video_title بحثاً عن فواصل أو صيغ تدل على اسم الفنان مثل: "-"، "|" ، "لـ"، "بصوت"، "أداء"، "الرادود"، "القارئ".
+- إذا كان اسم الفنان مذكوراً بوضوح في video_title فالأولوية له، وإلا استخدم channel إذا كان موثوقاً.
+
+3) استخراج العنوان (Title Extraction):
+- بعد عزل اسم الفنان وإزالة الضوضاء، اعتبر النص المتبقي عنوان العمل.
+- احذف العبارات الوصفية مثل: "أجمل"، "جديد"، "مؤثرة جداً"، "حصرياً"، "إصدار"، إلخ.
+- العنوان يجب أن يكون قصيراً وواضحاً دون إضافات تسويقية.
+
+تذكير أخير:
+المخرجات النهائية يجب أن تكون سطرين فقط وبالضبط:
+title: ...
+artist: ...
+
+'''
 
 # ============================================================================
 
@@ -97,9 +133,16 @@ class GeminiClient:
         """
         Parse the response to extract title and artist.
         
-        Expected format:
-        title: <title>
-        artist: <artist>
+        Handles multiple formats:
+        1. Two-line format:
+           title: <title>
+           artist: <artist>
+        2. JSON format:
+           {"title": "...", "artist": "..."}
+        3. JSON in code fences:
+           ```json
+           {"title": "...", "artist": "..."}
+           ```
         
         Args:
             response_text: The raw response from Gemini
@@ -110,7 +153,36 @@ class GeminiClient:
         title = None
         artist = None
         
-        # Try to extract title and artist using regex
+        # Try JSON parsing first (Gemini sometimes returns JSON despite instructions)
+        try:
+            # Remove code fences if present
+            cleaned = response_text.strip()
+            if cleaned.startswith('```'):
+                # Extract content between code fences
+                lines = cleaned.split('\n')
+                # Remove first line (```json or ```)
+                lines = lines[1:]
+                # Find closing ```
+                end_idx = len(lines)
+                for i, line in enumerate(lines):
+                    if line.strip() == '```':
+                        end_idx = i
+                        break
+                cleaned = '\n'.join(lines[:end_idx])
+            
+            # Try to parse as JSON
+            data = json.loads(cleaned)
+            if isinstance(data, dict):
+                title = data.get('title')
+                artist = data.get('artist')
+                if title and artist:
+                    logger.info(f"Parsed JSON response: title={title}, artist={artist}")
+                    return title, artist
+        except (json.JSONDecodeError, ValueError):
+            # Not JSON, continue to regex parsing
+            pass
+        
+        # Try regex parsing for two-line format
         # Match lines like "title: something" (case-insensitive, flexible whitespace)
         title_match = re.search(r'^\s*title\s*:\s*(.+?)\s*$', response_text, re.MULTILINE | re.IGNORECASE)
         artist_match = re.search(r'^\s*artist\s*:\s*(.+?)\s*$', response_text, re.MULTILINE | re.IGNORECASE)
@@ -120,6 +192,9 @@ class GeminiClient:
         
         if artist_match:
             artist = artist_match.group(1).strip()
+        
+        if title and artist:
+            logger.info(f"Parsed two-line response: title={title}, artist={artist}")
         
         return title, artist
 
