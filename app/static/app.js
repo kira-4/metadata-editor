@@ -161,9 +161,19 @@ function attachItemListeners(itemId) {
     // Custom genre input
     const customInput = card.querySelector('.custom-genre-input');
     if (customInput) {
+        let debounceTimer;
         customInput.addEventListener('input', () => {
-            selectedGenres[itemId] = customInput.value;
+            const value = customInput.value.trim();
+            selectedGenres[itemId] = value;
             updateConfirmButton(itemId);
+            
+            // Debounce: send to backend after 500ms of no typing
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                if (value.length > 0) {
+                    updateField(itemId, 'genre', value);
+                }
+            }, 500);
         });
     }
     
@@ -190,14 +200,20 @@ function handleGenreClick(itemId, genre) {
     if (genre === 'custom') {
         customInput.classList.add('show');
         customGenreVisible[itemId] = true;
-        selectedGenres[itemId] = customInput.value || '';
+        selectedGenres[itemId] = customInput.value.trim() || '';
+        // DON'T send to backend yet - wait for user to type
+        // Only send if there's already a value in the input
+        if (customInput.value.trim().length > 0) {
+            updateField(itemId, 'genre', customInput.value.trim());
+        }
     } else {
         customInput.classList.remove('show');
         customGenreVisible[itemId] = false;
         selectedGenres[itemId] = genre;
+        // Preset genre - send immediately
+        updateField(itemId, 'genre', genre);
     }
     
-    updateField(itemId, 'genre', selectedGenres[itemId]);
     updateConfirmButton(itemId);
 }
 

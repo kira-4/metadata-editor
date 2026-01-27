@@ -91,12 +91,23 @@ async def confirm_item(
         if item.status not in ["pending", "error", "needs_manual"]:
             raise HTTPException(status_code=400, detail=f"Item cannot be confirmed (status: {item.status})")
         
-        # Validate required fields
-        if not item.current_title or not item.current_artist:
-            raise HTTPException(status_code=400, detail="Title and artist are required")
+        # Validate required fields with trimming
+        if not item.current_title or not item.current_title.strip():
+            raise HTTPException(status_code=400, detail="العنوان مطلوب (Title is required)")
         
-        if not item.genre:
-            raise HTTPException(status_code=400, detail="Genre is required")
+        if not item.current_artist or not item.current_artist.strip():
+            raise HTTPException(status_code=400, detail="اسم الفنان مطلوب (Artist is required)")
+        
+        if not item.genre or not item.genre.strip():
+            raise HTTPException(status_code=400, detail="النوع الموسيقي مطلوب (Genre is required)")
+        
+        # Additional validation: reject "أخرى…" literal as genre
+        if item.genre.strip() == "أخرى…":
+            raise HTTPException(status_code=400, detail="يرجى إدخال نوع موسيقي محدد (Please enter a specific genre)")
+        
+        # Length validation
+        if len(item.genre.strip()) > 200:
+            raise HTTPException(status_code=400, detail="النوع الموسيقي طويل جداً (Genre too long, max 200 characters)")
         
         current_path = Path(item.current_path)
         original_path = Path(item.original_path)
