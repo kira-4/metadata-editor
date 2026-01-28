@@ -238,7 +238,52 @@ class LibraryScanner:
         
         except Exception as e:
             logger.error(f"Error reading metadata from {file_path}: {e}")
-            return {}
+            metadata = {}
+            
+        # Fallback: Infer missing metadata from filename and directory structure
+        return self._infer_missing_metadata(metadata, file_path)
+
+    def _infer_missing_metadata(self, metadata: dict, file_path: Path) -> dict:
+        """
+        Infer missing metadata from file path.
+        
+        Rules:
+        - Title -> (filename without extension)
+        - Album -> (parent directory name)
+        - Artist -> (grandparent directory name if applicable)
+        """
+        # 1. Title fallback
+        if not metadata.get('title'):
+            metadata['title'] = file_path.stem
+            
+        # 2. Album fallback
+        if not metadata.get('album'):
+            metadata['album'] = file_path.parent.name
+            
+        # 3. Artist fallback
+        if not metadata.get('artist'):
+            # Try using album_artist if present
+            if metadata.get('album_artist'):
+                metadata['artist'] = metadata['album_artist']
+            else:
+                # Try directory structure
+                try:
+                    # Calculate depth relative to root to verify structure
+                    # Structure A: /music/Artist/Album/Song -> parts inferred
+                    # Structure B: /music/Album/Song -> (Artist unknown or mixed)
+                    rel_path = file_path.relative_to(config.NAVIDROME_ROOT)
+                    parts = rel_path.parts
+                    
+                    # parts: ('Artist', 'Album', 'Song.m4a') -> len=3. parts[-3] is Artist
+                    # parts: ('Category', 'Artist', 'Album', 'Song.m4a') -> len=4. parts[-3] is Artist (usually)
+                    # Use the folder explicitly ABOVE the album folder as Artist
+                    if len(parts) >= 3:
+                        metadata['artist'] = parts[-3]
+                except ValueError:
+                    # Path not relative to root (shouldn't happen given rglob)
+                    pass
+        
+        return metadata
     
     def _get_tag_text(self, tag) -> Optional[str]:
         """Extract text from ID3 tag."""
