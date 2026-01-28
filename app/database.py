@@ -58,6 +58,50 @@ class PendingItem(Base):
         }
 
 
+class LibraryTrack(Base):
+    """Model for indexed library tracks from /music."""
+    
+    __tablename__ = "library_tracks"
+    
+    id = Column(Integer, primary_key=True)
+    file_path = Column(Text, nullable=False, unique=True, index=True)
+    title = Column(Text, nullable=True)
+    artist = Column(Text, nullable=True, index=True)
+    album = Column(Text, nullable=True, index=True)
+    album_artist = Column(Text, nullable=True, index=True)
+    genre = Column(Text, nullable=True, index=True)
+    year = Column(Integer, nullable=True)
+    track_number = Column(Integer, nullable=True)
+    disc_number = Column(Integer, nullable=True)
+    duration = Column(Integer, nullable=True)  # seconds
+    file_size = Column(Integer, nullable=True)  # bytes
+    file_modified = Column(DateTime, nullable=True)
+    has_artwork = Column(Integer, default=0)  # Boolean as int
+    indexed_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "file_path": self.file_path,
+            "title": self.title,
+            "artist": self.artist,
+            "album": self.album,
+            "album_artist": self.album_artist,
+            "genre": self.genre,
+            "year": self.year,
+            "track_number": self.track_number,
+            "disc_number": self.disc_number,
+            "duration": self.duration,
+            "file_size": self.file_size,
+            "file_modified": self.file_modified.isoformat() if self.file_modified else None,
+            "has_artwork": bool(self.has_artwork),
+            "indexed_at": self.indexed_at.isoformat() if self.indexed_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 # Database setup
 engine = create_engine(f"sqlite:///{config.DB_PATH}", connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -112,7 +156,8 @@ class DatabaseManager:
         artwork_path: Optional[str] = None,
         error_message: Optional[str] = None,
         file_identifier: Optional[str] = None,
-        raw_gemini_response: Optional[str] = None
+        raw_gemini_response: Optional[str] = None,
+        status: Optional[str] = None
     ) -> PendingItem:
         """Create a new pending item."""
         # Check if item already exists (by file identifier first, then original path)
@@ -130,8 +175,10 @@ class DatabaseManager:
         if existing:
             return existing
         
-        # Determine status based on error_message and raw_gemini_response
-        if error_message and raw_gemini_response:
+        # Determine status
+        if status:
+            pass # Use provided status
+        elif error_message and raw_gemini_response:
             status = "needs_manual"
         elif error_message:
             status = "error"
@@ -243,3 +290,261 @@ class DatabaseManager:
         return db.query(PendingItem).filter(
             PendingItem.file_identifier == file_identifier
         ).first()
+
+
+class LibraryManager:
+    """Manager for library database operations."""
+    
+    @staticmethod
+    def create_or_update_track(
+        db: Session,
+        file_path: str,
+        metadata: dict,
+        file_stats: dict
+    ) -> LibraryTrack:
+        """Create or update a library track."""
+        track = db.query(LibraryTrack).filter(
+            LibraryTrack.file_path == file_path
+        ).first()
+        
+        if track:
+            # Update existing track
+            track.title = metadata.get('title')
+            track.artist = metadata.get('artist')
+            track.album = metadata.get('album')
+            track.album_artist = metadata.get('album_artist')
+            track.genre = metadata.get('genre')
+            track.year = metadata.get('year')
+            track.track_number = metadata.get('track_number')
+            track.disc_number = metadata.get('disc_number')
+            track.duration = metadata.get('duration')
+            track.has_artwork = 1 if metadata.get('has_artwork') else 0
+            track.file_size = file_stats.get('size')
+            track.file_modified = file_stats.get('modified')
+            track.updated_at = datetime.utcnow()
+        else:
+            # Create new track
+            track = LibraryTrack(
+                file_path=file_path,
+                title=metadata.get('title'),
+                artist=metadata.get('artist'),
+                album=metadata.get('album'),
+                album_artist=metadata.get('album_artist'),
+                genre=metadata.get('genre'),
+                year=metadata.get('year'),
+                track_number=metadata.get('track_number'),
+                disc_number=metadata.get('disc_number'),
+                duration=metadata.get('duration'),
+                has_artwork=1 if metadata.get('has_artwork') else 0,
+                file_size=file_stats.get('size'),
+                file_modified=file_stats.get('modified')
+            )
+            db.add(track)
+        
+        db.commit()
+        db.refresh(track)
+        return track
+    
+    @staticmethod
+    def get_track_by_id(db: Session, track_id: int) -> Optional[LibraryTrack]:
+        """Get track by ID."""
+        return db.query(LibraryTrack).filter(LibraryTrack.id == track_id).first()
+    
+    @staticmethod
+    def get_track_by_path(db: Session, file_path: str) -> Optional[LibraryTrack]:
+        """Get track by file path."""
+        return db.query(LibraryTrack).filter(LibraryTrack.file_path == file_path).first()
+    
+    @staticmethod
+    def delete_track(db: Session, track_id: int) -> bool:
+        """Delete a track from the library."""
+        track = db.query(LibraryTrack).filter(LibraryTrack.id == track_id).first()
+        if track:
+            db.delete(track)
+            db.commit()
+            return True
+        return False
+    
+    @staticmethod
+    def delete_track_by_path(db: Session, file_path: str) -> bool:
+        """Delete a track by file path (for cleanup when file is removed)."""
+        track = db.query(LibraryTrack).filter(LibraryTrack.file_path == file_path).first()
+        if track:
+            db.delete(track)
+            db.commit()
+            return True
+        return False
+    
+    @staticmethod
+    def update_track_metadata(
+        db: Session,
+        track_id: int,
+        title: Optional[str] = None,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+        album_artist: Optional[str] = None,
+        genre: Optional[str] = None,
+        year: Optional[int] = None,
+        track_number: Optional[int] = None,
+        disc_number: Optional[int] = None
+    ) -> Optional[LibraryTrack]:
+        """Update track metadata fields."""
+        track = db.query(LibraryTrack).filter(LibraryTrack.id == track_id).first()
+        if not track:
+            return None
+        
+        if title is not None:
+            track.title = title
+        if artist is not None:
+            track.artist = artist
+        if album is not None:
+            track.album = album
+        if album_artist is not None:
+            track.album_artist = album_artist
+        if genre is not None:
+            track.genre = genre
+        if year is not None:
+            track.year = year
+        if track_number is not None:
+            track.track_number = track_number
+        if disc_number is not None:
+            track.disc_number = disc_number
+        
+        track.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(track)
+        return track
+    
+    @staticmethod
+    def get_all_artists(db: Session, search: Optional[str] = None) -> List[dict]:
+        """Get all unique artists with track and album counts."""
+        from sqlalchemy import func, distinct
+        
+        query = db.query(
+            LibraryTrack.artist,
+            func.count(LibraryTrack.id).label('track_count'),
+            func.count(distinct(LibraryTrack.album)).label('album_count')
+        ).filter(LibraryTrack.artist.isnot(None))
+        
+        if search:
+            query = query.filter(LibraryTrack.artist.like(f'%{search}%'))
+        
+        query = query.group_by(LibraryTrack.artist)
+        
+        results = query.all()
+        return [
+            {
+                'name': r.artist,
+                'track_count': r.track_count,
+                'album_count': r.album_count
+            }
+            for r in results
+        ]
+    
+    @staticmethod
+    def get_all_albums(db: Session, search: Optional[str] = None, artist: Optional[str] = None) -> List[dict]:
+        """Get all unique albums with metadata."""
+        from sqlalchemy import func
+        
+        query = db.query(
+            LibraryTrack.album,
+            LibraryTrack.album_artist,
+            LibraryTrack.year,
+            func.count(LibraryTrack.id).label('track_count'),
+            func.max(LibraryTrack.has_artwork).label('has_artwork'),
+            func.max(LibraryTrack.id).label('sample_id')
+        ).filter(LibraryTrack.album.isnot(None))
+        
+        if search:
+            query = query.filter(LibraryTrack.album.like(f'%{search}%'))
+        
+        if artist:
+            query = query.filter(
+                (LibraryTrack.artist == artist) | (LibraryTrack.album_artist == artist)
+            )
+        
+        query = query.group_by(LibraryTrack.album, LibraryTrack.album_artist, LibraryTrack.year)
+        
+        results = query.all()
+        return [
+            {
+                'name': r.album,
+                'album_artist': r.album_artist,
+                'year': r.year,
+                'track_count': r.track_count,
+                'has_artwork': bool(r.has_artwork),
+                'artwork_id': r.sample_id if r.has_artwork else None
+            }
+            for r in results
+        ]
+    
+    @staticmethod
+    def get_all_genres(db: Session, search: Optional[str] = None) -> List[dict]:
+        """Get all unique genres with track counts."""
+        from sqlalchemy import func
+        
+        query = db.query(
+            LibraryTrack.genre,
+            func.count(LibraryTrack.id).label('track_count')
+        ).filter(LibraryTrack.genre.isnot(None))
+        
+        if search:
+            query = query.filter(LibraryTrack.genre.like(f'%{search}%'))
+        
+        query = query.group_by(LibraryTrack.genre)
+        
+        results = query.all()
+        return [
+            {
+                'name': r.genre,
+                'track_count': r.track_count
+            }
+            for r in results
+        ]
+    
+    @staticmethod
+    def get_tracks(
+        db: Session,
+        search: Optional[str] = None,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+        genre: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[LibraryTrack]:
+        """Get tracks with optional filters."""
+        query = db.query(LibraryTrack)
+        
+        if search:
+            query = query.filter(
+                (LibraryTrack.title.like(f'%{search}%')) |
+                (LibraryTrack.artist.like(f'%{search}%')) |
+                (LibraryTrack.album.like(f'%{search}%'))
+            )
+        
+        if artist:
+            query = query.filter(LibraryTrack.artist == artist)
+        
+        if album:
+            query = query.filter(LibraryTrack.album == album)
+        
+        if genre:
+            query = query.filter(LibraryTrack.genre == genre)
+        
+        query = query.order_by(LibraryTrack.artist, LibraryTrack.album, LibraryTrack.track_number)
+        query = query.limit(limit).offset(offset)
+        
+        return query.all()
+    
+    @staticmethod
+    def get_total_track_count(db: Session) -> int:
+        """Get total number of tracks in library."""
+        return db.query(LibraryTrack).count()
+    
+    @staticmethod
+    def clear_library(db: Session) -> int:
+        """Clear all library tracks. Returns number of deleted tracks."""
+        count = db.query(LibraryTrack).count()
+        db.query(LibraryTrack).delete()
+        db.commit()
+        return count

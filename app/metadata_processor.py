@@ -197,6 +197,208 @@ class MetadataProcessor:
         except Exception as e:
             logger.error(f"Error renaming file {old_path}: {e}")
             return None
+    
+    @staticmethod
+    def update_metadata_safe(
+        audio_path: Path,
+        title: Optional[str] = None,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+        album_artist: Optional[str] = None,
+        genre: Optional[str] = None,
+        year: Optional[int] = None,
+        track_number: Optional[int] = None,
+        disc_number: Optional[int] = None
+    ) -> bool:
+        """
+        Update specific metadata fields atomically (temp file + rename).
+        
+        Args:
+            audio_path: Path to audio file
+            Various optional metadata fields to update
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            import tempfile
+            
+            # Create temp file in same directory
+            temp_fd, temp_path = tempfile.mkstemp(
+                suffix=audio_path.suffix,
+                dir=audio_path.parent
+            )
+            temp_path = Path(temp_path)
+            
+            try:
+                # Copy original to temp
+                shutil.copy2(audio_path, temp_path)
+                
+                # Update metadata on temp file
+                audio = MutagenFile(temp_path)
+                if audio is None:
+                    return False
+                
+                # Handle different file formats
+                if isinstance(audio, MP4):
+                    if title is not None:
+                        audio['©nam'] = [title]
+                    if artist is not None:
+                        audio['©ART'] = [artist]
+                    if album is not None:
+                        audio['©alb'] = [album]
+                    if album_artist is not None:
+                        audio['aART'] = [album_artist]
+                    if genre is not None:
+                        audio['©gen'] = [genre]
+                    if year is not None:
+                        audio['©day'] = [str(year)]
+                    if track_number is not None:
+                        # M4A track number is tuple (track, total)
+                        existing = audio.get('trkn', [(0, 0)])[0]
+                        audio['trkn'] = [(track_number, existing[1] if len(existing) > 1 else 0)]
+                    if disc_number is not None:
+                        existing = audio.get('disk', [(0, 0)])[0]
+                        audio['disk'] = [(disc_number, existing[1] if len(existing) > 1 else 0)]
+                
+                elif hasattr(audio, 'tags'):
+                    if audio.tags is None:
+                        audio.add_tags()
+                    
+                    if isinstance(audio.tags, ID3):
+                        if title is not None:
+                            audio.tags.add(TIT2(encoding=3, text=title))
+                        if artist is not None:
+                            audio.tags.add(TPE1(encoding=3, text=artist))
+                        if album is not None:
+                            audio.tags.add(TALB(encoding=3, text=album))
+                        if album_artist is not None:
+                            audio.tags.add(TPE2(encoding=3, text=album_artist))
+                        if genre is not None:
+                            audio.tags.add(TCON(encoding=3, text=genre))
+                        if year is not None:
+                            from mutagen.id3 import TDRC
+                            audio.tags.add(TDRC(encoding=3, text=str(year)))
+                        if track_number is not None:
+                            from mutagen.id3 import TRCK
+                            audio.tags.add(TRCK(encoding=3, text=str(track_number)))
+                        if disc_number is not None:
+                            from mutagen.id3 import TPOS
+                            audio.tags.add(TPOS(encoding=3, text=str(disc_number)))
+                    
+                    elif isinstance(audio, (FLAC, OggVorbis)):
+                        if title is not None:
+                            audio['title'] = title
+                        if artist is not None:
+                            audio['artist'] = artist
+                        if album is not None:
+                            audio['album'] = album
+                        if album_artist is not None:
+                            audio['albumartist'] = album_artist
+                        if genre is not None:
+                            audio['genre'] = genre
+                        if year is not None:
+                            audio['date'] = str(year)
+                        if track_number is not None:
+                            audio['tracknumber'] = str(track_number)
+                        if disc_number is not None:
+                            audio['discnumber'] = str(disc_number)
+                
+                audio.save()
+                
+                # Atomic replace
+                shutil.move(str(temp_path), str(audio_path))
+                logger.info(f"Updated metadata for {audio_path}")
+                return True
+            
+            finally:
+                # Cleanup temp file if it still exists
+                if temp_path.exists():
+                    temp_path.unlink()
+                    
+        except Exception as e:
+            logger.error(f"Error updating metadata for {audio_path}: {e}")
+            return False
+    
+    @staticmethod
+    def embed_artwork_safe(audio_path: Path, image_data: bytes, mime_type: str) -> bool:
+        """
+        Embed cover art into audio file atomically.
+        
+        Args:
+            audio_path: Path to audio file
+            image_data: Image file bytes
+            mime_type: MIME type (e.g., 'image/jpeg', 'image/png')
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            import tempfile
+            
+            # Create temp file
+            temp_fd, temp_path = tempfile.mkstemp(
+                suffix=audio_path.suffix,
+                dir=audio_path.parent
+            )
+            temp_path = Path(temp_path)
+            
+            try:
+                # Copy original to temp
+                shutil.copy2(audio_path, temp_path)
+                
+                # Embed artwork
+                audio = MutagenFile(temp_path)
+                if audio is None:
+                    return False
+                
+                if isinstance(audio, MP4):
+                    # M4A format
+                    if mime_type == 'image/png':
+                        cover_format = MP4Cover.FORMAT_PNG
+                    else:
+                        cover_format = MP4Cover.FORMAT_JPEG
+                    
+                    audio['covr'] = [MP4Cover(image_data, imageformat=cover_format)]
+                
+                elif hasattr(audio, 'tags'):
+                    if audio.tags is None:
+                        audio.add_tags()
+                    
+                    if isinstance(audio.tags, ID3):
+                        # MP3
+                        audio.tags.add(
+                            APIC(
+                                encoding=3,
+                                mime=mime_type,
+                                type=3,  # Cover (front)
+                                desc='Cover',
+                                data=image_data
+                            )
+                        )
+                    
+                    elif isinstance(audio, FLAC):
+                        # FLAC
+                        picture = Picture()
+                        picture.data = image_data
+                        picture.type = 3  # Cover (front)
+                        picture.mime = mime_type
+                        audio.add_picture(picture)
+                
+                audio.save()
+                
+                # Atomic replace
+                shutil.move(str(temp_path), str(audio_path))
+                logger.info(f"Embedded artwork in {audio_path}")
+                return True
+            
+            finally:
+                if temp_path.exists():
+                    temp_path.unlink()
+        
+        except Exception as e:
+            logger.error(f"Error embedding artwork in {audio_path}: {e}")
+            return False
 
 
 metadata_processor = MetadataProcessor()

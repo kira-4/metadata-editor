@@ -17,10 +17,10 @@ services:
 
     volumes:
       # Mount Pinchflat download directory (read/write)
-      - /path/to/pinchflat/downloads:/incoming
+      - ./incoming:/incoming
 
       # Mount Navidrome music library (read/write)
-      - /path/to/navidrome/music:/music
+      - ./music:/music
 
       # Persistent service data (database, artwork cache)
       - ./data:/data

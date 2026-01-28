@@ -131,20 +131,29 @@ class FileScanner:
             shutil.copy2(file_path, staged_path)
             logger.info(f"Copied to staging: {file_path} -> {staged_path}")
             
+            # Extract artwork from staged file (EARLY EXTRACTION)
+            artwork_path = None
+            file_hash = hashlib.md5(file_identifier.encode()).hexdigest()[:8]
+            artwork_file = config.ARTWORK_DIR / f"{file_hash}_{file_path.stem}.jpg"
+            if metadata_processor.extract_artwork(staged_path, artwork_file):
+                artwork_path = str(artwork_file)
+            
             # Parse filename
             parsed = self.parse_filename(file_path.name)
             if not parsed:
-                # Create error entry - still show in UI for manual edit
+                # Create manual edit entry with fallback values
                 DatabaseManager.create_pending_item(
                     db=db,
                     original_path=str(file_path),
                     current_path=str(staged_path),
-                    video_title=file_path.stem,
+                    video_title=file_path.stem,  # Fallback to stem
                     channel="Unknown",
                     extension=file_path.suffix,
-                    inferred_title=None,
-                    inferred_artist=None,
-                    error_message="Failed to parse filename format (expected: title###channel.ext)",
+                    inferred_title=file_path.stem, # Pre-fill title with filename
+                    inferred_artist="",
+                    artwork_path=artwork_path, # Include artwork if found
+                    status="needs_manual",
+                    error_message="Failed to parse filename - please edit manually",
                     file_identifier=file_identifier
                 )
                 logger.warning(f"Created manual edit entry for unparsed file: {file_path}")
@@ -156,7 +165,7 @@ class FileScanner:
             title, artist, error_msg, raw_response = gemini_client.infer_metadata(video_title, channel)
             
             # If Gemini failed or parse failed, create needs_manual item
-            if error_msg:
+            if error_msg or not title or not artist:
                 DatabaseManager.create_pending_item(
                     db=db,
                     original_path=str(file_path),
@@ -164,9 +173,11 @@ class FileScanner:
                     video_title=video_title,
                     channel=channel,
                     extension=file_path.suffix,
-                    inferred_title=title,  # May be partial or None
-                    inferred_artist=artist,  # May be partial or None
-                    error_message=f"Gemini parse failed: {error_msg}",
+                    inferred_title=title or video_title,  # Fallback to video_title
+                    inferred_artist=artist or channel,    # Fallback to channel
+                    artwork_path=artwork_path,
+                    status="needs_manual",
+                    error_message=f"Metadata detection failed: {error_msg or 'Incomplete data'}",
                     file_identifier=file_identifier,
                     raw_gemini_response=raw_response
                 )
@@ -183,7 +194,7 @@ class FileScanner:
                 )
                 
                 if not success:
-                    # Still create entry but mark as error
+                    # Create needs_manual entry instead of error
                     DatabaseManager.create_pending_item(
                         db=db,
                         original_path=str(file_path),
@@ -193,20 +204,14 @@ class FileScanner:
                         extension=file_path.suffix,
                         inferred_title=title,
                         inferred_artist=artist,
-                        error_message="Failed to apply metadata (file may be corrupted)",
+                        artwork_path=artwork_path,
+                        status="needs_manual",
+                        error_message="Failed to apply metadata tags - please check file",
                         file_identifier=file_identifier,
                         raw_gemini_response=raw_response
                     )
                     logger.warning(f"Created manual edit entry for metadata failure: {file_path}")
                     return
-            
-            # Extract artwork from staged file
-            artwork_path = None
-            if title:
-                file_hash = hashlib.md5(file_identifier.encode()).hexdigest()[:8]
-                artwork_file = config.ARTWORK_DIR / f"{file_hash}_{file_path.stem}.jpg"
-                if metadata_processor.extract_artwork(staged_path, artwork_file):
-                    artwork_path = str(artwork_file)
             
             # Create pending item in database pointing to STAGED file
             item = DatabaseManager.create_pending_item(
@@ -219,6 +224,7 @@ class FileScanner:
                 inferred_title=title,
                 inferred_artist=artist,
                 artwork_path=artwork_path,
+                status="pending",
                 file_identifier=file_identifier,
                 raw_gemini_response=raw_response if title and artist else None
             )
@@ -239,6 +245,7 @@ class FileScanner:
                     extension=file_path.suffix,
                     inferred_title=None,
                     inferred_artist=None,
+                    status="error",  # Generic system error
                     error_message=f"Processing error: {str(e)}",
                     file_identifier=file_identifier
                 )

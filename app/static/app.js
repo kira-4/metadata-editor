@@ -38,6 +38,17 @@ function renderItems() {
     const container = document.getElementById('pendingItems');
     const emptyState = document.getElementById('emptyState');
     const itemCount = document.getElementById('itemCount');
+    const badge = document.getElementById('pendingBadge');
+    
+    // Update Badge
+    if (badge) {
+        if (pendingItems.length > 0) {
+            badge.textContent = pendingItems.length;
+            badge.style.display = 'inline-flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
     
     if (pendingItems.length === 0) {
         container.innerHTML = '';
@@ -60,11 +71,13 @@ function renderItems() {
 // Create item card HTML
 function createItemCard(item) {
     const hasError = item.status === 'error';
+    const isManual = item.status === 'needs_manual';
     const artworkUrl = item.artwork_url || null;
     
     return `
         <div class="item-card" data-id="${item.id}">
-            ${hasError ? '<div class="error-badge">⚠️ خطأ</div>' : ''}
+            ${hasError ? `<div class="error-badge">⚠️ خطأ: ${item.error_message}</div>` : ''}
+            ${isManual ? '<div class="warning-badge">⚠️ يحتاج مراجعة يدوية</div>' : ''}
             
             <div class="item-header">
                 ${artworkUrl 
@@ -79,8 +92,8 @@ function createItemCard(item) {
                             type="text" 
                             class="field-input title-input" 
                             value="${item.current_title || item.inferred_title || ''}"
-                            ${hasError ? 'disabled' : ''}
                             data-id="${item.id}"
+                            placeholder="العنوان (مطلوب)"
                         >
                     </div>
                     
@@ -90,8 +103,8 @@ function createItemCard(item) {
                             type="text" 
                             class="field-input artist-input" 
                             value="${item.current_artist || item.inferred_artist || ''}"
-                            ${hasError ? 'disabled' : ''}
                             data-id="${item.id}"
+                            placeholder="الفنان (مطلوب)"
                         >
                     </div>
                     
@@ -101,36 +114,38 @@ function createItemCard(item) {
                 </div>
             </div>
             
-            ${hasError 
-                ? `<div class="error-message">${item.error_message}</div>`
-                : `
-                    <div class="genre-section">
-                        <label class="genre-label">اختر النوع الموسيقي</label>
-                        <div class="genre-buttons">
-                            ${GENRE_PRESETS.map(genre => `
-                                <button class="genre-btn" data-id="${item.id}" data-genre="${genre}">
-                                    ${genre}
-                                </button>
-                            `).join('')}
-                            <button class="genre-btn" data-id="${item.id}" data-genre="custom">
-                                أخرى…
-                            </button>
-                        </div>
-                        <div class="custom-genre-wrapper">
-                            <input 
-                                type="text" 
-                                class="custom-genre-input" 
-                                placeholder="أدخل النوع الموسيقي"
-                                data-id="${item.id}"
-                            >
-                        </div>
-                    </div>
-                    
-                    <button class="confirm-btn" data-id="${item.id}" disabled>
-                        ✓ تأكيد ونقل إلى المكتبة
+            <div class="genre-section">
+                <label class="genre-label">اختر النوع الموسيقي</label>
+                <div class="genre-buttons">
+                    ${GENRE_PRESETS.map(genre => `
+                        <button class="genre-btn" data-id="${item.id}" data-genre="${genre}">
+                            ${genre}
+                        </button>
+                    `).join('')}
+                    <button class="genre-btn" data-id="${item.id}" data-genre="custom">
+                        أخرى…
                     </button>
-                `
-            }
+                </div>
+                <div class="custom-genre-wrapper">
+                    <input 
+                        type="text" 
+                        class="custom-genre-input" 
+                        placeholder="أدخل النوع الموسيقي"
+                        data-id="${item.id}"
+                    >
+                </div>
+            </div>
+            
+            <div class="action-buttons">
+                <button class="confirm-btn" data-id="${item.id}" disabled>
+                    ✓ تأكيد ونقل إلى المكتبة
+                </button>
+                ${(hasError || isManual) ? `
+                <button class="btn-secondary delete-btn" style="margin-top: 1rem; width: 100%; border-color: var(--error); color: var(--error);" onclick="deleteItem('${item.id}')">
+                    حذف الملف
+                </button>
+                ` : ''}
+            </div>
         </div>
     `;
 }
@@ -162,6 +177,8 @@ function attachItemListeners(itemId) {
     const customInput = card.querySelector('.custom-genre-input');
     if (customInput) {
         let debounceTimer;
+        
+        // Input event: update local state and debounce backend update
         customInput.addEventListener('input', () => {
             const value = customInput.value.trim();
             selectedGenres[itemId] = value;
@@ -174,6 +191,16 @@ function attachItemListeners(itemId) {
                     updateField(itemId, 'genre', value);
                 }
             }, 500);
+        });
+        
+        // Blur event: immediately send to backend when field loses focus
+        // This ensures genre is saved even if user clicks Confirm quickly
+        customInput.addEventListener('blur', () => {
+            clearTimeout(debounceTimer); // Cancel pending debounce
+            const value = customInput.value.trim();
+            if (value.length > 0) {
+                updateField(itemId, 'genre', value);
+            }
         });
     }
     
@@ -300,6 +327,36 @@ async function confirmItem(itemId) {
     }
 }
 
+// Delete item
+async function deleteItem(itemId) {
+    if (!confirm('هل أنت متأكد من حذف هذا الملف نهائياً؟')) return;
+    
+    const deleteBtn = document.querySelector(`.item-card[data-id="${itemId}"] .delete-btn`);
+    if (deleteBtn) {
+        deleteBtn.disabled = true;
+        deleteBtn.textContent = 'جاري الحذف...';
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/pending/${itemId}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) throw new Error('Failed to delete item');
+        
+        // Remove item from list (optimistic update)
+        pendingItems = pendingItems.filter(i => i.id !== itemId);
+        renderItems();
+        
+    } catch (error) {
+        console.error('Error deleting item:', error);
+        if (deleteBtn) {
+            deleteBtn.disabled = false;
+            deleteBtn.textContent = 'فشل الحذف - حاول مرة أخرى';
+        }
+    }
+}
+
 // Setup Server-Sent Events
 function setupSSE() {
     const eventSource = new EventSource(`${API_BASE}/events`);
@@ -313,6 +370,9 @@ function setupSSE() {
         } else if (data.type === 'new_item') {
             // New item added, refresh list
             loadPendingItems();
+        } else if (data.type === 'item_deleted') {
+            // Item deleted, refresh list
+            loadPendingItems();
         }
     };
     
@@ -322,9 +382,1040 @@ function setupSSE() {
     };
 }
 
+//=============================================================================
+// Library Editor Features
+//=============================================================================
+
+// Library State
+const libraryState = {
+    currentView: 'artists',
+    currentSort: 'name-asc',
+    searchQuery: '',
+    currentPage: 1,
+    itemsPerPage: 50,
+    totalItems: 0,
+    selectedTracks: new Set(),
+    multiSelectMode: false,
+    currentData: {
+        artists: [],
+        albums: [],
+        genres: [],
+        tracks: []
+    },
+    detailContext: null // {type: 'artist', name: 'Artist Name'}
+};
+
+// Track Cache for Batch Editing
+libraryState.trackMap = new Map();
+
+// Helper to cache tracks
+function cacheTracks(tracks) {
+    tracks.forEach(track => libraryState.trackMap.set(track.id, track));
+}
+
+// Router
+function initRouter() {
+    function handleRoute() {
+        const hash = window.location.hash || '#/pending';
+        const route = hash.replace('#/', '');
+        
+        // Update nav links
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.classList.toggle('active', link.dataset.route === route);
+        });
+        
+        // Show/hide pages
+        const pendingPage = document.getElementById('pendingPage');
+        const libraryPage = document.getElementById('libraryPage');
+        
+        if (route === 'library') {
+            pendingPage.style.display = 'none';
+            libraryPage.style.display = 'block';
+            
+            // Initial load only if empty
+            if (libraryState.totalItems === 0 && libraryState.currentData.tracks.length === 0) {
+                initLibrary();
+            }
+        } else {
+            pendingPage.style.display = 'block';
+            libraryPage.style.display = 'none';
+        }
+    }
+    
+    window.addEventListener('hashchange', handleRoute);
+    handleRoute();
+}
+
+// Initialize Library
+async function initLibrary() {
+    // Load stats
+    await loadLibraryStats();
+    
+    // Load current view data
+    await loadViewData();
+    
+    // Setup library event listeners (only once)
+    if (!window.libraryListenersAttached) {
+        setupLibraryListeners();
+        window.libraryListenersAttached = true;
+    }
+}
+
+// Setup Library Event Listeners
+function setupLibraryListeners() {
+    // View tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            libraryState.currentView = btn.dataset.view;
+            libraryState.currentPage = 1; // Reset page on view change
+            
+            // Reset detail view state
+            document.getElementById('detailView').style.display = 'none';
+            libraryState.detailContext = null;
+            
+            updateViewTabs();
+            updateSortOptions();
+            loadViewData();
+        });
+    });
+    
+    // Search
+    const searchInput = document.getElementById('librarySearch');
+    let searchDebounce;
+    searchInput.addEventListener('input', () => {
+        clearTimeout(searchDebounce);
+        searchDebounce = setTimeout(() => {
+            libraryState.searchQuery = searchInput.value.trim();
+            libraryState.currentPage = 1; // Reset page on search
+            loadViewData();
+        }, 300);
+    });
+    
+    // Sort
+    const sortSelect = document.getElementById('librarySort');
+    sortSelect.addEventListener('change', () => {
+        libraryState.currentSort = sortSelect.value;
+        libraryState.currentPage = 1; // Reset page on sort
+        loadViewData();
+    });
+    
+    // Pagination
+    document.getElementById('prevPageBtn').addEventListener('click', () => {
+        if (libraryState.currentPage > 1) {
+            libraryState.currentPage--;
+            loadViewData();
+        }
+    });
+    
+    document.getElementById('nextPageBtn').addEventListener('click', () => {
+        const maxPage = Math.ceil(libraryState.totalItems / libraryState.itemsPerPage);
+        if (libraryState.currentPage < maxPage) {
+            libraryState.currentPage++;
+            loadViewData();
+        }
+    });
+    
+    // Rescan button
+    const rescanBtn = document.getElementById('rescanBtn');
+    if (rescanBtn) rescanBtn.addEventListener('click', startRescan);
+    
+    // Multi-select toggle button
+    const multiSelectBtn = document.getElementById('multiSelectBtn');
+    if (multiSelectBtn) multiSelectBtn.addEventListener('click', toggleMultiSelectMode);
+    
+    // Selection actions
+    const editSelectedBtn = document.getElementById('editSelectedBtn');
+    if (editSelectedBtn) editSelectedBtn.addEventListener('click', () => showEditModal('batch'));
+    
+    const clearSelectionBtn = document.getElementById('clearSelectionBtn');
+    if (clearSelectionBtn) clearSelectionBtn.addEventListener('click', clearSelection);
+    
+    // Edit modal
+    const batchEditForm = document.getElementById('batchEditForm');
+    if (batchEditForm) {
+        batchEditForm.addEventListener('submit', handleEditSubmit);
+    }
+    
+    const cancelBatchEdit = document.getElementById('cancelBatchEdit');
+    if (cancelBatchEdit) {
+        cancelBatchEdit.addEventListener('click', closeEditModal);
+    }
+    
+    // Back button
+    const backBtn = document.getElementById('backBtn');
+    if (backBtn) backBtn.addEventListener('click', () => {
+        document.getElementById('detailView').style.display = 'none';
+        const mainView = document.querySelector(`#${libraryState.currentView}View`);
+        if (mainView) {
+            mainView.classList.add('active');
+        } else {
+            console.error(`Main view #${libraryState.currentView}View not found`);
+        }
+        libraryState.detailContext = null;
+    });
+
+    // Global Key Listener (Escape)
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (document.getElementById('batchEditModal').style.display === 'flex') {
+                closeEditModal();
+            } else if (document.getElementById('detailView').style.display === 'block') {
+                document.getElementById('backBtn').click();
+            }
+        }
+    });
+}
+
+// Load Library Stats
+async function loadLibraryStats() {
+    try {
+        const response = await fetch('/api/library/stats');
+        if (!response.ok) return;
+        
+        const stats = await response.json();
+        const statsEl = document.getElementById('libraryStats');
+        statsEl.innerHTML = `
+            <span class="stat-item">${stats.total_tracks} أغنية</span>
+            <span class="stat-item">${stats.total_artists} فنان</span>
+            <span class="stat-item">${stats.total_albums} ألبوم</span>
+        `;
+    } catch (error) {
+        console.error('Error loading stats:', error);
+    }
+}
+
+// Load View Data
+async function loadViewData() {
+    const view = libraryState.currentView;
+    const [sortBy, sortOrder] = libraryState.currentSort.split('-');
+    const search = libraryState.searchQuery;
+    
+    // Pagination params
+    const limit = libraryState.itemsPerPage;
+    const offset = (libraryState.currentPage - 1) * limit;
+    
+    try {
+        // Show loading state
+        const container = document.getElementById(`${view}List`) || document.getElementById('tracksList');
+        if (container) container.innerHTML = '<div class="loading"><span class="spinning">🔄</span> جاري التحميل...</div>';
+        
+        let endpoint = `/api/library/${view}`;
+        const params = new URLSearchParams();
+        
+        if (search) params.append('search', search);
+        params.append('sort_by', sortBy);
+        params.append('sort_order', sortOrder);
+        
+        // Only sending paging for tracks view currently, but other views support simple client-side paging or full load
+        // Actually, API supports limit/offset for tracks.
+        // For artists/albums/genres, we might need client-side pagination if list is huge,
+        // or update API to support it. The plan said "pagination (or virtualization)".
+        // Current API implementation for tracks supports limit/offset.
+        // Other endpoints return all data. Let's do client-side pagination for others for now.
+        
+        if (view === 'tracks') {
+            params.append('limit', limit);
+            params.append('offset', offset);
+        }
+        
+        const response = await fetch(`${endpoint}?${params}`);
+        if (!response.ok) throw new Error('Failed to load data');
+        
+        const data = await response.json();
+        
+        libraryState.totalItems = data.total;
+        updatePaginationUI();
+        
+        if (view === 'artists') {
+            // Client-side pagination for artists
+            libraryState.totalItems = data.artists.length; // Override total
+            updatePaginationUI();
+            
+            // Slice for current page
+            const pagedArtists = data.artists.slice(offset, offset + limit);
+            
+            libraryState.currentData.artists = data.artists;
+            renderArtists(pagedArtists);
+        } else if (view === 'albums') {
+             // Client-side pagination for albums
+            libraryState.totalItems = data.albums.length;
+            updatePaginationUI();
+            
+            const pagedAlbums = data.albums.slice(offset, offset + limit);
+            
+            libraryState.currentData.albums = data.albums;
+            renderAlbums(pagedAlbums);
+        } else if (view === 'genres') {
+            // Client-side pagination for genres
+            libraryState.totalItems = data.genres.length;
+            updatePaginationUI();
+            
+            const pagedGenres = data.genres.slice(offset, offset + limit);
+            
+            libraryState.currentData.genres = data.genres;
+            renderGenres(pagedGenres);
+        } else if (view === 'tracks') {
+            // Server-side pagination for tracks
+            libraryState.totalItems = data.total;
+            updatePaginationUI();
+            
+            cacheTracks(data.tracks);
+            libraryState.currentData.tracks = data.tracks;
+            renderTracks(data.tracks);
+        }
+    } catch (error) {
+        console.error('Error loading view data:', error);
+        const container = document.getElementById(`${view}List`) || document.getElementById('tracksList');
+        if (container) container.innerHTML = `<div class="error-message">حدث خطأ في تحميل البيانات: ${error.message}</div>`;
+    }
+}
+
+// Update Pagination UI
+function updatePaginationUI() {
+    const pagination = document.getElementById('libraryPagination');
+    const pageInfo = document.getElementById('pageInfo');
+    const prevBtn = document.getElementById('prevPageBtn');
+    const nextBtn = document.getElementById('nextPageBtn');
+    
+    // Only show pagination if detail view is NOT active
+    if (document.getElementById('detailView').style.display === 'block') {
+        pagination.style.display = 'none';
+        return;
+    }
+    
+    if (libraryState.totalItems === 0) {
+        pagination.style.display = 'none';
+        return;
+    }
+    
+    const totalPages = Math.ceil(libraryState.totalItems / libraryState.itemsPerPage);
+    
+    if (totalPages <= 1) {
+        pagination.style.display = 'none';
+        return;
+    }
+    
+    pagination.style.display = 'flex';
+    pageInfo.textContent = `صفحة ${libraryState.currentPage} من ${totalPages} (${libraryState.totalItems} عنصر)`;
+    
+    prevBtn.disabled = libraryState.currentPage <= 1;
+    nextBtn.disabled = libraryState.currentPage >= totalPages;
+}
+
+// Update View Tabs
+function updateViewTabs() {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === libraryState.currentView);
+    });
+    
+    document.querySelectorAll('.view-content').forEach(view => {
+        view.classList.remove('active');
+    });
+    
+    // Only show the main list view if detail view is NOT active
+    if (!libraryState.detailContext) {
+        document.getElementById(`${libraryState.currentView}View`).classList.add('active');
+    }
+}
+
+// Update Sort Options
+function updateSortOptions() {
+    const sortSelect = document.getElementById('librarySort');
+    const view = libraryState.currentView;
+    
+    const options = {
+        artists: [
+            {value: 'name-asc', label: 'الاسم (أ - ي)'},
+            {value: 'name-desc', label: 'الاسم (ي - أ)'},
+            {value: 'track_count-desc', label: 'عدد الأغاني'},
+            {value: 'album_count-desc', label: 'عدد الألبومات'}
+        ],
+        albums: [
+            {value: 'name-asc', label: 'الاسم (أ - ي)'},
+            {value: 'name-desc', label: 'الاسم (ي - أ)'},
+            {value: 'year-desc', label: 'السنة (الأحدث)'},
+            {value: 'track_count-desc', label: 'عدد الأغاني'}
+        ],
+        genres: [
+            {value: 'name-asc', label: 'الاسم (أ - ي)'},
+            {value: 'name-desc', label: 'الاسم (ي - أ)'},
+            {value: 'track_count-desc', label: 'عدد الأغاني'}
+        ],
+        tracks: [
+            {value: 'artist-asc', label: 'الفنان'},
+            {value: 'album-asc', label: 'الألبوم'},
+            {value: 'title-asc', label: 'العنوان'},
+            {value: 'year-desc', label: 'السنة'}
+        ]
+    };
+    
+    sortSelect.innerHTML = options[view].map(opt =>
+        `<option value="${opt.value}">${opt.label}</option>`
+    ).join('');
+    
+    sortSelect.value = libraryState.currentSort;
+}
+
+// Render Artists
+function renderArtists(artists) {
+    const container = document.getElementById('artistsList');
+    
+    if (artists.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    container.innerHTML = artists.map(artist => `
+        <div class="list-item" onclick="viewArtistAlbums('${encodeURIComponent(artist.name)}')">
+            <div class="list-item-content">
+                <div class="list-item-title">${artist.name}</div>
+                <div class="list-item-meta">${artist.track_count} أغنية • ${artist.album_count} ألبوم</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Render Albums
+function renderAlbums(albums) {
+    const container = document.getElementById('albumsList');
+    
+    if (albums.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    container.innerHTML = albums.map(album => `
+        <div class="album-card" onclick="viewAlbumTracks('${encodeURIComponent(album.name)}')">
+            <div class="album-artwork">
+                ${album.artwork_id 
+                    ? `<img src="/api/library/tracks/${album.artwork_id}/artwork?t=${Date.now()}" alt="Cover">` 
+                    : '🎵'}
+            </div>
+            <div class="album-name">${album.name || 'بدون اسم'}</div>
+            <div class="album-artist">${album.album_artist || 'غير معروف'}</div>
+            <div class="list-item-meta">${album.track_count} أغنية${album.year ? ' • ' + album.year : ''}</div>
+        </div>
+    `).join('');
+}
+
+// Render Genres
+function renderGenres(genres) {
+    const container = document.getElementById('genresList');
+    
+    if (genres.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+    
+    container.innerHTML = genres.map(genre => `
+        <div class="list-item" onclick="viewGenreTracks('${encodeURIComponent(genre.name)}')">
+            <div class="list-item-content">
+                <div class="list-item-title">${genre.name}</div>
+                <div class="list-item-meta">${genre.track_count} أغنية</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Render Tracks
+function renderTracks(tracks, showCheckboxes = true) {
+    const container = libraryState.detailContext 
+        ? document.getElementById('detailContent')
+        : document.getElementById('tracksList');
+    
+    if (tracks.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>لا توجد أغاني</p></div>';
+        return;
+    }
+    
+    // Helper to escape JSON for attribute
+    const escapeAttr = (str) => (str || '').replace(/"/g, '&quot;');
+    
+    container.innerHTML = tracks.map(track => {
+        // Safe JSON stringify for data attribute
+        const trackJson = JSON.stringify(track).replace(/'/g, "&#39;");
+        const isSelected = libraryState.selectedTracks.has(track.id);
+        
+        return `
+        <div class="list-item ${isSelected ? 'selected' : ''}" data-track-id="${track.id}" data-track-json='${trackJson}' onclick="handleTrackClick(event, this)">
+            ${libraryState.multiSelectMode ? `<input type="checkbox" class="list-item-checkbox" data-track-id="${track.id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation()">` : ''}
+            <div class="list-item-content">
+                <div class="list-item-title">${track.title || 'بدون عنوان'}</div>
+                <div class="list-item-meta">
+                    ${track.artist || 'غير معروف'} • 
+                    ${track.album || 'غير معروف'}
+                    ${track.year ? ' • ' + track.year : ''}
+                </div>
+            </div>
+            ${isSelected && libraryState.multiSelectMode ? '<span class="selection-check">✓</span>' : ''}
+        </div>
+        `;
+    }).join('');
+    
+    // Checkbox listeners now inline to stop propagation
+    container.querySelectorAll('.list-item-checkbox').forEach(cb => {
+        cb.addEventListener('change', handleTrackSelection);
+    });
+}
+
+// Handle Track Click (Single Edit or Selection Toggle)
+function handleTrackClick(event, element) {
+    // If clicking checkbox, ignore (handled by its own listener)
+    if (event.target.classList.contains('list-item-checkbox')) return;
+    
+    const trackId = parseInt(element.dataset.trackId);
+    const trackData = JSON.parse(element.dataset.trackJson || '{}');
+    
+    if (libraryState.multiSelectMode) {
+        // In multi-select mode, toggle selection
+        if (libraryState.selectedTracks.has(trackId)) {
+            libraryState.selectedTracks.delete(trackId);
+        } else {
+            libraryState.selectedTracks.add(trackId);
+        }
+        updateSelectionBar();
+        // Re-render to update visual state
+        const tracks = libraryState.detailContext 
+            ? libraryState.currentData.tracks 
+            : libraryState.currentData.tracks;
+        if (libraryState.detailContext) {
+            // In detail view, we need to get the tracks from the API cache
+            renderTracks(Array.from(libraryState.trackMap.values()).filter(t => 
+                libraryState.currentData.tracks.some(ct => ct.id === t.id)
+            ));
+        } else {
+            renderTracks(libraryState.currentData.tracks);
+        }
+    } else {
+        // Not in multi-select mode, open edit modal
+        showEditModal('single', trackData);
+    }
+}
+
+// View Artist Albums
+async function viewArtistAlbums(artistName) {
+    const name = decodeURIComponent(artistName);
+    
+    try {
+        const response = await fetch(`/api/library/albums?artist=${encodeURIComponent(name)}`);
+        if (!response.ok) throw new Error('Failed to load albums');
+        
+        const data = await response.json();
+        
+        libraryState.detailContext = {type: 'artist', name: name};
+        
+        document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
+        const detailView = document.getElementById('detailView');
+        detailView.style.display = 'block';
+        document.getElementById('detailTitle').textContent = `ألبومات ${name}`;
+        
+        const detailContent = document.getElementById('detailContent');
+        // Use album-card layout with artwork (same as main Albums view)
+        detailContent.className = 'albums-grid';
+        detailContent.innerHTML = data.albums.map(album => `
+            <div class="album-card" onclick="viewAlbumTracks('${encodeURIComponent(album.name)}')">
+                <div class="album-artwork">
+                    ${album.artwork_id 
+                        ? `<img src="/api/library/tracks/${album.artwork_id}/artwork?t=${Date.now()}" alt="Cover">` 
+                        : '🎵'}
+                </div>
+                <div class="album-name">${album.name || 'بدون اسم'}</div>
+                <div class="list-item-meta">${album.track_count} أغنية</div>
+            </div>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading artist albums:', error);
+    }
+}
+
+// View Album Tracks
+async function viewAlbumTracks(albumName) {
+    const name = decodeURIComponent(albumName);
+    
+    try {
+        const response = await fetch(`/api/library/tracks?album=${encodeURIComponent(name)}&limit=500`);
+        if (!response.ok) throw new Error('Failed to load tracks');
+        
+        const data = await response.json();
+        
+        libraryState.detailContext = {type: 'album', name: name};
+        libraryState.currentData.tracks = data.tracks; // Store for select all
+        
+        document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
+        const detailView = document.getElementById('detailView');
+        detailView.style.display = 'block';
+        document.getElementById('detailTitle').textContent = `أغاني ألبوم ${name}`;
+        
+        const detailContent = document.getElementById('detailContent');
+        detailContent.className = 'items-list'; // Reset to list layout
+        
+        cacheTracks(data.tracks);
+        
+        // Add "Select All Album" button before tracks
+        const selectAllBtn = `
+            <button id="selectAlbumBtn" class="btn-secondary" style="margin-bottom: 12px; width: 100%;">
+                تحديد جميع الأغاني (${data.tracks.length})
+            </button>
+        `;
+        
+        // Render tracks then prepend button
+        renderTracks(data.tracks);
+        detailContent.insertAdjacentHTML('afterbegin', selectAllBtn);
+        
+        // Attach select all handler
+        document.getElementById('selectAlbumBtn').addEventListener('click', () => {
+            selectAllAlbumTracks(data.tracks);
+        });
+    } catch (error) {
+        console.error('Error loading album tracks:', error);
+    }
+}
+
+// Select All Album Tracks
+function selectAllAlbumTracks(tracks) {
+    // Enable multi-select mode if not already
+    if (!libraryState.multiSelectMode) {
+        libraryState.multiSelectMode = true;
+        const btn = document.getElementById('multiSelectBtn');
+        if (btn) {
+            btn.textContent = 'إلغاء التحديد';
+            btn.classList.add('active');
+        }
+    }
+    
+    // Clear previous selection and select all tracks in this album
+    libraryState.selectedTracks.clear();
+    tracks.forEach(track => libraryState.selectedTracks.add(track.id));
+    
+    updateSelectionBar();
+    renderTracks(tracks);
+    
+    // Re-add select all button
+    const detailContent = document.getElementById('detailContent');
+    const selectAllBtn = `
+        <button id="selectAlbumBtn" class="btn-secondary" style="margin-bottom: 12px; width: 100%;">
+            تحديد جميع الأغاني (${tracks.length})
+        </button>
+    `;
+    detailContent.insertAdjacentHTML('afterbegin', selectAllBtn);
+    document.getElementById('selectAlbumBtn').addEventListener('click', () => {
+        selectAllAlbumTracks(tracks);
+    });
+}
+
+// View Genre Tracks
+async function viewGenreTracks(genreName) {
+    const name = decodeURIComponent(genreName);
+    
+    try {
+        const response = await fetch(`/api/library/tracks?genre=${encodeURIComponent(name)}&limit=500`);
+        if (!response.ok) throw new Error('Failed to load tracks');
+        
+        const data = await response.json();
+        
+        libraryState.detailContext = {type: 'genre', name: name};
+        
+        document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
+        const detailView = document.getElementById('detailView');
+        detailView.style.display = 'block';
+        document.getElementById('detailTitle').textContent = `أغاني نوع ${name}`;
+        
+        cacheTracks(data.tracks);
+        renderTracks(data.tracks);
+    } catch (error) {
+        console.error('Error loading genre tracks:', error);
+    }
+}
+
+// Handle Track Selection
+function handleTrackSelection(event) {
+    const trackId = parseInt(event.target.dataset.trackId);
+    
+    if (event.target.checked) {
+        libraryState.selectedTracks.add(trackId);
+    } else {
+        libraryState.selectedTracks.delete(trackId);
+    }
+    
+    updateSelectionBar();
+}
+
+// Update Selection Bar
+function updateSelectionBar() {
+    const selectionBar = document.getElementById('selectionBar');
+    const libraryPage = document.getElementById('libraryPage');
+    const count = libraryState.selectedTracks.size;
+    
+    if (count === 0 && !libraryState.multiSelectMode) {
+        selectionBar.style.display = 'none';
+        if (libraryPage) libraryPage.style.paddingBottom = '';
+        return;
+    }
+    
+    selectionBar.style.display = 'flex';
+    // Add padding to prevent selection bar from overlaying content
+    if (libraryPage) libraryPage.style.paddingBottom = '80px';
+    document.getElementById('selectionCount').textContent = count > 0 ? `${count} محدد` : 'اختر العناصر';
+    document.getElementById('selectionDetails').textContent = '';
+}
+
+// Toggle Multi-Select Mode
+function toggleMultiSelectMode() {
+    libraryState.multiSelectMode = !libraryState.multiSelectMode;
+    
+    // Update button text
+    const btn = document.getElementById('multiSelectBtn');
+    if (btn) {
+        btn.textContent = libraryState.multiSelectMode ? 'إلغاء التحديد' : 'تحديد متعدد';
+        btn.classList.toggle('active', libraryState.multiSelectMode);
+    }
+    
+    // Update selection bar visibility
+    updateSelectionBar();
+    
+    // Re-render current tracks to show/hide checkboxes
+    if (libraryState.currentView === 'tracks' || libraryState.detailContext) {
+        if (libraryState.detailContext) {
+            renderTracks(Array.from(libraryState.trackMap.values()).filter(t => 
+                libraryState.currentData.tracks.some(ct => ct.id === t.id)
+            ));
+        } else {
+            renderTracks(libraryState.currentData.tracks);
+        }
+    }
+}
+
+// Clear Selection
+function clearSelection() {
+    libraryState.selectedTracks.clear();
+    libraryState.multiSelectMode = false;
+    
+    // Reset button text
+    const btn = document.getElementById('multiSelectBtn');
+    if (btn) {
+        btn.textContent = 'تحديد متعدد';
+        btn.classList.remove('active');
+    }
+    
+    document.querySelectorAll('.list-item-checkbox').forEach(cb => cb.checked = false);
+    updateSelectionBar();
+    
+    // Re-render to remove checkboxes
+    if (libraryState.currentView === 'tracks' || libraryState.detailContext) {
+        if (libraryState.detailContext) {
+            renderTracks(Array.from(libraryState.trackMap.values()).filter(t => 
+                libraryState.currentData.tracks.some(ct => ct.id === t.id)
+            ));
+        } else {
+            renderTracks(libraryState.currentData.tracks);
+        }
+    }
+}
+
+// Show Edit Modal
+function showEditModal(mode, trackData = null) {
+    libraryState.editMode = mode;
+    libraryState.editTrackData = trackData;
+    
+    // Reset form
+    document.getElementById('batchEditForm').reset();
+    
+    const modal = document.getElementById('batchEditModal');
+    const title = modal.querySelector('h3');
+    const keepCheckboxes = modal.querySelectorAll('input[type="checkbox"][id$="Keep"]');
+    
+    // Artwork UI Container (Dynamically added if missing)
+    let artworkSection = document.getElementById('editArtworkSection');
+    if (!artworkSection) {
+        artworkSection = document.createElement('div');
+        artworkSection.id = 'editArtworkSection';
+        artworkSection.className = 'form-group artwork-upload-section';
+        // Insert before the first form group
+        const firstGroup = modal.querySelector('.form-group');
+        firstGroup.parentNode.insertBefore(artworkSection, firstGroup);
+    }
+    
+    if (mode === 'single' && trackData) {
+        title.textContent = 'تعديل الملف';
+        
+        // Hide "Keep" checkboxes
+        keepCheckboxes.forEach(cb => {
+            cb.checked = false;
+            cb.parentElement.style.display = 'none';
+        });
+        
+        // Show Artwork Section
+        artworkSection.style.display = 'block';
+        artworkSection.innerHTML = `
+            <label>صورة الغلاف</label>
+            <div class="artwork-preview-container">
+                <div class="artwork-preview">
+                    ${trackData.has_artwork 
+                        ? `<img src="/api/library/tracks/${trackData.id}/artwork?t=${Date.now()}" alt="Cover">` 
+                        : '<span class="artwork-placeholder">🎵</span>'}
+                </div>
+                <div class="artwork-upload-controls">
+                    <input type="file" id="artworkUpload" accept="image/jpeg,image/png" style="display: none;">
+                    <button type="button" class="btn-secondary" onclick="document.getElementById('artworkUpload').click()">
+                        تغيير الصورة
+                    </button>
+                    <span id="artworkFileName" class="file-name"></span>
+                </div>
+            </div>
+        `;
+        
+        // Handle file selection display
+        setTimeout(() => {
+            const fileInput = document.getElementById('artworkUpload');
+            if (fileInput) {
+                fileInput.addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        document.getElementById('artworkFileName').textContent = file.name;
+                        // Preview
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            const container = document.querySelector('.artwork-preview');
+                            container.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                });
+            }
+        }, 0);
+        
+        // Pre-fill fields
+        document.getElementById('batchTitle').value = trackData.title || '';
+        document.getElementById('batchArtist').value = trackData.artist || '';
+        document.getElementById('batchAlbum').value = trackData.album || '';
+        document.getElementById('batchGenre').value = trackData.genre || '';
+        document.getElementById('batchYear').value = trackData.year || '';
+        
+    } else {
+        title.textContent = 'تعديل الميتاداتا (متعدد)';
+        
+        // Hide Artwork Section for batch
+        artworkSection.style.display = 'none';
+        
+        // Smart Batch Logic
+        const trackIds = Array.from(libraryState.selectedTracks);
+        const tracks = trackIds.map(id => libraryState.trackMap.get(id)).filter(t => t);
+        
+        // Initialize common values with the first track
+        const common = {
+            Title: tracks[0]?.title,
+            Artist: tracks[0]?.artist,
+            Album: tracks[0]?.album,
+            Genre: tracks[0]?.genre,
+            Year: tracks[0]?.year
+        };
+        
+        // Check for consistency across all tracks
+        // distinctNull means we found a conflict (different values)
+        const conflict = {Title: false, Artist: false, Album: false, Genre: false, Year: false};
+        
+        for (let i = 1; i < tracks.length; i++) {
+            if (tracks[i].title !== common.Title) conflict.Title = true;
+            if (tracks[i].artist !== common.Artist) conflict.Artist = true;
+            if (tracks[i].album !== common.Album) conflict.Album = true;
+            if (tracks[i].genre !== common.Genre) conflict.Genre = true;
+            if (tracks[i].year !== common.Year) conflict.Year = true;
+        }
+        
+        // Apply to form
+        const applyField = (field) => {
+             const input = document.getElementById('batch' + field);
+             const keepCb = document.getElementById('batch' + field + 'Keep');
+             const hasConflict = conflict[field];
+             const val = common[field];
+             
+             if (!hasConflict && val !== undefined && val !== null) {
+                 // All tracks have same value
+                 input.value = val;
+                 input.placeholder = '';
+                 // "Grayed out text" request usually implies disabled, but we want to allow editing.
+                 // "put the fields that are the same... in their respective fields" matches this.
+                 // We uncheck "Keep" so it's active for editing, or keep it checked if user wants?
+                 // Usually if it's filled, it's ready. If I want to change all artists, I type new one.
+                 // If I leave it as is, it updates all to the SAME value (no change).
+                 keepCb.checked = false; 
+             } else {
+                 // Multiple values or all empty
+                 input.value = '';
+                 input.placeholder = hasConflict ? 'قيم متعددة (لن يتم التغيير)' : '';
+                 keepCb.checked = true;
+             }
+             
+             keepCb.parentElement.style.display = 'inline-block';
+        };
+
+        ['Title', 'Artist', 'Album', 'Genre', 'Year'].forEach(f => applyField(f));
+    }
+    
+    modal.style.display = 'flex';
+}
+
+// Close Edit Modal
+function closeEditModal() {
+    document.getElementById('batchEditModal').style.display = 'none';
+    libraryState.editMode = null;
+    libraryState.editTrackData = null;
+}
+
+// Handle All Edit Submissions
+async function handleEditSubmit(event) {
+    event.preventDefault();
+    
+    if (libraryState.editMode === 'single') {
+        await handleSingleEdit();
+    } else {
+        await handleBatchEdit();
+    }
+}
+
+// Handle Single Edit
+async function handleSingleEdit() {
+    const trackId = libraryState.editTrackData.id;
+    
+    // 1. Upload Artwork if selected
+    const fileInput = document.getElementById('artworkUpload');
+    if (fileInput && fileInput.files.length > 0) {
+        try {
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            
+            const response = await fetch(`/api/library/tracks/${trackId}/artwork`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) throw new Error('Artwork upload failed');
+        } catch (error) {
+            console.error('Error uploading artwork:', error);
+            alert('فشل رفع صورة الغلاف');
+            // Don't return, try to save other metadata
+        }
+    }
+    
+    // 2. Update Metadata
+    const payload = {
+        title: document.getElementById('batchTitle').value,
+        artist: document.getElementById('batchArtist').value,
+        album: document.getElementById('batchAlbum').value,
+        genre: document.getElementById('batchGenre').value,
+        year: parseInt(document.getElementById('batchYear').value) || null
+    };
+    
+    try {
+        const response = await fetch(`/api/library/tracks/${trackId}/update`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) throw new Error('Update failed');
+        
+        closeEditModal();
+        loadViewData(); // Refresh view
+        
+    } catch (error) {
+        console.error('Error updating track:', error);
+        alert('خطأ في تحديث الملف');
+    }
+}
+
+// Handle Batch Edit
+async function handleBatchEdit() {
+    const trackIds = Array.from(libraryState.selectedTracks);
+    if (trackIds.length === 0) return;
+    
+    const payload = {track_ids: trackIds};
+    
+    // Only include fields that are not marked as "keep unchanged"
+    if (!document.getElementById('batchTitleKeep').checked) {
+        payload.title = document.getElementById('batchTitle').value;
+    }
+    if (!document.getElementById('batchArtistKeep').checked) {
+        payload.artist = document.getElementById('batchArtist').value;
+    }
+    if (!document.getElementById('batchAlbumKeep').checked) {
+        payload.album = document.getElementById('batchAlbum').value;
+    }
+    if (!document.getElementById('batchGenreKeep').checked) {
+        payload.genre = document.getElementById('batchGenre').value;
+    }
+    if (!document.getElementById('batchYearKeep').checked) {
+        payload.year = parseInt(document.getElementById('batchYear').value) || null;
+    }
+    
+    try {
+        const response = await fetch('/api/library/tracks/batch-update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) throw new Error('Batch update failed');
+        
+        const result = await response.json();
+        alert(`تم التحديث: ${result.successful} نجح، ${result.failed} فشل`);
+        
+        closeEditModal();
+        clearSelection();
+        loadViewData();
+        
+    } catch (error) {
+        console.error('Error in batch update:', error);
+        alert('خطأ في تحديث الملفات');
+    }
+}
+
+// Start Rescan
+async function startRescan() {
+    const btn = document.getElementById('rescanBtn');
+    const icon = document.getElementById('rescanIcon');
+    
+    btn.disabled = true;
+    icon.classList.add('spinning');
+    
+    try {
+        const response = await fetch('/api/library/rescan', {method: 'POST'});
+        if (!response.ok) throw new Error('Failed to start rescan');
+        
+        // Status is shown via spinning icon - no popup needed
+        
+        // Poll for status
+        const checkStatus = async () => {
+            const statusResponse = await fetch('/api/library/rescan/status');
+            const status = await statusResponse.json();
+            
+            if (status.is_scanning) {
+                setTimeout(checkStatus, 2000);
+            } else {
+                btn.disabled = false;
+                icon.classList.remove('spinning');
+                await loadLibraryStats();
+                await loadViewData();
+            }
+        };
+        
+        checkStatus();
+        
+    } catch (error) {
+        console.error('Error starting rescan:', error);
+        alert('خطأ في بدء المسح');
+        btn.disabled = false;
+        icon.classList.remove('spinning');
+    }
+}
+
 // Start app when DOM is ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', () => {
+        init();
+        initRouter();
+    });
 } else {
     init();
+    initRouter();
 }

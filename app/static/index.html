@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>محرر الميتاداتا الصوتية</title>
+    <link rel="icon" type="image/png" href="/favicon.png">
     <link rel="stylesheet" href="/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,27 +12,164 @@
 </head>
 <body>
     <div class="container">
-        <header class="header">
-            <h1>🎵 محرر الميتاداتا الصوتية</h1>
-            <p class="subtitle">معالجة ومراجعة الملفات الصوتية</p>
-        </header>
+        <!-- Navigation -->
+        <nav class="main-nav">
+            <div class="nav-brand">
+                <h1>🎵 محرر الميتاداتا الصوتية</h1>
+            </div>
+            <div class="nav-links">
+                <a href="#/pending" class="nav-link active" data-route="pending">
+                    قائمة الانتظار
+                    <span id="pendingBadge" class="nav-badge" style="display: none;">0</span>
+                </a>
+                <a href="#/library" class="nav-link" data-route="library">محرر المكتبة</a>
+            </div>
+        </nav>
 
-        <main class="main-content">
-            <div class="queue-header">
-                <h2>قائمة الانتظار</h2>
-                <span class="count" id="itemCount">0 ملف</span>
+        <!-- Pending Page (existing) -->
+        <!-- Pending Page (existing) -->
+        <div id="pendingPage" class="page-content">
+            <main class="main-content">
+                <div class="queue-header">
+                    <h2>قائمة الانتظار</h2>
+                    <span class="count" id="itemCount">0 ملف</span>
+                </div>
+
+                <div id="pendingItems" class="items-grid">
+                    <!-- Items will be loaded here -->
+                </div>
+
+                <div id="emptyState" class="empty-state">
+                    <div class="empty-icon">📂</div>
+                    <h3>لا توجد ملفات في الانتظار</h3>
+                    <p>سيتم عرض الملفات الجديدة تلقائياً عند اكتشافها</p>
+                </div>
+            </main>
+        </div>
+
+        <!-- Library Page (new) -->
+        <div id="libraryPage" class="page-content" style="display: none;">
+            <!-- Library Controls -->
+            <div class="library-controls">
+                <div class="library-header">
+                    <h2>مكتبة الموسيقى</h2>
+                    <div class="library-actions">
+                        <button id="multiSelectBtn" class="btn-secondary">
+                            تحديد متعدد
+                        </button>
+                        <button id="rescanBtn" class="btn-secondary">
+                            <span id="rescanIcon">🔄</span>
+                            إعادة المسح
+                        </button>
+                        <div class="library-stats" id="libraryStats">
+                            <span class="stat-item">...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- View Mode Tabs -->
+                <div class="view-tabs">
+                    <button class="tab-btn active" data-view="artists">الفنانون</button>
+                    <button class="tab-btn" data-view="albums">الألبومات</button>
+                    <button class="tab-btn" data-view="genres">الأنواع</button>
+                    <button class="tab-btn" data-view="tracks">جميع الأغاني</button>
+                </div>
+
+                <!-- Search and Sort -->
+                <div class="search-sort-bar">
+                    <input type="text" id="librarySearch" class="search-input" placeholder="بحث...">
+                    <select id="librarySort" class="sort-select">
+                        <option value="name-asc">الاسم (أ - ي)</option>
+                        <option value="name-desc">الاسم (ي - أ)</option>
+                    </select>
+                </div>
             </div>
 
-            <div id="pendingItems" class="items-grid">
-                <!-- Items will be loaded here -->
+            <!-- View Content -->
+            <div id="artistsView" class="view-content active">
+                <div id="artistsList" class="items-list"></div>
+                <div class="empty-state"><p>لا توجد فنانين</p></div>
             </div>
 
-            <div id="emptyState" class="empty-state">
-                <div class="empty-icon">📂</div>
-                <h3>لا توجد ملفات في الانتظار</h3>
-                <p>سيتم عرض الملفات الجديدة تلقائياً عند اكتشافها</p>
+            <div id="albumsView" class="view-content">
+                <div id="albumsList" class="albums-grid"></div>
+                <div class="empty-state"><p>لا توجد ألبومات</p></div>
             </div>
-        </main>
+
+            <div id="genresView" class="view-content">
+                <div id="genresList" class="items-list"></div>
+                <div class="empty-state"><p>لا توجد أنواع موسيقية</p></div>
+            </div>
+
+            <div id="tracksView" class="view-content">
+                <div id="tracksList" class="items-list"></div>
+                <div class="empty-state"><p>لا توجد أغاني</p></div>
+            </div>
+
+            <!-- Pagination Controls -->
+            <div id="libraryPagination" class="pagination-controls" style="display: none;">
+                <button id="prevPageBtn" class="btn-secondary">السابق</button>
+                <span id="pageInfo">صفحة 1</span>
+                <button id="nextPageBtn" class="btn-secondary">التالي</button>
+            </div>
+
+            <!-- Detail Views -->
+            <div id="detailView" class="view-content" style="display: none;">
+                <button id="backBtn" class="btn-secondary">← رجوع</button>
+                <h3 id="detailTitle"></h3>
+                <div id="detailContent" class="items-list"></div>
+            </div>
+
+            <!-- Selection Bar -->
+            <div id="selectionBar" class="selection-bar" style="display: none;">
+                <div class="selection-info">
+                    <span id="selectionCount">0 محدد</span>
+                    <span id="selectionDetails"></span>
+                </div>
+                <div class="selection-actions">
+                    <button id="editSelectedBtn" class="btn-primary">تعديل الميتاداتا</button>
+                    <button id="clearSelectionBtn" class="btn-secondary">إلغاء التحديد</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Batch Edit Modal -->
+        <div id="batchEditModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <h3>تعديل الميتاداتا</h3>
+                <form id="batchEditForm">
+                    <div class="form-group">
+                        <label>العنوان</label>
+                        <input type="text" id="batchTitle" class="field-input">
+                        <label><input type="checkbox" id="batchTitleKeep" checked> عدم التغيير</label>
+                    </div>
+                    <div class="form-group">
+                        <label>الفنان</label>
+                        <input type="text" id="batchArtist" class="field-input">
+                        <label><input type="checkbox" id="batchArtistKeep" checked> عدم التغيير</label>
+                    </div>
+                    <div class="form-group">
+                        <label>الألبوم</label>
+                        <input type="text" id="batchAlbum" class="field-input">
+                        <label><input type="checkbox" id="batchAlbumKeep" checked> عدم التغيير</label>
+                    </div>
+                    <div class="form-group">
+                        <label>النوع</label>
+                        <input type="text" id="batchGenre" class="field-input">
+                        <label><input type="checkbox" id="batchGenreKeep" checked> عدم التغيير</label>
+                    </div>
+                    <div class="form-group">
+                        <label>السنة</label>
+                        <input type="number" id="batchYear" class="field-input">
+                        <label><input type="checkbox" id="batchYearKeep" checked> عدم التغيير</label>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="submit" class="btn-primary">حفظ</button>
+                        <button type="button" id="cancelBatchEdit" class="btn-secondary">إلغاء</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 
     <script src="/app.js"></script>

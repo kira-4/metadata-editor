@@ -206,6 +206,59 @@ async def get_artwork(item_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/pending/{item_id}")
+async def delete_item(item_id: int, db: Session = Depends(get_db)):
+    """Delete a pending item and its files."""
+    try:
+        item = DatabaseManager.get_item_by_id(db, item_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+        
+        # Paths
+        current_path = Path(item.current_path)
+        original_path = Path(item.original_path)
+        artwork_path = Path(item.artwork_path) if item.artwork_path else None
+        
+        # 1. Delete staged file (current_path)
+        if current_path.exists():
+            try:
+                current_path.unlink()
+                
+                # Cleanup staging dir if empty
+                staging_dir = current_path.parent
+                if staging_dir.is_relative_to(config.STAGING_DIR) and not any(staging_dir.iterdir()):
+                    staging_dir.rmdir()
+            except Exception as e:
+                logger.warning(f"Failed to delete staged file {current_path}: {e}")
+                
+        # 2. Delete original file (original_path) - to prevent rescan
+        if original_path.exists():
+            try:
+                original_path.unlink()
+                logger.info(f"Deleted original file: {original_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete original file {original_path}: {e}")
+        
+        # 3. Delete artwork if exists
+        if artwork_path and artwork_path.exists():
+            try:
+                artwork_path.unlink()
+            except Exception as e:
+                logger.warning(f"Failed to delete artwork {artwork_path}: {e}")
+                
+        # 4. Remove from DB
+        db.delete(item)
+        db.commit()
+        
+        await notify_sse_clients({"type": "item_deleted", "id": item_id})
+        
+        return {"success": True}
+        
+    except Exception as e:
+        logger.error(f"Error deleting item {item_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 async def event_generator():
     """SSE event generator."""
     queue = asyncio.Queue()

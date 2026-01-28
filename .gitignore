@@ -14,3 +14,5 @@ data/
 *.db
 *.log
 .DS_Store
+/music
+/incoming
