@@ -98,7 +98,8 @@ class MetadataProcessor:
         title: str,
         artist: str,
         genre: Optional[str] = None,
-        album: str = config.ALBUM_NAME
+        album: str = config.ALBUM_NAME,
+        **kwargs
     ) -> bool:
         """
         Apply metadata to audio file.
@@ -109,6 +110,7 @@ class MetadataProcessor:
             artist: Track artist
             genre: Track genre (optional)
             album: Album name (default: "منوعات")
+            **kwargs: Additional metadata (year, track_number, disc_number)
             
         Returns:
             True if successful, False otherwise
@@ -129,6 +131,21 @@ class MetadataProcessor:
                 audio['aART'] = [artist]  # Album artist
                 if genre:
                     audio['\xa9gen'] = [genre]
+                # Add missing M4A fields
+                if kwargs.get('year'):
+                    audio['\xa9day'] = [str(kwargs['year'])]
+                if kwargs.get('track_number'):
+                    track_num = int(kwargs['track_number'])
+                    # trkn is (track_num, total_tracks)
+                    existing = audio.get('trkn', [(0, 0)])[0]
+                    total = existing[1] if len(existing) > 1 else 0
+                    audio['trkn'] = [(track_num, total)]
+                if kwargs.get('disc_number'):
+                    disc_num = int(kwargs['disc_number'])
+                    # disk is (disc_num, total_discs)
+                    existing = audio.get('disk', [(0, 0)])[0]
+                    total = existing[1] if len(existing) > 1 else 0
+                    audio['disk'] = [(disc_num, total)]
             
             elif hasattr(audio, 'tags'):
                 # MP3 with ID3
@@ -142,6 +159,13 @@ class MetadataProcessor:
                     audio.tags.add(TPE2(encoding=3, text=artist))  # Album artist
                     if genre:
                         audio.tags.add(TCON(encoding=3, text=genre))
+                    # Add missing ID3 fields
+                    if kwargs.get('year'):
+                        audio.tags.add(TDRC(encoding=3, text=str(kwargs['year'])))
+                    if kwargs.get('track_number'):
+                        audio.tags.add(TRCK(encoding=3, text=str(kwargs['track_number'])))
+                    if kwargs.get('disc_number'):
+                        audio.tags.add(TPOS(encoding=3, text=str(kwargs['disc_number'])))
                 
                 # FLAC or OGG
                 elif isinstance(audio, (FLAC, OggVorbis)):
@@ -151,6 +175,12 @@ class MetadataProcessor:
                     audio['albumartist'] = artist
                     if genre:
                         audio['genre'] = genre
+                    if kwargs.get('year'):
+                        audio['date'] = str(kwargs['year'])
+                    if kwargs.get('track_number'):
+                        audio['tracknumber'] = str(kwargs['track_number'])
+                    if kwargs.get('disc_number'):
+                        audio['discnumber'] = str(kwargs['disc_number'])
             
             audio.save()
             logger.info(f"Applied metadata to {audio_path}")

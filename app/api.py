@@ -116,6 +116,26 @@ async def confirm_item(
             raise HTTPException(status_code=404, detail="File not found")
         
         # Apply final metadata with genre
+        # First, embed artwork if available
+        if item.artwork_path and Path(item.artwork_path).exists():
+            try:
+                artwork_path = Path(item.artwork_path)
+                logger.info(f"Embedding artwork from {artwork_path}")
+                
+                # Determine mime type
+                mime_type = 'image/jpeg'
+                if artwork_path.suffix.lower() == '.png':
+                    mime_type = 'image/png'
+                
+                # Read image data
+                image_data = artwork_path.read_bytes()
+                
+                # Embed
+                metadata_processor.embed_artwork_safe(current_path, image_data, mime_type)
+            except Exception as e:
+                logger.error(f"Failed to embed artwork: {e}")
+                # Continue anyway, not critical failure
+        
         success = metadata_processor.apply_metadata(
             current_path,
             title=item.current_title,
