@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional, Callable
 from datetime import datetime
 from mutagen import File as MutagenFile
+from mutagen.id3 import ID3NoHeaderError, ID3, TIT2, TPE1, TALB, TPE2, TCON, TDRC, TRCK, TPOS
 from sqlalchemy.orm import Session
 
 from app.config import config
@@ -145,8 +146,25 @@ class LibraryScanner:
                     # File hasn't changed, skip
                     return
             
-            # Read metadata
-            metadata = self._read_metadata(file_path)
+            # Read metadata (raw tags from file)
+            metadata = self._read_raw_metadata(file_path)
+            
+            # Infer missing metadata (does not modify file yet)
+            inferred_metadata = self._infer_missing_metadata(metadata.copy(), file_path)
+            
+            # Write back to file if changes were made (and ensure required fields exist)
+            if self._should_write_metadata(metadata, inferred_metadata):
+                logger.info(f"Writing inferred metadata to {file_path}")
+                self._write_metadata(file_path, inferred_metadata)
+                # Update file modified time in stats since we just modified it
+                stat = file_path.stat()
+                file_modified = datetime.fromtimestamp(stat.st_mtime)
+                file_size = stat.st_size
+                # Use the new metadata for the DB
+                metadata = inferred_metadata
+            else:
+                # No write needed, just use the inferred metadata
+                metadata = inferred_metadata
             
             # Create or update track
             file_stats = {
@@ -167,12 +185,12 @@ class LibraryScanner:
             logger.error(f"Failed to index {file_path}: {e}")
             raise
     
-    def _read_metadata(self, file_path: Path) -> dict:
+    def _read_raw_metadata(self, file_path: Path) -> dict:
         """
-        Read metadata from audio file.
+        Read raw metadata tags from audio file without inference.
         
         Returns:
-            Dictionary with metadata fields
+            Dictionary with metadata fields found in the file
         """
         try:
             audio = MutagenFile(file_path)
@@ -238,10 +256,96 @@ class LibraryScanner:
         
         except Exception as e:
             logger.error(f"Error reading metadata from {file_path}: {e}")
-            metadata = {}
+            return {}
+
+    def _should_write_metadata(self, original: dict, inferred: dict) -> bool:
+        """Check if inferred metadata contains important fields missing from original."""
+        important_fields = ['title', 'artist', 'album', 'album_artist']
+        for field in important_fields:
+            # If original is missing the field but inferred has it, we should write
+            if not original.get(field) and inferred.get(field):
+                return True
+        return False
+
+    def _write_metadata(self, file_path: Path, metadata: dict):
+        """Write metadata back to file using Mutagen."""
+        try:
+            audio = MutagenFile(file_path)
+            if audio is None:
+                return
+
+            modified = False
             
-        # Fallback: Infer missing metadata from filename and directory structure
-        return self._infer_missing_metadata(metadata, file_path)
+            # Helper to add ID3 tag safely
+            def add_id3_tag(key, frame_cls, text_val, encoding=3):
+                if text_val:
+                    # encoding=3 is utf-8
+                    audio.tags.add(frame_cls(encoding=encoding, text=[str(text_val)]))
+                    return True
+                return False
+
+            # MP3 (ID3)
+            if hasattr(audio, 'tags') and (hasattr(audio.tags, 'get') or audio.tags is None):
+                if audio.tags is None:
+                    try:
+                        audio.add_tags()
+                    except ID3NoHeaderError:
+                        pass
+                    except Exception:
+                        pass # Should have tags now
+                
+                # Standardize as ID3 if possible, or use the object capabilities
+                # If it's an MP3 file, audio.tags is explicitly ID3 usually
+                if hasattr(audio.tags, 'add'):
+                    if not self._get_tag_text(audio.tags.get('TIT2')) and metadata.get('title'):
+                        add_id3_tag('TIT2', TIT2, metadata['title'])
+                        modified = True
+                    if not self._get_tag_text(audio.tags.get('TPE1')) and metadata.get('artist'):
+                        add_id3_tag('TPE1', TPE1, metadata['artist'])
+                        modified = True
+                    if not self._get_tag_text(audio.tags.get('TALB')) and metadata.get('album'):
+                        add_id3_tag('TALB', TALB, metadata['album'])
+                        modified = True
+                    if not self._get_tag_text(audio.tags.get('TPE2')) and metadata.get('album_artist'):
+                        add_id3_tag('TPE2', TPE2, metadata['album_artist'])
+                        modified = True
+                    if not self._get_tag_text(audio.tags.get('TCON')) and metadata.get('genre'):
+                        add_id3_tag('TCON', TCON, metadata['genre'])
+                        modified = True
+            
+            # FLAC / OGG (Vorbis Comments) / Modern formats with Dict-like tags
+            elif isinstance(audio.tags, dict):
+                # For Vorbis/FLAC, keys are case-insensitive usually, but standard is lowercase
+                for key, val in [('title', metadata.get('title')), 
+                                 ('artist', metadata.get('artist')),
+                                 ('album', metadata.get('album')),
+                                 ('albumartist', metadata.get('album_artist')),
+                                 ('genre', metadata.get('genre'))]:
+                    if val and not audio.tags.get(key):
+                        audio.tags[key] = str(val)
+                        modified = True
+
+            # M4A / MP4
+            elif hasattr(audio, 'get') and hasattr(audio, '__setitem__'):
+                # M4A keys
+                mapping = {
+                    'title': '©nam',
+                    'artist': '©ART',
+                    'album': '©alb',
+                    'album_artist': 'aART',
+                    'genre': '©gen'
+                }
+                for meta_key, tag_key in mapping.items():
+                    if metadata.get(meta_key) and not audio.get(tag_key):
+                        audio[tag_key] = str(metadata[meta_key])
+                        modified = True
+            
+            if modified:
+                audio.save()
+                logger.info(f"Updated tags for {file_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to write metadata to {file_path}: {e}")
 
     def _infer_missing_metadata(self, metadata: dict, file_path: Path) -> dict:
         """
@@ -257,8 +361,14 @@ class LibraryScanner:
             metadata['title'] = file_path.stem
             
         # 2. Album fallback
+        # If parent is 'منوعات', album is the song title
+        # Otherwise, album is the parent folder
         if not metadata.get('album'):
-            metadata['album'] = file_path.parent.name
+            parent_name = file_path.parent.name
+            if parent_name == 'منوعات':
+                metadata['album'] = metadata['title'] # Should be song title (which we just set if missing)
+            else:
+                metadata['album'] = parent_name
             
         # 3. Artist fallback
         if not metadata.get('artist'):
@@ -266,22 +376,21 @@ class LibraryScanner:
             if metadata.get('album_artist'):
                 metadata['artist'] = metadata['album_artist']
             else:
-                # Try directory structure
+                # Try directory structure: /music/Artist/Album/Song or /music/Artist/منوعات/Song
+                # We expect Artist to be at /music/Artist
                 try:
-                    # Calculate depth relative to root to verify structure
-                    # Structure A: /music/Artist/Album/Song -> parts inferred
-                    # Structure B: /music/Album/Song -> (Artist unknown or mixed)
                     rel_path = file_path.relative_to(config.NAVIDROME_ROOT)
-                    parts = rel_path.parts
-                    
-                    # parts: ('Artist', 'Album', 'Song.m4a') -> len=3. parts[-3] is Artist
-                    # parts: ('Category', 'Artist', 'Album', 'Song.m4a') -> len=4. parts[-3] is Artist (usually)
-                    # Use the folder explicitly ABOVE the album folder as Artist
-                    if len(parts) >= 3:
-                        metadata['artist'] = parts[-3]
+                    if len(rel_path.parts) >= 2:
+                        # parts[0] is normally the Artist folder in the standard structure
+                        metadata['artist'] = rel_path.parts[0]
                 except ValueError:
-                    # Path not relative to root (shouldn't happen given rglob)
+                    # Not relative to root
                     pass
+        
+        # 4. Album Artist fallback
+        # Always set Album Artist to Artist if missing, to ensure grouping
+        if not metadata.get('album_artist') and metadata.get('artist'):
+            metadata['album_artist'] = metadata['artist']
         
         return metadata
     
