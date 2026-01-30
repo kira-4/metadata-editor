@@ -232,6 +232,9 @@ async def update_track(
             update_kwargs['album'] = request.album
         if request.album_artist is not None:
             update_kwargs['album_artist'] = request.album_artist
+        elif request.artist is not None:
+            # Sync album_artist with artist if artist is updated but album_artist is not
+            update_kwargs['album_artist'] = request.artist
         if request.genre is not None:
             update_kwargs['genre'] = request.genre
         if request.year is not None:
@@ -289,6 +292,9 @@ async def batch_update_tracks(
             update_kwargs['album'] = request.album
         if request.album_artist is not None:
             update_kwargs['album_artist'] = request.album_artist
+        elif request.artist is not None:
+            # Sync album_artist with artist if artist is updated but album_artist is not
+            update_kwargs['album_artist'] = request.artist
         if request.genre is not None:
             update_kwargs['genre'] = request.genre
         if request.year is not None:

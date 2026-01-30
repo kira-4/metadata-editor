@@ -234,7 +234,7 @@ class LibraryScanner:
                 metadata['artist'] = self._get_list_item(audio.get('©ART'))
                 metadata['album'] = self._get_list_item(audio.get('©alb'))
                 metadata['album_artist'] = self._get_list_item(audio.get('aART'))
-                metadata['genre'] = self._get_list_item(audio.get('©gen'))
+                metadata['genre'] = self._get_list_item(audio.get('©gen') or audio.get('gnre'))
                 metadata['year'] = self._parse_year(self._get_list_item(audio.get('©day')))
                 
                 # Track number in M4A is a tuple (track, total)
