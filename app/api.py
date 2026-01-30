@@ -120,6 +120,7 @@ async def confirm_item(
             current_path,
             title=item.current_title,
             artist=item.current_artist,
+            album=item.current_title,
             genre=item.genre
         )
         

@@ -190,6 +190,7 @@ class FileScanner:
                     staged_path,
                     title=title,
                     artist=artist,
+                    album=title,  # Default album to title
                     genre=None  # Genre set later in UI
                 )
                 

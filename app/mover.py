@@ -41,7 +41,7 @@ class FileMover:
             
             # Construct destination path
             artist_dir = config.NAVIDROME_ROOT / safe_artist
-            album_dir = artist_dir / config.ALBUM_NAME
+            album_dir = artist_dir / safe_title
             
             # Create directories
             album_dir.mkdir(parents=True, exist_ok=True)
