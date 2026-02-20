@@ -109,7 +109,7 @@ artist: <Arabic artist>
 - Applies metadata using `mutagen`:
   - Title = inferred title
   - Artist = inferred artist
-  - Album = "منوعات" (default unless embedded metadata already exists)
+  - Album = same as Title
   - AlbumArtist = same as artist
   - Genre = (empty until user selects)
 - Reads embedded metadata (including M4A atoms) and keeps it when available
@@ -128,7 +128,7 @@ artist: <Arabic artist>
 
 ### 5. Move to Navidrome
 - Updates metadata with selected genre
-- Moves file to: `{NAVIDROME_ROOT}/{artist}/منوعات/{title}.{ext}`
+- Moves file to: `{NAVIDROME_ROOT}/{artist}/{title}/{title}.{ext}`
 - Creates directories as needed
 - Handles filename collisions by appending (1), (2), etc.
 - Removes from review queue
@@ -165,15 +165,14 @@ Files are organized as:
 ```
 {NAVIDROME_ROOT}/
 ├── {Artist 1}/
-│   └── منوعات/
-│       ├── {Title 1}.mp3
+│   ├── {Title 1}/
+│   │   └── {Title 1}.mp3
+│   └── {Title 2}/
 │       └── {Title 2}.mp3
-├── {Artist 2}/
-│   └── منوعات/
-│       └── {Title 3}.m4a
+└── {Artist 2}/
+    └── {Title 3}/
+        └── {Title 3}.m4a
 ```
-
-All files go into a "منوعات" (Miscellaneous) album under each artist.
 
 ## Development
 

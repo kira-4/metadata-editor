@@ -23,11 +23,11 @@ class FileMover:
         """
         Build destination path without moving the file.
 
-        Destination structure: {NAVIDROME_ROOT}/{artist}/منوعات/{title}.{ext}
+        Destination structure: {NAVIDROME_ROOT}/{artist}/{title}/{title}.{ext}
         """
         safe_artist = metadata_processor.sanitize_filename(artist)
         safe_title = metadata_processor.sanitize_filename(title)
-        safe_album = metadata_processor.sanitize_filename(config.ALBUM_NAME)
+        safe_album = safe_title
 
         artist_dir = config.NAVIDROME_ROOT / safe_artist
         album_dir = artist_dir / safe_album
@@ -78,7 +78,7 @@ class FileMover:
         """
         Move file to Navidrome library.
         
-        Destination structure: {NAVIDROME_ROOT}/{artist}/منوعات/{title}.{ext}
+        Destination structure: {NAVIDROME_ROOT}/{artist}/{title}/{title}.{ext}
         
         Args:
             source_path: Current path of the file

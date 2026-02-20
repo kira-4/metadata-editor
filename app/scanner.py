@@ -181,8 +181,6 @@ class FileScanner:
 
             existing_title = (existing_metadata.get("title") or "").strip()
             existing_artist = (existing_metadata.get("artist") or "").strip()
-            existing_album = (existing_metadata.get("album") or "").strip()
-
             # Prefer existing embedded metadata when available
             title = existing_title or None
             artist = existing_artist or None
@@ -221,7 +219,7 @@ class FileScanner:
                     staged_path,
                     title=title,
                     artist=artist,
-                    album=existing_album or config.ALBUM_NAME,
+                    album=title,
                     genre=existing_metadata.get("genre"),
                     year=existing_metadata.get("year"),
                     track_number=existing_metadata.get("track_number"),

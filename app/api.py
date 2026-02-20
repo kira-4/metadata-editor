@@ -71,7 +71,7 @@ async def dry_run_item(item_id: int, db: Session = Depends(get_db)):
                 "title": {"atom": "©nam", "value": title},
                 "artist": {"atom": "©ART", "value": artist},
                 "album_artist": {"atom": "aART", "value": artist},
-                "album": {"atom": "©alb", "value": config.ALBUM_NAME},
+                "album": {"atom": "©alb", "value": title},
                 "genre": {"atom": "©gen", "value": genre}
             }
 
@@ -90,7 +90,7 @@ async def dry_run_item(item_id: int, db: Session = Depends(get_db)):
                 "title": title,
                 "artist": artist,
                 "album_artist": artist,
-                "album": config.ALBUM_NAME,
+                "album": title,
                 "genre": genre,
                 "m4a_atoms": m4a_atoms
             },
@@ -238,7 +238,7 @@ async def confirm_item(
             current_path,
             title=title,
             artist=artist,
-            album=config.ALBUM_NAME,
+            album=title,
             album_artist=artist,
             genre=genre
         )

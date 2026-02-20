@@ -12,8 +12,6 @@ from mutagen.mp4 import MP4, MP4Cover
 from mutagen.flac import FLAC, Picture
 from mutagen.oggvorbis import OggVorbis
 
-from app.config import config
-
 logger = logging.getLogger(__name__)
 
 
@@ -277,7 +275,7 @@ class MetadataProcessor:
         title: str,
         artist: str,
         genre: Optional[str] = None,
-        album: str = config.ALBUM_NAME,
+        album: Optional[str] = None,
         **kwargs
     ) -> bool:
         """
@@ -288,13 +286,14 @@ class MetadataProcessor:
             title: Track title
             artist: Track artist
             genre: Track genre (optional)
-            album: Album name (default: "منوعات")
+            album: Album name (defaults to title when not provided)
             **kwargs: Additional metadata (year, track_number, disc_number)
             
         Returns:
             True if successful, False otherwise
         """
         try:
+            album_value = album.strip() if album and album.strip() else title
             audio = MutagenFile(audio_path)
             
             if audio is None:
@@ -306,7 +305,7 @@ class MetadataProcessor:
                 # M4A files
                 audio['\xa9nam'] = [title]
                 audio['\xa9ART'] = [artist]
-                audio['\xa9alb'] = [album]
+                audio['\xa9alb'] = [album_value]
                 audio['aART'] = [artist]  # Album artist
                 if genre:
                     audio['\xa9gen'] = [genre]
@@ -334,7 +333,7 @@ class MetadataProcessor:
                 if isinstance(audio.tags, ID3):
                     audio.tags.setall('TIT2', [TIT2(encoding=3, text=title)])
                     audio.tags.setall('TPE1', [TPE1(encoding=3, text=artist)])
-                    audio.tags.setall('TALB', [TALB(encoding=3, text=album)])
+                    audio.tags.setall('TALB', [TALB(encoding=3, text=album_value)])
                     audio.tags.setall('TPE2', [TPE2(encoding=3, text=artist)])  # Album artist
                     if genre:
                         audio.tags.setall('TCON', [TCON(encoding=3, text=genre)])
@@ -350,7 +349,7 @@ class MetadataProcessor:
                 elif isinstance(audio, (FLAC, OggVorbis)):
                     audio['title'] = title
                     audio['artist'] = artist
-                    audio['album'] = album
+                    audio['album'] = album_value
                     audio['albumartist'] = artist
                     if genre:
                         audio['genre'] = genre
@@ -365,7 +364,7 @@ class MetadataProcessor:
             expected = {
                 "title": title,
                 "artist": artist,
-                "album": album,
+                "album": album_value,
                 "album_artist": artist,
                 "genre": genre,
                 "year": kwargs.get("year"),

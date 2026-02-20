@@ -32,9 +32,6 @@ class Config:
     # Supported audio formats
     AUDIO_EXTENSIONS = {".mp3", ".m4a", ".flac", ".ogg"}
     
-    # Fixed metadata values
-    ALBUM_NAME = "منوعات"
-    
     # Database path
     DB_PATH = DATA_DIR / "metadata_editor.db"
     

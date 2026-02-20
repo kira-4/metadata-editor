@@ -54,7 +54,7 @@ def main():
         expected = {
             "title": "عنوان تجريبي",
             "artist": "فنان تجريبي",
-            "album": "منوعات",
+            "album": "عنوان تجريبي",
             "album_artist": "فنان تجريبي",
             "genre": "لطميات",
             "year": 2025,

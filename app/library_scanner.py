@@ -333,8 +333,7 @@ class LibraryScanner:
             metadata['title'] = file_path.stem
             
         # 2. Album fallback
-        # If parent is 'منوعات', keep album as 'منوعات' for proper grouping.
-        # Otherwise, album is the parent folder.
+        # Use the parent folder name as album when album metadata is missing.
         if not metadata.get('album'):
             parent_name = file_path.parent.name
             metadata['album'] = parent_name
@@ -345,7 +344,7 @@ class LibraryScanner:
             if metadata.get('album_artist'):
                 metadata['artist'] = metadata['album_artist']
             else:
-                # Try directory structure: /music/Artist/Album/Song or /music/Artist/منوعات/Song
+                # Try directory structure: /music/Artist/Album/Song
                 # We expect Artist to be at /music/Artist
                 try:
                     rel_path = file_path.relative_to(config.NAVIDROME_ROOT)

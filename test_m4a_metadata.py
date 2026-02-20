@@ -46,7 +46,7 @@ class TestM4AMetadata(unittest.TestCase):
         expected = {
             "title": "عنوان اختبار",
             "artist": "فنان اختبار",
-            "album": "منوعات",
+            "album": "عنوان اختبار",
             "album_artist": "فنان اختبار",
             "genre": "لطميات",
             "year": 2026,

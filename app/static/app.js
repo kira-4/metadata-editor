@@ -812,7 +812,7 @@ async function loadLibraryStats() {
         const stats = await response.json();
         const statsEl = document.getElementById('libraryStats');
         statsEl.innerHTML = `
-            <span class="stat-item">${stats.total_tracks} أغنية</span>
+            <span class="stat-item">${stats.total_tracks} صوتية</span>
             <span class="stat-item">${stats.total_artists} فنان</span>
             <span class="stat-item">${stats.total_albums} ألبوم</span>
         `;
@@ -1007,7 +1007,7 @@ function renderArtists(artists) {
         <div class="list-item" onclick="viewArtistAlbums('${encodeURIComponent(artist.name)}')">
             <div class="list-item-content">
                 <div class="list-item-title">${artist.name}</div>
-                <div class="list-item-meta">${artist.track_count} أغنية • ${artist.album_count} ألبوم</div>
+                <div class="list-item-meta">${artist.track_count} صوتية • ${artist.album_count} ألبوم</div>
             </div>
         </div>
     `).join('');
@@ -1031,7 +1031,7 @@ function renderAlbums(albums) {
             </div>
             <div class="album-name">${album.name || 'بدون اسم'}</div>
             <div class="album-artist">${album.album_artist || 'غير معروف'}</div>
-            <div class="list-item-meta">${album.track_count} أغنية${album.year ? ' • ' + album.year : ''}</div>
+            <div class="list-item-meta">${album.track_count} صوتية${album.year ? ' • ' + album.year : ''}</div>
         </div>
     `).join('');
 }
@@ -1049,7 +1049,7 @@ function renderGenres(genres) {
         <div class="list-item" onclick="viewGenreTracks('${encodeURIComponent(genre.name)}')">
             <div class="list-item-content">
                 <div class="list-item-title">${genre.name}</div>
-                <div class="list-item-meta">${genre.track_count} أغنية</div>
+                <div class="list-item-meta">${genre.track_count} صوتية</div>
             </div>
         </div>
     `).join('');
@@ -1158,7 +1158,7 @@ async function viewArtistAlbums(artistName) {
                         : '🎵'}
                 </div>
                 <div class="album-name">${album.name || 'بدون اسم'}</div>
-                <div class="list-item-meta">${album.track_count} أغنية</div>
+                <div class="list-item-meta">${album.track_count} صوتية</div>
             </div>
         `).join('');
     } catch (error) {
