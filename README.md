@@ -1,6 +1,6 @@
-# Audio Metadata Editor
+# محرر الأصوات الولائية
 
-Post-processing service for Pinchflat → Navidrome workflow. Automatically processes downloaded audio files, uses Gemini AI to infer Arabic metadata, provides a modern Web UI for genre selection and editing, then moves files to your Navidrome library with proper tagging.
+محرر الأصوات الولائية هو خدمة ما بعد المعالجة لتدفق Pinchflat → Navidrome. يقوم تلقائياً بمعالجة الملفات الصوتية التي تم تنزيلها، واستخلاص العنوان/الفنان، ثم يتيح مراجعتها وتعديلها قبل حفظ الوسوم ونقلها إلى مكتبة Navidrome.
 
 ## Features
 
@@ -65,6 +65,8 @@ Post-processing service for Pinchflat → Navidrome workflow. Automatically proc
 | `SCAN_INTERVAL_SECONDS` | `30` | How often to scan for new files |
 | `PORT` | `8090` | Web UI port |
 | `TZ` | `America/Los_Angeles` | Timezone |
+| `APP_NAME` | `محرر الأصوات الولائية` | FastAPI/OpenAPI application title |
+| `APP_DESCRIPTION` | `منصة معالجة البيانات الوصفية الصوتية...` | App description for API docs |
 
 ### Gemini System Instructions
 
@@ -107,10 +109,10 @@ artist: <Arabic artist>
 - Applies metadata using `mutagen`:
   - Title = inferred title
   - Artist = inferred artist
-  - Album = "منوعات" (fixed)
+  - Album = "منوعات" (default unless embedded metadata already exists)
   - AlbumArtist = same as artist
   - Genre = (empty until user selects)
-- Renames file to `{{title}}.{{ext}}`
+- Reads embedded metadata (including M4A atoms) and keeps it when available
 - Extracts embedded artwork (if present)
 - Adds to review queue
 
@@ -237,6 +239,20 @@ All files go into a "منوعات" (Miscellaneous) album under each artist.
 View service logs:
 ```bash
 docker-compose logs -f metadata-editor
+```
+
+## M4A Metadata Verification
+
+Run the M4A roundtrip verifier:
+
+```bash
+./venv/bin/python scripts/test_m4a_metadata_roundtrip.py
+```
+
+Run the integration test:
+
+```bash
+./venv/bin/python -m unittest test_m4a_metadata.py
 ```
 
 Logs include:

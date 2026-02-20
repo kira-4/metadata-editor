@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
-    logger.info("Starting Audio Post-Processing Service")
+    logger.info(f"Starting {config.APP_NAME}")
     
     # Ensure directories exist
     config.ensure_directories()
@@ -39,13 +39,13 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
-    logger.info("Shutting down Audio Post-Processing Service")
+    logger.info(f"Shutting down {config.APP_NAME}")
     file_scanner.stop()
 
 
 app = FastAPI(
-    title="Audio Metadata Editor",
-    description="Post-processing service for Pinchflat → Navidrome",
+    title=config.APP_NAME,
+    description=config.APP_DESCRIPTION,
     version="1.0.0",
     lifespan=lifespan
 )

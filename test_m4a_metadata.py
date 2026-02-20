@@ -1,42 +1,88 @@
+"""Integration-style tests for M4A metadata read/write using mutagen."""
 
-import os
 import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
-from mutagen.mp4 import MP4, MP4Cover
+
+from mutagen.mp4 import MP4
+
+from app.library_scanner import library_scanner
 from app.metadata_processor import metadata_processor
+
 
 class TestM4AMetadata(unittest.TestCase):
     def setUp(self):
-        self.test_dir = Path("test_m4a_data")
-        self.test_dir.mkdir(exist_ok=True)
-        self.m4a_path = self.test_dir / "test.m4a"
-        
-        # Create a dummy M4A file
-        # We need a valid container structure for mutagen to read it, 
-        # but for unit testing without binary assets, it's tricky.
-        # So we'll try to rely on mutagen creating a new one if possible, 
-        # or mock the behavior. However, mutagen needs a real file.
-        # 
-        # Since I can't easily generate a valid M4A binary from scratch in python without 
-        # external deps like ffmpeg, I will rely on the fact the user has existing M4A files 
-        # OR I will just verify the code logic via patches/mocks or try to write to a dummy file
-        # and see if mutagen accepts it (unlikely).
-        #
-        # Better approach: Test the logic by creating an empty MP4 file using mutagen if possible
-        # or assume the fix instructions are enough based on code review.
-        #
-        # Let's try to verify the CODE changes primarily.
-        pass
+        self.ffmpeg = shutil.which("ffmpeg")
+        if not self.ffmpeg:
+            self.skipTest("ffmpeg not available; skipping M4A integration test")
+
+        self.temp_dir = tempfile.TemporaryDirectory(prefix="test_m4a_")
+        self.temp_path = Path(self.temp_dir.name)
+        self.source = self.temp_path / "source.m4a"
+        self.target = self.temp_path / "target.m4a"
+
+        subprocess.run(
+            [
+                self.ffmpeg, "-y",
+                "-f", "lavfi",
+                "-i", "sine=frequency=1000:duration=1",
+                "-c:a", "aac",
+                "-b:a", "128k",
+                str(self.source),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        shutil.copy2(self.source, self.target)
 
     def tearDown(self):
-        if self.test_dir.exists():
-            shutil.rmtree(self.test_dir)
+        if hasattr(self, "temp_dir"):
+            self.temp_dir.cleanup()
 
-    def test_logic_inspection(self):
-        # This is a placeholder. The real validation is "visual" code inspection 
-        # and the user's report.
-        pass
+    def test_m4a_roundtrip_atoms_and_readers(self):
+        expected = {
+            "title": "عنوان اختبار",
+            "artist": "فنان اختبار",
+            "album": "منوعات",
+            "album_artist": "فنان اختبار",
+            "genre": "لطميات",
+            "year": 2026,
+            "track_number": 5,
+            "disc_number": 1,
+        }
 
-if __name__ == '__main__':
+        success = metadata_processor.apply_metadata(
+            self.target,
+            title=expected["title"],
+            artist=expected["artist"],
+            album=expected["album"],
+            genre=expected["genre"],
+            year=expected["year"],
+            track_number=expected["track_number"],
+            disc_number=expected["disc_number"],
+        )
+        self.assertTrue(success)
+
+        audio = MP4(self.target)
+        self.assertEqual(audio.get("\xa9nam"), [expected["title"]])
+        self.assertEqual(audio.get("\xa9ART"), [expected["artist"]])
+        self.assertEqual(audio.get("aART"), [expected["album_artist"]])
+        self.assertEqual(audio.get("\xa9alb"), [expected["album"]])
+        self.assertEqual(audio.get("\xa9gen"), [expected["genre"]])
+        self.assertEqual(audio.get("\xa9day"), [str(expected["year"])])
+        self.assertEqual(audio.get("trkn"), [(expected["track_number"], 0)])
+        self.assertEqual(audio.get("disk"), [(expected["disc_number"], 0)])
+
+        processor_read = metadata_processor.read_metadata(self.target)
+        scanner_read = library_scanner._read_raw_metadata(self.target)
+
+        for field, value in expected.items():
+            self.assertEqual(processor_read.get(field), value, f"processor {field}")
+            self.assertEqual(scanner_read.get(field), value, f"scanner {field}")
+
+
+if __name__ == "__main__":
     unittest.main()
