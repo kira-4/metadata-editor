@@ -1,7 +1,7 @@
 """Database models and operations."""
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List
+from typing import Dict, Optional, List
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
@@ -439,6 +439,69 @@ class LibraryManager:
                 'album_count': r.album_count
             }
             for r in results
+        ]
+
+    @staticmethod
+    def get_artist_candidates(db: Session) -> List[dict]:
+        """
+        Get merged distinct artist names for fuzzy suggestion.
+
+        Sources:
+        - library_tracks.artist
+        - library_tracks.album_artist
+
+        Returns:
+        [
+            {
+                "name": "<artist>",
+                "track_count": <int frequency from both sources>
+            },
+            ...
+        ]
+        """
+        from sqlalchemy import func
+
+        merged: Dict[str, int] = {}
+
+        artist_rows = (
+            db.query(
+                LibraryTrack.artist.label("name"),
+                func.count(LibraryTrack.id).label("track_count")
+            )
+            .filter(LibraryTrack.artist.isnot(None))
+            .group_by(LibraryTrack.artist)
+            .all()
+        )
+
+        for row in artist_rows:
+            name = (row.name or "").strip()
+            if not name:
+                continue
+            merged[name] = merged.get(name, 0) + int(row.track_count or 0)
+
+        album_artist_rows = (
+            db.query(
+                LibraryTrack.album_artist.label("name"),
+                func.count(LibraryTrack.id).label("track_count")
+            )
+            .filter(LibraryTrack.album_artist.isnot(None))
+            .group_by(LibraryTrack.album_artist)
+            .all()
+        )
+
+        for row in album_artist_rows:
+            name = (row.name or "").strip()
+            if not name:
+                continue
+            merged[name] = merged.get(name, 0) + int(row.track_count or 0)
+
+        return [
+            {"name": name, "track_count": track_count}
+            for name, track_count in sorted(
+                merged.items(),
+                key=lambda item: (item[1], -len(item[0]), item[0]),
+                reverse=True,
+            )
         ]
     
     @staticmethod

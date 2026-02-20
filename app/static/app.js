@@ -16,8 +16,16 @@ let selectedGenres = {}; // itemId -> genre
 let customGenreVisible = {}; // itemId -> boolean
 let sseConnection = null;
 let pendingPollTimer = null;
+let debugEnabled = false;
 const appLogs = [];
 const MAX_LOG_ENTRIES = 800;
+const ARTIST_SUGGEST_DEBOUNCE_MS = 220;
+const ARTIST_SUGGEST_CACHE_TTL_MS = 60 * 1000;
+const ARTIST_CREATE_THRESHOLD = 72;
+const ARTIST_SUGGEST_LIMIT = 10;
+const artistSuggestCache = new Map(); // `${query}|${limit}` -> {timestamp, data}
+const artistComboboxState = new Map(); // itemId -> combobox state
+const artistDraftValues = new Map(); // itemId -> in-progress input value
 
 function timestampNow() {
     return new Date().toISOString();
@@ -85,10 +93,127 @@ async function parseApiError(response, fallbackMessage) {
     }
 }
 
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function normalizeArtistClient(value) {
+    if (!value) return '';
+    const map = {
+        'أ': 'ا',
+        'إ': 'ا',
+        'آ': 'ا',
+        'ٱ': 'ا',
+        'ى': 'ي',
+        'ؤ': 'و',
+        'ئ': 'ي',
+        'ة': 'ه'
+    };
+
+    const diacritics = /[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g;
+    const punctuation = /[^\w\s\u0600-\u06FF]/g;
+
+    let normalized = String(value).toLowerCase().normalize('NFKC').replace(/ـ/g, '');
+    normalized = normalized.replace(diacritics, '');
+    normalized = normalized
+        .split('')
+        .map(char => map[char] || char)
+        .join('');
+    normalized = normalized.replace(punctuation, ' ');
+    normalized = normalized.replace(/\s+/g, ' ').trim();
+    return normalized;
+}
+
+function getArtistState(itemId) {
+    if (!artistComboboxState.has(itemId)) {
+        artistComboboxState.set(itemId, {
+            isOpen: false,
+            isLoading: false,
+            suggestions: [],
+            canCreate: false,
+            createSuggestion: null,
+            highlightedIndex: -1,
+            requestToken: 0,
+            debounceTimer: null,
+            createArtistOnSave: false,
+            selectedExistingName: null
+        });
+    }
+
+    return artistComboboxState.get(itemId);
+}
+
+function cleanupArtistState() {
+    const activeIds = new Set(pendingItems.map(item => item.id));
+    for (const itemId of artistComboboxState.keys()) {
+        if (!activeIds.has(itemId)) {
+            artistComboboxState.delete(itemId);
+        }
+    }
+
+    for (const itemId of artistDraftValues.keys()) {
+        if (!activeIds.has(itemId)) {
+            artistDraftValues.delete(itemId);
+        }
+    }
+}
+
+function captureFocusSnapshot() {
+    const activeElement = document.activeElement;
+    if (!activeElement) {
+        return null;
+    }
+
+    if (activeElement.classList.contains('artist-input')) {
+        return {
+            type: 'artist',
+            itemId: Number(activeElement.dataset.id),
+            selectionStart: activeElement.selectionStart,
+            selectionEnd: activeElement.selectionEnd
+        };
+    }
+
+    return null;
+}
+
+function restoreFocusSnapshot(snapshot) {
+    if (!snapshot || snapshot.type !== 'artist') {
+        return;
+    }
+
+    const artistInput = document.querySelector(`.artist-input[data-id="${snapshot.itemId}"]`);
+    if (!artistInput) {
+        return;
+    }
+
+    artistInput.focus();
+    if (typeof snapshot.selectionStart === 'number' && typeof snapshot.selectionEnd === 'number') {
+        artistInput.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+    }
+}
+
 function setupGlobalUI() {
     const refreshBtn = document.getElementById('refreshPendingBtn');
     if (refreshBtn) {
         refreshBtn.addEventListener('click', () => loadPendingItems({showLoading: true}));
+    }
+
+    const debugModeBtn = document.getElementById('debugModeBtn');
+    if (debugModeBtn) {
+        debugModeBtn.addEventListener('click', () => {
+            debugEnabled = !debugEnabled;
+            applyDebugUIState();
+            renderItems();
+            showAlert(
+                debugEnabled ? 'تم تفعيل وضع التصحيح.' : 'تم تعطيل وضع التصحيح.',
+                debugEnabled ? 'info' : 'success'
+            );
+        });
     }
 
     const toggleLogsBtn = document.getElementById('toggleLogsBtn');
@@ -108,6 +233,46 @@ function setupGlobalUI() {
     if (downloadLogsBtn) {
         downloadLogsBtn.addEventListener('click', downloadLogs);
     }
+
+    document.addEventListener('click', event => {
+        if (!event.target.closest('.artist-combobox')) {
+            closeAllArtistDropdowns();
+        }
+    });
+
+    applyDebugUIState();
+}
+
+function applyDebugUIState() {
+    const debugModeBtn = document.getElementById('debugModeBtn');
+    const workflowSteps = document.getElementById('workflowSteps');
+    const toggleLogsBtn = document.getElementById('toggleLogsBtn');
+    const downloadLogsBtn = document.getElementById('downloadLogsBtn');
+    const logPanel = document.getElementById('logPanel');
+
+    if (debugModeBtn) {
+        debugModeBtn.textContent = debugEnabled ? 'تعطيل وضع التصحيح' : 'تفعيل وضع التصحيح';
+        debugModeBtn.classList.toggle('active', debugEnabled);
+    }
+
+    if (workflowSteps) {
+        workflowSteps.style.display = debugEnabled ? 'flex' : 'none';
+    }
+
+    if (toggleLogsBtn) {
+        toggleLogsBtn.style.display = debugEnabled ? 'inline-flex' : 'none';
+        if (!debugEnabled) {
+            toggleLogsBtn.textContent = 'إظهار السجلات';
+        }
+    }
+
+    if (downloadLogsBtn) {
+        downloadLogsBtn.style.display = debugEnabled ? 'inline-flex' : 'none';
+    }
+
+    if (logPanel && !debugEnabled) {
+        logPanel.style.display = 'none';
+    }
 }
 
 // Initialize app
@@ -126,6 +291,8 @@ async function init() {
 // Load pending items from API
 async function loadPendingItems(options = {}) {
     const {showLoading = false, silent = false} = options;
+    const focusSnapshot = captureFocusSnapshot();
+
     try {
         const container = document.getElementById('pendingItems');
         if (showLoading && container) {
@@ -140,12 +307,17 @@ async function loadPendingItems(options = {}) {
         
         pendingItems = await response.json();
         pendingItems.forEach(item => {
+            if (artistDraftValues.has(item.id)) {
+                item.current_artist = artistDraftValues.get(item.id);
+            }
+        });
+        pendingItems.forEach(item => {
             if (item.genre && item.genre.trim()) {
                 selectedGenres[item.id] = item.genre.trim();
             }
         });
 
-        renderItems();
+        renderItems({focusSnapshot});
         if (!silent) {
             logEvent('info', `تم تحميل قائمة الانتظار (${pendingItems.length}) عنصر`);
         }
@@ -156,11 +328,13 @@ async function loadPendingItems(options = {}) {
 }
 
 // Render all items
-function renderItems() {
+function renderItems(options = {}) {
+    const {focusSnapshot = null} = options;
     const container = document.getElementById('pendingItems');
     const emptyState = document.getElementById('emptyState');
     const itemCount = document.getElementById('itemCount');
     const badge = document.getElementById('pendingBadge');
+    cleanupArtistState();
     
     // Update Badge
     if (badge) {
@@ -189,6 +363,10 @@ function renderItems() {
         attachItemListeners(item.id);
         updateConfirmButton(item.id);
     });
+
+    if (focusSnapshot) {
+        restoreFocusSnapshot(focusSnapshot);
+    }
 }
 
 // Create item card HTML
@@ -198,10 +376,13 @@ function createItemCard(item) {
     const artworkUrl = item.artwork_url || null;
     const currentGenre = (item.genre || '').trim();
     const isCustomGenre = currentGenre && !GENRE_PRESETS.includes(currentGenre);
+    const titleValue = item.current_title || item.inferred_title || '';
+    const hasArtistDraft = artistDraftValues.has(item.id);
+    const artistValue = hasArtistDraft ? artistDraftValues.get(item.id) : (item.current_artist || item.inferred_artist || '');
     
     return `
         <div class="item-card" data-id="${item.id}">
-            ${hasError ? `<div class="error-badge">⚠️ خطأ: ${item.error_message}</div>` : ''}
+            ${hasError ? `<div class="error-badge">⚠️ خطأ: ${escapeHtml(item.error_message || '')}</div>` : ''}
             ${isManual ? '<div class="warning-badge">⚠️ يحتاج مراجعة يدوية</div>' : ''}
             
             <div class="item-header">
@@ -216,7 +397,7 @@ function createItemCard(item) {
                         <input 
                             type="text" 
                             class="field-input title-input" 
-                            value="${item.current_title || item.inferred_title || ''}"
+                            value="${escapeHtml(titleValue)}"
                             data-id="${item.id}"
                             placeholder="العنوان (مطلوب)"
                         >
@@ -224,17 +405,30 @@ function createItemCard(item) {
                     
                     <div class="field-group">
                         <label class="field-label">الفنان</label>
-                        <input 
-                            type="text" 
-                            class="field-input artist-input" 
-                            value="${item.current_artist || item.inferred_artist || ''}"
-                            data-id="${item.id}"
-                            placeholder="الفنان (مطلوب)"
-                        >
+                        <div class="artist-combobox" data-id="${item.id}">
+                            <input 
+                                type="text" 
+                                class="field-input artist-input" 
+                                value="${escapeHtml(artistValue)}"
+                                data-id="${item.id}"
+                                data-combobox-input="true"
+                                placeholder="الفنان (مطلوب)"
+                                autocomplete="off"
+                                role="combobox"
+                                aria-autocomplete="list"
+                                aria-expanded="false"
+                                aria-haspopup="listbox"
+                                aria-controls="artist-suggestions-${item.id}"
+                            >
+                            <button type="button" class="artist-dropdown-toggle" data-id="${item.id}" aria-label="اقتراحات الفنان">
+                                <span class="artist-dropdown-icon">▾</span>
+                            </button>
+                            <div class="artist-suggestions" id="artist-suggestions-${item.id}" role="listbox"></div>
+                        </div>
                     </div>
                     
                     <div class="source-text">
-                        المصدر: ${item.video_title} • ${item.channel}
+                        المصدر: ${escapeHtml(item.video_title)} • ${escapeHtml(item.channel)}
                     </div>
                 </div>
             </div>
@@ -256,16 +450,18 @@ function createItemCard(item) {
                         type="text" 
                         class="custom-genre-input ${isCustomGenre ? 'show' : ''}" 
                         placeholder="أدخل النوع الموسيقي"
-                        value="${isCustomGenre ? currentGenre : ''}"
+                        value="${isCustomGenre ? escapeHtml(currentGenre) : ''}"
                         data-id="${item.id}"
                     >
                 </div>
             </div>
             
             <div class="action-buttons">
+                ${debugEnabled ? `
                 <button class="btn-secondary dry-run-btn" data-id="${item.id}">
                     معاينة (Dry Run)
                 </button>
+                ` : ''}
                 <button class="confirm-btn" data-id="${item.id}" disabled>
                     ✓ تأكيد ونقل إلى المكتبة
                 </button>
@@ -278,6 +474,338 @@ function createItemCard(item) {
             </div>
         </div>
     `;
+}
+
+async function fetchArtistSuggestions(query, limit = ARTIST_SUGGEST_LIMIT) {
+    const trimmedQuery = String(query || '').trim();
+    const cacheKey = `${trimmedQuery}|${limit}`;
+    const now = Date.now();
+    const cached = artistSuggestCache.get(cacheKey);
+    if (cached && (now - cached.timestamp) < ARTIST_SUGGEST_CACHE_TTL_MS) {
+        return cached.data;
+    }
+
+    const params = new URLSearchParams();
+    params.set('q', trimmedQuery);
+    params.set('limit', String(limit));
+    const response = await fetch(`${API_BASE}/artists/suggest?${params.toString()}`);
+    if (!response.ok) {
+        const detail = await parseApiError(response, 'فشل جلب اقتراحات الفنان');
+        throw new Error(detail);
+    }
+
+    const data = await response.json();
+    artistSuggestCache.set(cacheKey, {timestamp: now, data});
+    return data;
+}
+
+function getArtistOptionList(itemId, currentInputValue) {
+    const state = getArtistState(itemId);
+    const options = (state.suggestions || []).map(suggestion => ({
+        type: 'existing',
+        id: suggestion.id,
+        name: suggestion.name,
+        score: Number(suggestion.score || 0)
+    }));
+
+    const trimmedInput = String(currentInputValue || '').trim();
+    if (state.canCreate && trimmedInput.length > 0) {
+        const normalizedInput = normalizeArtistClient(trimmedInput);
+        const hasEquivalent = options.some(option => normalizeArtistClient(option.name) === normalizedInput);
+        if (!hasEquivalent) {
+            options.push({
+                type: 'create',
+                id: null,
+                name: trimmedInput,
+                score: 0
+            });
+        }
+    }
+
+    return options;
+}
+
+function renderArtistSuggestions(itemId) {
+    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    if (!card) return;
+
+    const input = card.querySelector('.artist-input');
+    const suggestionsEl = card.querySelector('.artist-suggestions');
+    const toggleBtn = card.querySelector('.artist-dropdown-toggle');
+    if (!input || !suggestionsEl || !toggleBtn) return;
+
+    const state = getArtistState(itemId);
+    const options = getArtistOptionList(itemId, input.value);
+
+    if (!state.isOpen) {
+        suggestionsEl.classList.remove('show');
+        suggestionsEl.innerHTML = '';
+        input.setAttribute('aria-expanded', 'false');
+        toggleBtn.classList.remove('open');
+        return;
+    }
+
+    suggestionsEl.classList.add('show');
+    input.setAttribute('aria-expanded', 'true');
+    toggleBtn.classList.add('open');
+
+    if (state.isLoading) {
+        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">جاري البحث...</div>';
+        return;
+    }
+
+    if (options.length === 0) {
+        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">لا توجد نتائج مطابقة</div>';
+        return;
+    }
+
+    if (state.highlightedIndex < 0 || state.highlightedIndex >= options.length) {
+        state.highlightedIndex = 0;
+    }
+
+    suggestionsEl.innerHTML = options.map((option, index) => `
+        <div
+            class="artist-suggestion-item ${index === state.highlightedIndex ? 'active' : ''} ${option.type === 'create' ? 'create-option' : ''}"
+            role="option"
+            aria-selected="${index === state.highlightedIndex}"
+            data-index="${index}"
+        >
+            <span class="artist-suggestion-name">
+                ${option.type === 'create' ? `إضافة فنان جديد: ${escapeHtml(option.name)}` : escapeHtml(option.name)}
+            </span>
+            ${option.type === 'existing' ? `<span class="artist-suggestion-score">${Math.round(option.score)}</span>` : ''}
+        </div>
+    `).join('');
+
+    suggestionsEl.querySelectorAll('.artist-suggestion-item').forEach(optionEl => {
+        optionEl.addEventListener('mousedown', event => {
+            // Keep focus on input while selecting with mouse.
+            event.preventDefault();
+        });
+        optionEl.addEventListener('click', () => {
+            const index = Number(optionEl.dataset.index);
+            const selected = options[index];
+            if (selected) {
+                selectArtistOption(itemId, selected);
+            }
+        });
+    });
+}
+
+function closeArtistDropdown(itemId) {
+    const state = getArtistState(itemId);
+    state.isOpen = false;
+    state.highlightedIndex = -1;
+    renderArtistSuggestions(itemId);
+}
+
+function closeAllArtistDropdowns(exceptItemId = null) {
+    for (const itemId of artistComboboxState.keys()) {
+        if (exceptItemId !== null && itemId === exceptItemId) {
+            continue;
+        }
+        closeArtistDropdown(itemId);
+    }
+}
+
+async function requestArtistSuggestions(itemId, query) {
+    const state = getArtistState(itemId);
+    state.requestToken += 1;
+    const currentToken = state.requestToken;
+    state.isLoading = true;
+    renderArtistSuggestions(itemId);
+
+    try {
+        const data = await fetchArtistSuggestions(query, ARTIST_SUGGEST_LIMIT);
+        if (state.requestToken !== currentToken) {
+            return;
+        }
+
+        state.suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+        state.canCreate = Boolean(data.canCreate);
+        state.createSuggestion = data.createSuggestion || null;
+
+        if (query && state.suggestions.length > 0 && Number(state.suggestions[0].score || 0) < ARTIST_CREATE_THRESHOLD) {
+            state.canCreate = true;
+        }
+
+        state.highlightedIndex = state.suggestions.length > 0 ? 0 : -1;
+    } catch (error) {
+        logEvent('warn', 'Artist suggestion lookup failed', {itemId, error: error.message});
+        state.suggestions = [];
+        state.canCreate = false;
+        state.createSuggestion = null;
+        state.highlightedIndex = -1;
+    } finally {
+        if (state.requestToken === currentToken) {
+            state.isLoading = false;
+            renderArtistSuggestions(itemId);
+        }
+    }
+}
+
+function queueArtistSuggestions(itemId, query) {
+    const state = getArtistState(itemId);
+    clearTimeout(state.debounceTimer);
+    state.debounceTimer = setTimeout(() => {
+        requestArtistSuggestions(itemId, query);
+    }, ARTIST_SUGGEST_DEBOUNCE_MS);
+}
+
+function openArtistDropdown(itemId) {
+    const state = getArtistState(itemId);
+    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    const input = card?.querySelector('.artist-input');
+    if (!card || !input) return;
+
+    closeAllArtistDropdowns(itemId);
+    state.isOpen = true;
+    renderArtistSuggestions(itemId);
+    queueArtistSuggestions(itemId, input.value);
+}
+
+function navigateArtistSuggestions(itemId, direction) {
+    const state = getArtistState(itemId);
+    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    const input = card?.querySelector('.artist-input');
+    if (!card || !input) return;
+
+    const options = getArtistOptionList(itemId, input.value);
+    if (options.length === 0) return;
+
+    if (state.highlightedIndex < 0) {
+        state.highlightedIndex = 0;
+    } else {
+        state.highlightedIndex = (state.highlightedIndex + direction + options.length) % options.length;
+    }
+
+    renderArtistSuggestions(itemId);
+}
+
+function selectArtistOption(itemId, option) {
+    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    const input = card?.querySelector('.artist-input');
+    if (!card || !input || !option) return;
+
+    input.value = option.name;
+    artistDraftValues.set(itemId, option.name);
+    const state = getArtistState(itemId);
+    if (option.type === 'existing') {
+        state.createArtistOnSave = false;
+        state.selectedExistingName = option.name;
+        setItemStatus(itemId, 'تم ربط الفنان باسم موجود', 'success');
+    } else {
+        state.createArtistOnSave = true;
+        state.selectedExistingName = null;
+        setItemStatus(itemId, 'سيتم إنشاء فنان جديد عند الحفظ', 'info');
+    }
+
+    const item = pendingItems.find(entry => entry.id === itemId);
+    if (item) {
+        item.current_artist = option.name;
+        item.create_artist_on_save = state.createArtistOnSave;
+        item.selected_existing_artist = state.selectedExistingName;
+    }
+
+    closeArtistDropdown(itemId);
+    updateConfirmButton(itemId);
+    updateField(itemId, 'artist', option.name);
+}
+
+function handleArtistInputKeydown(itemId, event) {
+    const state = getArtistState(itemId);
+    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    const input = card?.querySelector('.artist-input');
+    if (!card || !input) return;
+
+    const options = getArtistOptionList(itemId, input.value);
+
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        if (!state.isOpen) {
+            openArtistDropdown(itemId);
+            return;
+        }
+        navigateArtistSuggestions(itemId, 1);
+        return;
+    }
+
+    if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        if (!state.isOpen) {
+            openArtistDropdown(itemId);
+            return;
+        }
+        navigateArtistSuggestions(itemId, -1);
+        return;
+    }
+
+    if ((event.key === 'Enter' || event.key === 'Tab') && state.isOpen && options.length > 0) {
+        const optionIndex = state.highlightedIndex >= 0 ? state.highlightedIndex : 0;
+        const option = options[optionIndex];
+        if (option) {
+            event.preventDefault();
+            selectArtistOption(itemId, option);
+        }
+        return;
+    }
+
+    if (event.key === 'Escape' && state.isOpen) {
+        event.preventDefault();
+        closeArtistDropdown(itemId);
+    }
+}
+
+function setupArtistInput(itemId, artistInput, card) {
+    if (!artistInput || !card) return;
+
+    const toggleBtn = card.querySelector('.artist-dropdown-toggle');
+    const state = getArtistState(itemId);
+
+    artistInput.addEventListener('focus', () => {
+        openArtistDropdown(itemId);
+    });
+
+    artistInput.addEventListener('click', () => {
+        openArtistDropdown(itemId);
+    });
+
+    artistInput.addEventListener('input', () => {
+        artistDraftValues.set(itemId, artistInput.value);
+        const item = pendingItems.find(entry => entry.id === itemId);
+        if (item) {
+            item.current_artist = artistInput.value;
+        }
+        state.selectedExistingName = null;
+        state.createArtistOnSave = false;
+        updateConfirmButton(itemId);
+        queueArtistSuggestions(itemId, artistInput.value);
+    });
+
+    artistInput.addEventListener('keydown', (event) => {
+        handleArtistInputKeydown(itemId, event);
+    });
+
+    artistInput.addEventListener('blur', () => {
+        const normalizedValue = artistInput.value.trim();
+        artistDraftValues.set(itemId, normalizedValue);
+        updateField(itemId, 'artist', normalizedValue);
+        setTimeout(() => {
+            closeArtistDropdown(itemId);
+        }, 120);
+    });
+
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (state.isOpen) {
+                closeArtistDropdown(itemId);
+            } else {
+                openArtistDropdown(itemId);
+            }
+        });
+    }
 }
 
 // Attach event listeners for an item
@@ -295,7 +823,7 @@ function attachItemListeners(itemId) {
     }
     
     if (artistInput) {
-        artistInput.addEventListener('blur', () => updateField(itemId, 'artist', artistInput.value));
+        setupArtistInput(itemId, artistInput, card);
     }
     
     // Genre button listeners
@@ -427,6 +955,10 @@ async function updateField(itemId, field, value) {
             if (field === 'artist') item.current_artist = payload[field];
             if (field === 'genre') item.genre = payload[field];
         }
+
+        if (field === 'artist') {
+            artistDraftValues.delete(itemId);
+        }
         
         updateConfirmButton(itemId);
         setItemStatus(itemId, 'تم حفظ التعديل', 'success');
@@ -473,6 +1005,10 @@ function formatDryRunMessage(dryRun) {
 }
 
 async function previewItem(itemId) {
+    if (!debugEnabled) {
+        return;
+    }
+
     const btn = document.querySelector(`.dry-run-btn[data-id="${itemId}"]`);
     if (btn) {
         btn.disabled = true;
