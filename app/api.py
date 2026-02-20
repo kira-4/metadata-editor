@@ -2,21 +2,26 @@
 import logging
 from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import asyncio
 import json
 
+from app.artist_matching import normalize_artist_name, rank_artist_candidates
 from app.config import config
-from app.database import get_db, DatabaseManager
+from app.database import get_db, DatabaseManager, LibraryManager
 from app.metadata_processor import metadata_processor
 from app.mover import file_mover
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
+
+ARTIST_SUGGEST_DEFAULT_LIMIT = 10
+ARTIST_SUGGEST_MAX_LIMIT = 12
+ARTIST_CREATE_THRESHOLD = 72.0
 
 # SSE clients
 sse_clients = []
@@ -32,6 +37,62 @@ class UpdateItemRequest(BaseModel):
 class ConfirmItemRequest(BaseModel):
     """Request to confirm and move item."""
     pass
+
+
+@router.get("/artists/suggest")
+async def suggest_artists(
+    q: str = Query(default="", max_length=300),
+    limit: int = Query(default=ARTIST_SUGGEST_DEFAULT_LIMIT, ge=1, le=ARTIST_SUGGEST_MAX_LIMIT),
+    db: Session = Depends(get_db),
+):
+    """
+    Suggest existing artist names using Arabic-aware fuzzy matching.
+
+    Behavior:
+    - For non-empty query: rank by fuzzy score.
+    - For empty query: return top artists by frequency.
+    - Return canCreate/createSuggestion when top score is below threshold.
+    """
+    try:
+        query = (q or "").strip()
+        normalized_query = normalize_artist_name(query)
+        candidates = LibraryManager.get_artist_candidates(db)
+
+        if query:
+            ranked = rank_artist_candidates(query, candidates, limit=limit)
+        else:
+            ranked = [
+                {
+                    "name": row["name"],
+                    "score": 0.0,
+                    "track_count": int(row.get("track_count") or 0),
+                    "normalized_name": normalize_artist_name(str(row["name"])),
+                }
+                for row in candidates[:limit]
+            ]
+
+        suggestions = [
+            {
+                "id": str(row["name"]),
+                "name": str(row["name"]),
+                "score": round(float(row["score"]), 2),
+            }
+            for row in ranked
+        ]
+
+        top_score = float(ranked[0]["score"]) if ranked else 0.0
+        can_create = bool(query) and (not ranked or top_score < ARTIST_CREATE_THRESHOLD)
+
+        return {
+            "query": query,
+            "normalizedQuery": normalized_query,
+            "suggestions": suggestions,
+            "canCreate": can_create,
+            "createSuggestion": {"name": query} if can_create else None,
+        }
+    except Exception as e:
+        logger.error(f"Error generating artist suggestions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/pending/{item_id}/dry-run")

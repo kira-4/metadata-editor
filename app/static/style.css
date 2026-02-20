@@ -291,6 +291,112 @@ body {
     box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.1);
 }
 
+.artist-combobox {
+    position: relative;
+}
+
+.artist-combobox .artist-input {
+    padding-inline-start: 2.2rem;
+}
+
+.artist-dropdown-toggle {
+    position: absolute;
+    inset-inline-start: 0.35rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1.6rem;
+    height: 1.6rem;
+    border: none;
+    border-radius: 0.35rem;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.artist-dropdown-toggle:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.artist-dropdown-toggle.open .artist-dropdown-icon {
+    transform: rotate(180deg);
+}
+
+.artist-dropdown-icon {
+    display: inline-block;
+    transition: transform 0.2s ease;
+}
+
+.artist-suggestions {
+    position: absolute;
+    top: calc(100% + 0.3rem);
+    left: 0;
+    right: 0;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+    z-index: 30;
+    max-height: 220px;
+    overflow-y: auto;
+    display: none;
+}
+
+.artist-suggestions.show {
+    display: block;
+}
+
+.artist-suggestion-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.55rem 0.7rem;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    font-size: 0.92rem;
+}
+
+.artist-suggestion-item:last-child {
+    border-bottom: none;
+}
+
+.artist-suggestion-item:hover,
+.artist-suggestion-item.active {
+    background: var(--bg-hover);
+}
+
+.artist-suggestion-item.create-option {
+    color: var(--success);
+    font-weight: 600;
+}
+
+.artist-suggestion-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.artist-suggestion-score {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    padding: 0.05rem 0.4rem;
+    min-width: 2rem;
+    text-align: center;
+}
+
+.artist-suggestion-empty {
+    padding: 0.7rem 0.75rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
 .source-text {
     font-size: 0.85rem;
     color: var(--text-muted);
