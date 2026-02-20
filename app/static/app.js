@@ -16,6 +16,7 @@ let selectedGenres = {}; // itemId -> genre
 let customGenreVisible = {}; // itemId -> boolean
 let sseConnection = null;
 let pendingPollTimer = null;
+let debugEnabled = false;
 const appLogs = [];
 const MAX_LOG_ENTRIES = 800;
 
@@ -91,6 +92,19 @@ function setupGlobalUI() {
         refreshBtn.addEventListener('click', () => loadPendingItems({showLoading: true}));
     }
 
+    const debugModeBtn = document.getElementById('debugModeBtn');
+    if (debugModeBtn) {
+        debugModeBtn.addEventListener('click', () => {
+            debugEnabled = !debugEnabled;
+            applyDebugUIState();
+            renderItems();
+            showAlert(
+                debugEnabled ? 'تم تفعيل وضع التصحيح.' : 'تم تعطيل وضع التصحيح.',
+                debugEnabled ? 'info' : 'success'
+            );
+        });
+    }
+
     const toggleLogsBtn = document.getElementById('toggleLogsBtn');
     const logPanel = document.getElementById('logPanel');
     if (toggleLogsBtn && logPanel) {
@@ -107,6 +121,40 @@ function setupGlobalUI() {
     const downloadLogsBtn = document.getElementById('downloadLogsBtn');
     if (downloadLogsBtn) {
         downloadLogsBtn.addEventListener('click', downloadLogs);
+    }
+
+    applyDebugUIState();
+}
+
+function applyDebugUIState() {
+    const debugModeBtn = document.getElementById('debugModeBtn');
+    const workflowSteps = document.getElementById('workflowSteps');
+    const toggleLogsBtn = document.getElementById('toggleLogsBtn');
+    const downloadLogsBtn = document.getElementById('downloadLogsBtn');
+    const logPanel = document.getElementById('logPanel');
+
+    if (debugModeBtn) {
+        debugModeBtn.textContent = debugEnabled ? 'تعطيل وضع التصحيح' : 'تفعيل وضع التصحيح';
+        debugModeBtn.classList.toggle('active', debugEnabled);
+    }
+
+    if (workflowSteps) {
+        workflowSteps.style.display = debugEnabled ? 'flex' : 'none';
+    }
+
+    if (toggleLogsBtn) {
+        toggleLogsBtn.style.display = debugEnabled ? 'inline-flex' : 'none';
+        if (!debugEnabled) {
+            toggleLogsBtn.textContent = 'إظهار السجلات';
+        }
+    }
+
+    if (downloadLogsBtn) {
+        downloadLogsBtn.style.display = debugEnabled ? 'inline-flex' : 'none';
+    }
+
+    if (logPanel && !debugEnabled) {
+        logPanel.style.display = 'none';
     }
 }
 
@@ -263,9 +311,11 @@ function createItemCard(item) {
             </div>
             
             <div class="action-buttons">
+                ${debugEnabled ? `
                 <button class="btn-secondary dry-run-btn" data-id="${item.id}">
                     معاينة (Dry Run)
                 </button>
+                ` : ''}
                 <button class="confirm-btn" data-id="${item.id}" disabled>
                     ✓ تأكيد ونقل إلى المكتبة
                 </button>
@@ -473,6 +523,10 @@ function formatDryRunMessage(dryRun) {
 }
 
 async function previewItem(itemId) {
+    if (!debugEnabled) {
+        return;
+    }
+
     const btn = document.querySelector(`.dry-run-btn[data-id="${itemId}"]`);
     if (btn) {
         btn.disabled = true;

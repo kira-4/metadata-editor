@@ -30,7 +30,7 @@
         <!-- Pending Page (existing) -->
         <div id="pendingPage" class="page-content">
             <main class="main-content">
-                <div class="workflow-steps">
+                <div id="workflowSteps" class="workflow-steps" style="display: none;">
                     <div class="workflow-step active">1) الاستيراد</div>
                     <div class="workflow-step active">2) اكتشاف العنوان/الفنان</div>
                     <div class="workflow-step active">3) المراجعة والتعديل</div>
@@ -39,9 +39,10 @@
                 </div>
 
                 <div class="pending-toolbar">
+                    <button id="debugModeBtn" class="btn-secondary">تفعيل وضع التصحيح</button>
                     <button id="refreshPendingBtn" class="btn-secondary">تحديث القائمة</button>
-                    <button id="toggleLogsBtn" class="btn-secondary">إظهار السجلات</button>
-                    <button id="downloadLogsBtn" class="btn-secondary">تنزيل السجلات</button>
+                    <button id="toggleLogsBtn" class="btn-secondary" style="display: none;">إظهار السجلات</button>
+                    <button id="downloadLogsBtn" class="btn-secondary" style="display: none;">تنزيل السجلات</button>
                 </div>
 
                 <div id="globalAlert" class="global-alert" style="display: none;"></div>
