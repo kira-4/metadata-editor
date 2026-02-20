@@ -25,6 +25,7 @@ const ARTIST_CREATE_THRESHOLD = 72;
 const ARTIST_SUGGEST_LIMIT = 10;
 const artistSuggestCache = new Map(); // `${query}|${limit}` -> {timestamp, data}
 const artistComboboxState = new Map(); // itemId -> combobox state
+const artistDraftValues = new Map(); // itemId -> in-progress input value
 
 function timestampNow() {
     return new Date().toISOString();
@@ -154,6 +155,46 @@ function cleanupArtistState() {
             artistComboboxState.delete(itemId);
         }
     }
+
+    for (const itemId of artistDraftValues.keys()) {
+        if (!activeIds.has(itemId)) {
+            artistDraftValues.delete(itemId);
+        }
+    }
+}
+
+function captureFocusSnapshot() {
+    const activeElement = document.activeElement;
+    if (!activeElement) {
+        return null;
+    }
+
+    if (activeElement.classList.contains('artist-input')) {
+        return {
+            type: 'artist',
+            itemId: Number(activeElement.dataset.id),
+            selectionStart: activeElement.selectionStart,
+            selectionEnd: activeElement.selectionEnd
+        };
+    }
+
+    return null;
+}
+
+function restoreFocusSnapshot(snapshot) {
+    if (!snapshot || snapshot.type !== 'artist') {
+        return;
+    }
+
+    const artistInput = document.querySelector(`.artist-input[data-id="${snapshot.itemId}"]`);
+    if (!artistInput) {
+        return;
+    }
+
+    artistInput.focus();
+    if (typeof snapshot.selectionStart === 'number' && typeof snapshot.selectionEnd === 'number') {
+        artistInput.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+    }
 }
 
 function setupGlobalUI() {
@@ -250,6 +291,8 @@ async function init() {
 // Load pending items from API
 async function loadPendingItems(options = {}) {
     const {showLoading = false, silent = false} = options;
+    const focusSnapshot = captureFocusSnapshot();
+
     try {
         const container = document.getElementById('pendingItems');
         if (showLoading && container) {
@@ -264,12 +307,17 @@ async function loadPendingItems(options = {}) {
         
         pendingItems = await response.json();
         pendingItems.forEach(item => {
+            if (artistDraftValues.has(item.id)) {
+                item.current_artist = artistDraftValues.get(item.id);
+            }
+        });
+        pendingItems.forEach(item => {
             if (item.genre && item.genre.trim()) {
                 selectedGenres[item.id] = item.genre.trim();
             }
         });
 
-        renderItems();
+        renderItems({focusSnapshot});
         if (!silent) {
             logEvent('info', `تم تحميل قائمة الانتظار (${pendingItems.length}) عنصر`);
         }
@@ -280,7 +328,8 @@ async function loadPendingItems(options = {}) {
 }
 
 // Render all items
-function renderItems() {
+function renderItems(options = {}) {
+    const {focusSnapshot = null} = options;
     const container = document.getElementById('pendingItems');
     const emptyState = document.getElementById('emptyState');
     const itemCount = document.getElementById('itemCount');
@@ -314,6 +363,10 @@ function renderItems() {
         attachItemListeners(item.id);
         updateConfirmButton(item.id);
     });
+
+    if (focusSnapshot) {
+        restoreFocusSnapshot(focusSnapshot);
+    }
 }
 
 // Create item card HTML
@@ -324,7 +377,8 @@ function createItemCard(item) {
     const currentGenre = (item.genre || '').trim();
     const isCustomGenre = currentGenre && !GENRE_PRESETS.includes(currentGenre);
     const titleValue = item.current_title || item.inferred_title || '';
-    const artistValue = item.current_artist || item.inferred_artist || '';
+    const hasArtistDraft = artistDraftValues.has(item.id);
+    const artistValue = hasArtistDraft ? artistDraftValues.get(item.id) : (item.current_artist || item.inferred_artist || '');
     
     return `
         <div class="item-card" data-id="${item.id}">
@@ -634,6 +688,7 @@ function selectArtistOption(itemId, option) {
     if (!card || !input || !option) return;
 
     input.value = option.name;
+    artistDraftValues.set(itemId, option.name);
     const state = getArtistState(itemId);
     if (option.type === 'existing') {
         state.createArtistOnSave = false;
@@ -716,6 +771,11 @@ function setupArtistInput(itemId, artistInput, card) {
     });
 
     artistInput.addEventListener('input', () => {
+        artistDraftValues.set(itemId, artistInput.value);
+        const item = pendingItems.find(entry => entry.id === itemId);
+        if (item) {
+            item.current_artist = artistInput.value;
+        }
         state.selectedExistingName = null;
         state.createArtistOnSave = false;
         updateConfirmButton(itemId);
@@ -728,6 +788,7 @@ function setupArtistInput(itemId, artistInput, card) {
 
     artistInput.addEventListener('blur', () => {
         const normalizedValue = artistInput.value.trim();
+        artistDraftValues.set(itemId, normalizedValue);
         updateField(itemId, 'artist', normalizedValue);
         setTimeout(() => {
             closeArtistDropdown(itemId);
@@ -893,6 +954,10 @@ async function updateField(itemId, field, value) {
             if (field === 'title') item.current_title = payload[field];
             if (field === 'artist') item.current_artist = payload[field];
             if (field === 'genre') item.genre = payload[field];
+        }
+
+        if (field === 'artist') {
+            artistDraftValues.delete(itemId);
         }
         
         updateConfirmButton(itemId);
