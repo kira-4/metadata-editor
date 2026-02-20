@@ -14,23 +14,144 @@ const GENRE_PRESETS = [
 let pendingItems = [];
 let selectedGenres = {}; // itemId -> genre
 let customGenreVisible = {}; // itemId -> boolean
+let sseConnection = null;
+let pendingPollTimer = null;
+const appLogs = [];
+const MAX_LOG_ENTRIES = 800;
+
+function timestampNow() {
+    return new Date().toISOString();
+}
+
+function logEvent(level, message, context = null) {
+    const entry = {time: timestampNow(), level, message, context};
+    appLogs.push(entry);
+    if (appLogs.length > MAX_LOG_ENTRIES) {
+        appLogs.shift();
+    }
+
+    const consoleFn = level === 'error' ? console.error : (level === 'warn' ? console.warn : console.log);
+    consoleFn(`[${entry.time}] ${message}`, context || '');
+    renderLogPanel();
+}
+
+function renderLogPanel() {
+    const output = document.getElementById('logOutput');
+    if (!output) return;
+    const lines = appLogs.map(entry => {
+        const ctx = entry.context ? ` | ${JSON.stringify(entry.context, null, 0)}` : '';
+        return `[${entry.time}] [${entry.level.toUpperCase()}] ${entry.message}${ctx}`;
+    });
+    output.textContent = lines.join('\n') || 'لا توجد سجلات بعد.';
+    output.scrollTop = output.scrollHeight;
+}
+
+function downloadLogs() {
+    const lines = appLogs.map(entry => {
+        const ctx = entry.context ? ` | ${JSON.stringify(entry.context)}` : '';
+        return `[${entry.time}] [${entry.level.toUpperCase()}] ${entry.message}${ctx}`;
+    });
+    const blob = new Blob([lines.join('\n')], {type: 'text/plain;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `muharrir-alaswat-logs-${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function showAlert(message, type = 'info', timeout = 5000) {
+    const alertEl = document.getElementById('globalAlert');
+    if (!alertEl) return;
+    alertEl.textContent = message;
+    alertEl.className = `global-alert ${type}`;
+    alertEl.style.display = 'block';
+
+    if (timeout > 0) {
+        setTimeout(() => {
+            if (alertEl.textContent === message) {
+                alertEl.style.display = 'none';
+            }
+        }, timeout);
+    }
+}
+
+async function parseApiError(response, fallbackMessage) {
+    try {
+        const body = await response.json();
+        return body.detail || fallbackMessage;
+    } catch {
+        return fallbackMessage;
+    }
+}
+
+function setupGlobalUI() {
+    const refreshBtn = document.getElementById('refreshPendingBtn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => loadPendingItems({showLoading: true}));
+    }
+
+    const toggleLogsBtn = document.getElementById('toggleLogsBtn');
+    const logPanel = document.getElementById('logPanel');
+    if (toggleLogsBtn && logPanel) {
+        toggleLogsBtn.addEventListener('click', () => {
+            const visible = logPanel.style.display === 'block';
+            logPanel.style.display = visible ? 'none' : 'block';
+            toggleLogsBtn.textContent = visible ? 'إظهار السجلات' : 'إخفاء السجلات';
+            if (!visible) {
+                renderLogPanel();
+            }
+        });
+    }
+
+    const downloadLogsBtn = document.getElementById('downloadLogsBtn');
+    if (downloadLogsBtn) {
+        downloadLogsBtn.addEventListener('click', downloadLogs);
+    }
+}
 
 // Initialize app
 async function init() {
-    await loadPendingItems();
+    setupGlobalUI();
+    await loadPendingItems({showLoading: true});
     setupSSE();
+    if (pendingPollTimer) {
+        clearInterval(pendingPollTimer);
+    }
+    pendingPollTimer = setInterval(() => {
+        loadPendingItems({silent: true});
+    }, 15000);
 }
 
 // Load pending items from API
-async function loadPendingItems() {
+async function loadPendingItems(options = {}) {
+    const {showLoading = false, silent = false} = options;
     try {
+        const container = document.getElementById('pendingItems');
+        if (showLoading && container) {
+            container.innerHTML = '<div class="loading"><span class="spinning">🔄</span> جاري تحميل الملفات...</div>';
+        }
+
         const response = await fetch(`${API_BASE}/pending`);
-        if (!response.ok) throw new Error('Failed to load items');
+        if (!response.ok) {
+            const detail = await parseApiError(response, 'فشل تحميل قائمة الانتظار');
+            throw new Error(detail);
+        }
         
         pendingItems = await response.json();
+        pendingItems.forEach(item => {
+            if (item.genre && item.genre.trim()) {
+                selectedGenres[item.id] = item.genre.trim();
+            }
+        });
+
         renderItems();
+        if (!silent) {
+            logEvent('info', `تم تحميل قائمة الانتظار (${pendingItems.length}) عنصر`);
+        }
     } catch (error) {
-        console.error('Error loading pending items:', error);
+        logEvent('error', 'فشل تحميل قائمة الانتظار', {error: error.message});
+        showAlert(`فشل تحميل قائمة الانتظار: ${error.message}`, 'error');
     }
 }
 
@@ -66,6 +187,7 @@ function renderItems() {
     // Attach event listeners
     pendingItems.forEach(item => {
         attachItemListeners(item.id);
+        updateConfirmButton(item.id);
     });
 }
 
@@ -74,6 +196,8 @@ function createItemCard(item) {
     const hasError = item.status === 'error';
     const isManual = item.status === 'needs_manual';
     const artworkUrl = item.artwork_url || null;
+    const currentGenre = (item.genre || '').trim();
+    const isCustomGenre = currentGenre && !GENRE_PRESETS.includes(currentGenre);
     
     return `
         <div class="item-card" data-id="${item.id}">
@@ -119,28 +243,33 @@ function createItemCard(item) {
                 <label class="genre-label">اختر النوع الموسيقي</label>
                 <div class="genre-buttons">
                     ${GENRE_PRESETS.map(genre => `
-                        <button class="genre-btn" data-id="${item.id}" data-genre="${genre}">
+                        <button class="genre-btn ${currentGenre === genre ? 'selected' : ''}" data-id="${item.id}" data-genre="${genre}">
                             ${genre}
                         </button>
                     `).join('')}
-                    <button class="genre-btn" data-id="${item.id}" data-genre="custom">
+                    <button class="genre-btn ${isCustomGenre ? 'selected' : ''}" data-id="${item.id}" data-genre="custom">
                         أخرى…
                     </button>
                 </div>
                 <div class="custom-genre-wrapper">
                     <input 
                         type="text" 
-                        class="custom-genre-input" 
+                        class="custom-genre-input ${isCustomGenre ? 'show' : ''}" 
                         placeholder="أدخل النوع الموسيقي"
+                        value="${isCustomGenre ? currentGenre : ''}"
                         data-id="${item.id}"
                     >
                 </div>
             </div>
             
             <div class="action-buttons">
+                <button class="btn-secondary dry-run-btn" data-id="${item.id}">
+                    معاينة (Dry Run)
+                </button>
                 <button class="confirm-btn" data-id="${item.id}" disabled>
                     ✓ تأكيد ونقل إلى المكتبة
                 </button>
+                <div class="item-status" id="itemStatus-${item.id}"></div>
                 ${(hasError || isManual) ? `
                 <button class="btn-secondary delete-btn" style="margin-top: 1rem; width: 100%; border-color: var(--error); color: var(--error);" onclick="deleteItem('${item.id}')">
                     حذف الملف
@@ -155,6 +284,7 @@ function createItemCard(item) {
 function attachItemListeners(itemId) {
     const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
     if (!card) return;
+    const item = pendingItems.find(p => p.id === itemId);
     
     // Title/Artist input listeners
     const titleInput = card.querySelector('.title-input');
@@ -209,6 +339,16 @@ function attachItemListeners(itemId) {
     const confirmBtn = card.querySelector('.confirm-btn');
     if (confirmBtn) {
         confirmBtn.addEventListener('click', () => confirmItem(itemId));
+    }
+
+    // Dry run button
+    const dryRunBtn = card.querySelector('.dry-run-btn');
+    if (dryRunBtn) {
+        dryRunBtn.addEventListener('click', () => previewItem(itemId));
+    }
+
+    if (item && item.genre && item.genre.trim()) {
+        selectedGenres[itemId] = item.genre.trim();
     }
 }
 
@@ -267,7 +407,7 @@ function updateConfirmButton(itemId) {
 async function updateField(itemId, field, value) {
     try {
         const payload = {};
-        payload[field] = value;
+        payload[field] = typeof value === 'string' ? value.trim() : value;
         
         const response = await fetch(`${API_BASE}/pending/${itemId}/update`, {
             method: 'POST',
@@ -275,41 +415,125 @@ async function updateField(itemId, field, value) {
             body: JSON.stringify(payload)
         });
         
-        if (!response.ok) throw new Error('Failed to update field');
+        if (!response.ok) {
+            const detail = await parseApiError(response, `فشل تحديث ${field}`);
+            throw new Error(detail);
+        }
         
         // Update local state
         const item = pendingItems.find(i => i.id === itemId);
         if (item) {
-            if (field === 'title') item.current_title = value;
-            if (field === 'artist') item.current_artist = value;
-            if (field === 'genre') item.genre = value;
+            if (field === 'title') item.current_title = payload[field];
+            if (field === 'artist') item.current_artist = payload[field];
+            if (field === 'genre') item.genre = payload[field];
         }
         
         updateConfirmButton(itemId);
+        setItemStatus(itemId, 'تم حفظ التعديل', 'success');
         
     } catch (error) {
-        console.error(`Error updating ${field}:`, error);
+        logEvent('error', `فشل تحديث ${field}`, {itemId, error: error.message});
+        showAlert(`فشل تحديث ${field}: ${error.message}`, 'error');
+        setItemStatus(itemId, `فشل تحديث ${field}`, 'error');
+    }
+}
+
+function setItemStatus(itemId, message, type = 'info') {
+    const statusEl = document.getElementById(`itemStatus-${itemId}`);
+    if (!statusEl) return;
+    statusEl.textContent = message;
+    statusEl.className = `item-status ${type}`;
+}
+
+async function fetchDryRun(itemId) {
+    const response = await fetch(`${API_BASE}/pending/${itemId}/dry-run`);
+    if (!response.ok) {
+        const detail = await parseApiError(response, 'فشل إنشاء المعاينة');
+        throw new Error(detail);
+    }
+    return response.json();
+}
+
+function formatDryRunMessage(dryRun) {
+    const missing = dryRun.missing_fields?.length ? dryRun.missing_fields.join(', ') : 'لا يوجد';
+    const move = dryRun.move_preview || {};
+    const meta = dryRun.metadata_preview || {};
+    return [
+        'معاينة العملية (Dry Run):',
+        `- قابل للتأكيد: ${dryRun.can_confirm ? 'نعم' : 'لا'}`,
+        `- الحقول الناقصة: ${missing}`,
+        `- العنوان: ${meta.title || '-'}`,
+        `- الفنان: ${meta.artist || '-'}`,
+        `- الألبوم: ${meta.album || '-'}`,
+        `- النوع: ${meta.genre || '-'}`,
+        `- المسار النهائي: ${move.destination_path || '-'}`,
+        `- صلاحية كتابة جذر Navidrome: ${move.navidrome_root_writable ? 'نعم' : 'لا'}`,
+        `- صلاحية كتابة المجلد الهدف: ${move.destination_parent_writable ? 'نعم' : 'لا'}`
+    ].join('\n');
+}
+
+async function previewItem(itemId) {
+    const btn = document.querySelector(`.dry-run-btn[data-id="${itemId}"]`);
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'جاري إنشاء المعاينة...';
+    }
+
+    try {
+        const dryRun = await fetchDryRun(itemId);
+        const message = formatDryRunMessage(dryRun);
+        logEvent('info', 'Dry-run preview generated', {itemId, dryRun});
+        showAlert(dryRun.can_confirm ? 'تم إنشاء المعاينة بنجاح' : 'المعاينة تُظهر مشاكل يجب إصلاحها', dryRun.can_confirm ? 'success' : 'warn', 7000);
+        window.alert(message);
+        setItemStatus(itemId, dryRun.can_confirm ? 'المعاينة جاهزة للتأكيد' : 'المعاينة: هناك مشاكل', dryRun.can_confirm ? 'success' : 'warn');
+    } catch (error) {
+        logEvent('error', 'Dry-run preview failed', {itemId, error: error.message});
+        showAlert(`فشل إنشاء المعاينة: ${error.message}`, 'error');
+        setItemStatus(itemId, 'فشل إنشاء المعاينة', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'معاينة (Dry Run)';
+        }
     }
 }
 
 // Confirm item
 async function confirmItem(itemId) {
+    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
     const confirmBtn = document.querySelector(`.confirm-btn[data-id="${itemId}"]`);
-    if (!confirmBtn) return;
+    if (!card || !confirmBtn) return;
+    
+    const title = (card.querySelector('.title-input')?.value || '').trim();
+    const artist = (card.querySelector('.artist-input')?.value || '').trim();
+    const genre = (selectedGenres[itemId] || '').trim();
+
+    if (!title || !artist || !genre) {
+        showAlert('لا يمكن التأكيد: العنوان والفنان والنوع مطلوبة.', 'warn');
+        setItemStatus(itemId, 'أكمل الحقول المطلوبة أولاً', 'warn');
+        return;
+    }
     
     // Disable button
     confirmBtn.disabled = true;
     confirmBtn.textContent = 'جاري النقل...';
+    setItemStatus(itemId, 'التحقق من المعاينة...', 'info');
     
     try {
+        const dryRun = await fetchDryRun(itemId);
+        if (!dryRun.can_confirm) {
+            throw new Error(`المعاينة فشلت: ${dryRun.missing_fields.join(', ') || 'صلاحيات/مسار غير صالح'}`);
+        }
+
+        setItemStatus(itemId, 'جاري كتابة البيانات الوصفية...', 'info');
         const response = await fetch(`${API_BASE}/pending/${itemId}/confirm`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
         
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.detail || 'Failed to confirm');
+            const detail = await parseApiError(response, 'فشل التأكيد');
+            throw new Error(detail);
         }
         
         // Remove item from list
@@ -319,12 +543,16 @@ async function confirmItem(itemId) {
         
         // Re-render
         renderItems();
+        showAlert('تم حفظ البيانات ونقل الملف بنجاح.', 'success');
+        logEvent('info', 'Item confirmed and moved', {itemId});
         
     } catch (error) {
-        console.error('Error confirming item:', error);
+        logEvent('error', 'Error confirming item', {itemId, error: error.message});
+        showAlert(`فشل التأكيد: ${error.message}`, 'error');
         confirmBtn.disabled = false;
         confirmBtn.textContent = '✗ فشل - حاول مرة أخرى';
         confirmBtn.style.background = 'var(--error)';
+        setItemStatus(itemId, `فشل التأكيد: ${error.message}`, 'error');
     }
 }
 
@@ -343,14 +571,20 @@ async function deleteItem(itemId) {
             method: 'DELETE'
         });
         
-        if (!response.ok) throw new Error('Failed to delete item');
+        if (!response.ok) {
+            const detail = await parseApiError(response, 'فشل حذف الملف');
+            throw new Error(detail);
+        }
         
         // Remove item from list (optimistic update)
         pendingItems = pendingItems.filter(i => i.id !== itemId);
         renderItems();
+        showAlert('تم حذف الملف من قائمة الانتظار.', 'success');
+        logEvent('info', 'Pending item deleted', {itemId});
         
     } catch (error) {
-        console.error('Error deleting item:', error);
+        logEvent('error', 'Delete item failed', {itemId, error: error.message});
+        showAlert(`فشل حذف الملف: ${error.message}`, 'error');
         if (deleteBtn) {
             deleteBtn.disabled = false;
             deleteBtn.textContent = 'فشل الحذف - حاول مرة أخرى';
@@ -360,25 +594,27 @@ async function deleteItem(itemId) {
 
 // Setup Server-Sent Events
 function setupSSE() {
+    if (sseConnection) {
+        sseConnection.close();
+    }
     const eventSource = new EventSource(`${API_BASE}/events`);
+    sseConnection = eventSource;
+    
+    eventSource.onopen = () => {
+        logEvent('info', 'SSE connected');
+    };
     
     eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
+        logEvent('info', `SSE event: ${data.type}`, data);
         
-        if (data.type === 'item_confirmed') {
-            // Item was confirmed, refresh list
-            loadPendingItems();
-        } else if (data.type === 'new_item') {
-            // New item added, refresh list
-            loadPendingItems();
-        } else if (data.type === 'item_deleted') {
-            // Item deleted, refresh list
-            loadPendingItems();
+        if (['item_confirmed', 'new_item', 'item_deleted', 'item_updated', 'item_error'].includes(data.type)) {
+            loadPendingItems({silent: true});
         }
     };
     
     eventSource.onerror = (error) => {
-        console.error('SSE error:', error);
+        logEvent('warn', 'SSE error (browser will retry automatically)', {error: String(error)});
         // Reconnect automatically handled by browser
     };
 }
@@ -550,7 +786,7 @@ function setupLibraryListeners() {
         if (mainView) {
             mainView.classList.add('active');
         } else {
-            console.error(`Main view #${libraryState.currentView}View not found`);
+            logEvent('warn', `Main view #${libraryState.currentView}View not found`);
         }
         libraryState.detailContext = null;
     });
@@ -576,12 +812,12 @@ async function loadLibraryStats() {
         const stats = await response.json();
         const statsEl = document.getElementById('libraryStats');
         statsEl.innerHTML = `
-            <span class="stat-item">${stats.total_tracks} أغنية</span>
+            <span class="stat-item">${stats.total_tracks} صوتية</span>
             <span class="stat-item">${stats.total_artists} فنان</span>
             <span class="stat-item">${stats.total_albums} ألبوم</span>
         `;
     } catch (error) {
-        console.error('Error loading stats:', error);
+        logEvent('warn', 'Error loading library stats', {error: error.message});
     }
 }
 
@@ -665,7 +901,8 @@ async function loadViewData() {
             renderTracks(data.tracks);
         }
     } catch (error) {
-        console.error('Error loading view data:', error);
+        logEvent('error', 'Error loading library view data', {view, error: error.message});
+        showAlert(`فشل تحميل بيانات المكتبة: ${error.message}`, 'error');
         const container = document.getElementById(`${view}List`) || document.getElementById('tracksList');
         if (container) container.innerHTML = `<div class="error-message">حدث خطأ في تحميل البيانات: ${error.message}</div>`;
     }
@@ -770,7 +1007,7 @@ function renderArtists(artists) {
         <div class="list-item" onclick="viewArtistAlbums('${encodeURIComponent(artist.name)}')">
             <div class="list-item-content">
                 <div class="list-item-title">${artist.name}</div>
-                <div class="list-item-meta">${artist.track_count} أغنية • ${artist.album_count} ألبوم</div>
+                <div class="list-item-meta">${artist.track_count} صوتية • ${artist.album_count} ألبوم</div>
             </div>
         </div>
     `).join('');
@@ -794,7 +1031,7 @@ function renderAlbums(albums) {
             </div>
             <div class="album-name">${album.name || 'بدون اسم'}</div>
             <div class="album-artist">${album.album_artist || 'غير معروف'}</div>
-            <div class="list-item-meta">${album.track_count} أغنية${album.year ? ' • ' + album.year : ''}</div>
+            <div class="list-item-meta">${album.track_count} صوتية${album.year ? ' • ' + album.year : ''}</div>
         </div>
     `).join('');
 }
@@ -812,7 +1049,7 @@ function renderGenres(genres) {
         <div class="list-item" onclick="viewGenreTracks('${encodeURIComponent(genre.name)}')">
             <div class="list-item-content">
                 <div class="list-item-title">${genre.name}</div>
-                <div class="list-item-meta">${genre.track_count} أغنية</div>
+                <div class="list-item-meta">${genre.track_count} صوتية</div>
             </div>
         </div>
     `).join('');
@@ -921,11 +1158,12 @@ async function viewArtistAlbums(artistName) {
                         : '🎵'}
                 </div>
                 <div class="album-name">${album.name || 'بدون اسم'}</div>
-                <div class="list-item-meta">${album.track_count} أغنية</div>
+                <div class="list-item-meta">${album.track_count} صوتية</div>
             </div>
         `).join('');
     } catch (error) {
-        console.error('Error loading artist albums:', error);
+        logEvent('error', 'Error loading artist albums', {artist: name, error: error.message});
+        showAlert(`فشل تحميل ألبومات الفنان: ${error.message}`, 'error');
     }
 }
 
@@ -968,7 +1206,8 @@ async function viewAlbumTracks(albumName) {
             selectAllAlbumTracks(data.tracks);
         });
     } catch (error) {
-        console.error('Error loading album tracks:', error);
+        logEvent('error', 'Error loading album tracks', {album: name, error: error.message});
+        showAlert(`فشل تحميل أغاني الألبوم: ${error.message}`, 'error');
     }
 }
 
@@ -1024,7 +1263,8 @@ async function viewGenreTracks(genreName) {
         cacheTracks(data.tracks);
         renderTracks(data.tracks);
     } catch (error) {
-        console.error('Error loading genre tracks:', error);
+        logEvent('error', 'Error loading genre tracks', {genre: name, error: error.message});
+        showAlert(`فشل تحميل أغاني النوع: ${error.message}`, 'error');
     }
 }
 
@@ -1292,8 +1532,8 @@ async function handleSingleEdit() {
             
             if (!response.ok) throw new Error('Artwork upload failed');
         } catch (error) {
-            console.error('Error uploading artwork:', error);
-            alert('فشل رفع صورة الغلاف');
+            logEvent('error', 'Error uploading artwork', {trackId, error: error.message});
+            showAlert('فشل رفع صورة الغلاف', 'error');
             // Don't return, try to save other metadata
         }
     }
@@ -1320,8 +1560,8 @@ async function handleSingleEdit() {
         loadViewData(); // Refresh view
         
     } catch (error) {
-        console.error('Error updating track:', error);
-        alert('خطأ في تحديث الملف');
+        logEvent('error', 'Error updating track', {trackId, error: error.message});
+        showAlert('خطأ في تحديث الملف', 'error');
     }
 }
 
@@ -1359,15 +1599,16 @@ async function handleBatchEdit() {
         if (!response.ok) throw new Error('Batch update failed');
         
         const result = await response.json();
-        alert(`تم التحديث: ${result.successful} نجح، ${result.failed} فشل`);
+        showAlert(`تم التحديث: ${result.successful} نجح، ${result.failed} فشل`, 'success');
+        logEvent('info', 'Batch update completed', result);
         
         closeEditModal();
         clearSelection();
         loadViewData();
         
     } catch (error) {
-        console.error('Error in batch update:', error);
-        alert('خطأ في تحديث الملفات');
+        logEvent('error', 'Error in batch update', {error: error.message});
+        showAlert('خطأ في تحديث الملفات', 'error');
     }
 }
 
@@ -1403,8 +1644,8 @@ async function startRescan() {
         checkStatus();
         
     } catch (error) {
-        console.error('Error starting rescan:', error);
-        alert('خطأ في بدء المسح');
+        logEvent('error', 'Error starting library rescan', {error: error.message});
+        showAlert('خطأ في بدء المسح', 'error');
         btn.disabled = false;
         icon.classList.remove('spinning');
     }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>محرر الميتاداتا الصوتية</title>
+    <title>محرر الأصوات الولائية</title>
     <link rel="icon" type="image/png" href="/favicon.png">
     <link rel="stylesheet" href="/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -15,7 +15,7 @@
         <!-- Navigation -->
         <nav class="main-nav">
             <div class="nav-brand">
-                <h1>🎵 محرر الميتاداتا الصوتية</h1>
+                <h1>🎵 محرر الأصوات الولائية</h1>
             </div>
             <div class="nav-links">
                 <a href="#/pending" class="nav-link active" data-route="pending">
@@ -30,6 +30,29 @@
         <!-- Pending Page (existing) -->
         <div id="pendingPage" class="page-content">
             <main class="main-content">
+                <div class="workflow-steps">
+                    <div class="workflow-step active">1) الاستيراد</div>
+                    <div class="workflow-step active">2) اكتشاف العنوان/الفنان</div>
+                    <div class="workflow-step active">3) المراجعة والتعديل</div>
+                    <div class="workflow-step">4) حفظ البيانات الوصفية</div>
+                    <div class="workflow-step">5) الإرسال إلى Navidrome</div>
+                </div>
+
+                <div class="pending-toolbar">
+                    <button id="refreshPendingBtn" class="btn-secondary">تحديث القائمة</button>
+                    <button id="toggleLogsBtn" class="btn-secondary">إظهار السجلات</button>
+                    <button id="downloadLogsBtn" class="btn-secondary">تنزيل السجلات</button>
+                </div>
+
+                <div id="globalAlert" class="global-alert" style="display: none;"></div>
+
+                <div id="logPanel" class="log-panel" style="display: none;">
+                    <div class="log-panel-header">
+                        <h3>سجل العمليات</h3>
+                    </div>
+                    <pre id="logOutput" class="log-output"></pre>
+                </div>
+
                 <div class="queue-header">
                     <h2>قائمة الانتظار</h2>
                     <span class="count" id="itemCount">0 ملف</span>
@@ -52,7 +75,7 @@
             <!-- Library Controls -->
             <div class="library-controls">
                 <div class="library-header">
-                    <h2>مكتبة الموسيقى</h2>
+                    <h2>مكتبة الصوتيات</h2>
                     <div class="library-actions">
                         <button id="multiSelectBtn" class="btn-secondary">
                             تحديد متعدد
@@ -72,7 +95,7 @@
                     <button class="tab-btn active" data-view="artists">الفنانون</button>
                     <button class="tab-btn" data-view="albums">الألبومات</button>
                     <button class="tab-btn" data-view="genres">الأنواع</button>
-                    <button class="tab-btn" data-view="tracks">جميع الأغاني</button>
+                    <button class="tab-btn" data-view="tracks">جميع الصوتيات</button>
                 </div>
 
                 <!-- Search and Sort -->
@@ -98,12 +121,12 @@
 
             <div id="genresView" class="view-content">
                 <div id="genresList" class="items-list"></div>
-                <div class="empty-state"><p>لا توجد أنواع موسيقية</p></div>
+                <div class="empty-state"><p>لا توجد أنواع صوتية</p></div>
             </div>
 
             <div id="tracksView" class="view-content">
                 <div id="tracksList" class="items-list"></div>
-                <div class="empty-state"><p>لا توجد أغاني</p></div>
+                <div class="empty-state"><p>لا توجد صوتيات</p></div>
             </div>
 
             <!-- Pagination Controls -->

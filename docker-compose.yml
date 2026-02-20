@@ -11,6 +11,7 @@ services:
       - NAVIDROME_ROOT=/music
       - DATA_DIR=/data
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - APP_NAME=محرر الأصوات الولائية
       - SCAN_INTERVAL_SECONDS=30
       - TZ=America/Los_Angeles
       - PORT=8090

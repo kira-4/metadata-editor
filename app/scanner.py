@@ -137,11 +137,29 @@ class FileScanner:
             artwork_file = config.ARTWORK_DIR / f"{file_hash}_{file_path.stem}.jpg"
             if metadata_processor.extract_artwork(staged_path, artwork_file):
                 artwork_path = str(artwork_file)
+
+            # Read existing embedded metadata (important for M4A imports)
+            existing_metadata = metadata_processor.read_metadata(staged_path)
+            logger.info(
+                "Imported existing metadata from %s: format=%s, tag_keys=%s, title=%r, artist=%r, album=%r, genre=%r, year=%r, track=%r, disc=%r",
+                staged_path,
+                existing_metadata.get("format"),
+                existing_metadata.get("tag_keys"),
+                existing_metadata.get("title"),
+                existing_metadata.get("artist"),
+                existing_metadata.get("album"),
+                existing_metadata.get("genre"),
+                existing_metadata.get("year"),
+                existing_metadata.get("track_number"),
+                existing_metadata.get("disc_number"),
+            )
             
             # Parse filename
             parsed = self.parse_filename(file_path.name)
             if not parsed:
                 # Create manual edit entry with fallback values
+                inferred_title = existing_metadata.get("title") or file_path.stem
+                inferred_artist = existing_metadata.get("artist") or ""
                 DatabaseManager.create_pending_item(
                     db=db,
                     original_path=str(file_path),
@@ -149,8 +167,8 @@ class FileScanner:
                     video_title=file_path.stem,  # Fallback to stem
                     channel="Unknown",
                     extension=file_path.suffix,
-                    inferred_title=file_path.stem, # Pre-fill title with filename
-                    inferred_artist="",
+                    inferred_title=inferred_title,
+                    inferred_artist=inferred_artist,
                     artwork_path=artwork_path, # Include artwork if found
                     status="needs_manual",
                     error_message="Failed to parse filename - please edit manually",
@@ -160,12 +178,23 @@ class FileScanner:
                 return
             
             video_title, channel = parsed
-            
-            # Call Gemini to infer metadata (now returns raw response)
-            title, artist, error_msg, raw_response = gemini_client.infer_metadata(video_title, channel)
-            
-            # If Gemini failed or parse failed, create needs_manual item
-            if error_msg or not title or not artist:
+
+            existing_title = (existing_metadata.get("title") or "").strip()
+            existing_artist = (existing_metadata.get("artist") or "").strip()
+            # Prefer existing embedded metadata when available
+            title = existing_title or None
+            artist = existing_artist or None
+            error_msg = None
+            raw_response = ""
+
+            # Fallback to Gemini if any required field is missing
+            if not title or not artist:
+                gemini_title, gemini_artist, error_msg, raw_response = gemini_client.infer_metadata(video_title, channel)
+                title = title or (gemini_title.strip() if gemini_title else None)
+                artist = artist or (gemini_artist.strip() if gemini_artist else None)
+
+            # If still missing data, create needs_manual item
+            if not title or not artist:
                 DatabaseManager.create_pending_item(
                     db=db,
                     original_path=str(file_path),
@@ -190,8 +219,11 @@ class FileScanner:
                     staged_path,
                     title=title,
                     artist=artist,
-                    album=title,  # Default album to title
-                    genre=None  # Genre set later in UI
+                    album=title,
+                    genre=existing_metadata.get("genre"),
+                    year=existing_metadata.get("year"),
+                    track_number=existing_metadata.get("track_number"),
+                    disc_number=existing_metadata.get("disc_number"),
                 )
                 
                 if not success:

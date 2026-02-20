@@ -34,6 +34,75 @@ class ConfirmItemRequest(BaseModel):
     pass
 
 
+@router.get("/pending/{item_id}/dry-run")
+async def dry_run_item(item_id: int, db: Session = Depends(get_db)):
+    """Preview metadata write and destination path without modifying files."""
+    try:
+        item = DatabaseManager.get_item_by_id(db, item_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+
+        title = (item.current_title or "").strip()
+        artist = (item.current_artist or "").strip()
+        genre = (item.genre or "").strip()
+
+        missing_fields = []
+        if not title:
+            missing_fields.append("title")
+        if not artist:
+            missing_fields.append("artist")
+        if not genre:
+            missing_fields.append("genre")
+
+        preview = file_mover.get_destination_preview(
+            artist=artist or "unknown",
+            title=title or "untitled",
+            extension=item.extension
+        )
+
+        current_path = Path(item.current_path)
+        file_exists = current_path.exists()
+        if not file_exists:
+            missing_fields.append("file")
+
+        m4a_atoms = None
+        if item.extension.lower() == ".m4a":
+            m4a_atoms = {
+                "title": {"atom": "©nam", "value": title},
+                "artist": {"atom": "©ART", "value": artist},
+                "album_artist": {"atom": "aART", "value": artist},
+                "album": {"atom": "©alb", "value": title},
+                "genre": {"atom": "©gen", "value": genre}
+            }
+
+        permission_ok = bool(
+            preview.get("navidrome_root_exists")
+            and preview.get("navidrome_root_writable")
+            and preview.get("destination_parent_writable")
+        )
+
+        return {
+            "item_id": item.id,
+            "can_confirm": len(missing_fields) == 0 and permission_ok,
+            "missing_fields": missing_fields,
+            "source_path": item.current_path,
+            "metadata_preview": {
+                "title": title,
+                "artist": artist,
+                "album_artist": artist,
+                "album": title,
+                "genre": genre,
+                "m4a_atoms": m4a_atoms
+            },
+            "move_preview": preview
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating dry-run for item {item_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/pending")
 async def get_pending_items(db: Session = Depends(get_db)):
     """Get all pending items."""
@@ -53,12 +122,34 @@ async def update_item(
 ):
     """Update item fields."""
     try:
+        update_kwargs = {}
+
+        if request.title is not None:
+            title = request.title.strip()
+            if len(title) > 300:
+                raise HTTPException(status_code=400, detail="العنوان طويل جداً (max 300 chars)")
+            update_kwargs["title"] = title
+
+        if request.artist is not None:
+            artist = request.artist.strip()
+            if len(artist) > 300:
+                raise HTTPException(status_code=400, detail="اسم الفنان طويل جداً (max 300 chars)")
+            update_kwargs["artist"] = artist
+
+        if request.genre is not None:
+            genre = request.genre.strip()
+            if genre == "أخرى…":
+                raise HTTPException(status_code=400, detail="يرجى إدخال نوع موسيقي محدد")
+            if len(genre) > 200:
+                raise HTTPException(status_code=400, detail="النوع الموسيقي طويل جداً (max 200 chars)")
+            update_kwargs["genre"] = genre
+
         item = DatabaseManager.update_item(
             db,
             item_id,
-            title=request.title,
-            artist=request.artist,
-            genre=request.genre
+            title=update_kwargs.get("title"),
+            artist=update_kwargs.get("artist"),
+            genre=update_kwargs.get("genre")
         )
         
         if not item:
@@ -109,6 +200,10 @@ async def confirm_item(
         if len(item.genre.strip()) > 200:
             raise HTTPException(status_code=400, detail="النوع الموسيقي طويل جداً (Genre too long, max 200 characters)")
         
+        title = item.current_title.strip()
+        artist = item.current_artist.strip()
+        genre = item.genre.strip()
+
         current_path = Path(item.current_path)
         original_path = Path(item.original_path)
         
@@ -131,17 +226,21 @@ async def confirm_item(
                 image_data = artwork_path.read_bytes()
                 
                 # Embed
-                metadata_processor.embed_artwork_safe(current_path, image_data, mime_type)
+                embed_success = metadata_processor.embed_artwork_safe(current_path, image_data, mime_type)
+                if not embed_success:
+                    logger.warning(f"Artwork embed verification failed for item {item_id}")
             except Exception as e:
                 logger.error(f"Failed to embed artwork: {e}")
                 # Continue anyway, not critical failure
         
-        success = metadata_processor.apply_metadata(
+        # Atomic metadata update with roundtrip verification
+        success = metadata_processor.update_metadata_safe(
             current_path,
-            title=item.current_title,
-            artist=item.current_artist,
-            album=item.current_title,
-            genre=item.genre
+            title=title,
+            artist=artist,
+            album=title,
+            album_artist=artist,
+            genre=genre
         )
         
         if not success:
@@ -153,8 +252,8 @@ async def confirm_item(
         # Move to Navidrome
         new_path = file_mover.move_to_navidrome(
             current_path,
-            artist=item.current_artist,
-            title=item.current_title,
+            artist=artist,
+            title=title,
             extension=item.extension
         )
         
@@ -313,4 +412,3 @@ async def notify_sse_clients(data: dict):
             await queue.put(data)
         except Exception as e:
             logger.error(f"Error notifying SSE client: {e}")
-

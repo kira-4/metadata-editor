@@ -1,1 +1,1 @@
-# Audio Post-Processing Service for Pinchflat → Navidrome
+# محرر الأصوات الولائية - خدمة ما بعد المعالجة لـ Pinchflat → Navidrome

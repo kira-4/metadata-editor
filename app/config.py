@@ -5,6 +5,13 @@ from pathlib import Path
 
 class Config:
     """Application configuration."""
+
+    # Application metadata
+    APP_NAME = os.getenv("APP_NAME", "محرر الأصوات الولائية")
+    APP_DESCRIPTION = os.getenv(
+        "APP_DESCRIPTION",
+        "منصة معالجة البيانات الوصفية الصوتية لـ Pinchflat إلى Navidrome"
+    )
     
     # Directory paths
     INCOMING_ROOT = Path(os.getenv("INCOMING_ROOT", "/incoming"))
@@ -24,9 +31,6 @@ class Config:
     
     # Supported audio formats
     AUDIO_EXTENSIONS = {".mp3", ".m4a", ".flac", ".ogg"}
-    
-    # Fixed metadata values
-    ALBUM_NAME = "منوعات"
     
     # Database path
     DB_PATH = DATA_DIR / "metadata_editor.db"

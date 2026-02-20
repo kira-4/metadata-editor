@@ -5,11 +5,15 @@ from pathlib import Path
 from typing import Optional, Callable
 from datetime import datetime
 from mutagen import File as MutagenFile
-from mutagen.id3 import ID3NoHeaderError, ID3, TIT2, TPE1, TALB, TPE2, TCON, TDRC, TRCK, TPOS
+from mutagen.id3 import ID3NoHeaderError, ID3, TIT2, TPE1, TALB, TPE2, TCON
+from mutagen.mp4 import MP4
+from mutagen.flac import FLAC
+from mutagen.oggvorbis import OggVorbis
 from sqlalchemy.orm import Session
 
 from app.config import config
 from app.database import get_db, LibraryManager
+from app.metadata_processor import metadata_processor
 
 logger = logging.getLogger(__name__)
 
@@ -193,65 +197,22 @@ class LibraryScanner:
             Dictionary with metadata fields found in the file
         """
         try:
-            audio = MutagenFile(file_path)
-            
-            if audio is None:
-                return {}
-            
-            metadata = {}
-            
-            # Handle different file formats
-            if hasattr(audio, 'tags') and audio.tags:
-                # MP3 (ID3)
-                if hasattr(audio.tags, 'get'):
-                    metadata['title'] = self._get_tag_text(audio.tags.get('TIT2'))
-                    metadata['artist'] = self._get_tag_text(audio.tags.get('TPE1'))
-                    metadata['album'] = self._get_tag_text(audio.tags.get('TALB'))
-                    metadata['album_artist'] = self._get_tag_text(audio.tags.get('TPE2'))
-                    metadata['genre'] = self._get_tag_text(audio.tags.get('TCON'))
-                    metadata['year'] = self._get_year(audio.tags.get('TDRC') or audio.tags.get('TYER'))
-                    metadata['track_number'] = self._get_track_number(audio.tags.get('TRCK'))
-                    metadata['disc_number'] = self._get_disc_number(audio.tags.get('TPOS'))
-                    metadata['has_artwork'] = any(tag.startswith('APIC') for tag in audio.tags.keys())
-                
-                # FLAC / OGG
-                elif isinstance(audio.tags, dict):
-                    metadata['title'] = self._get_list_item(audio.tags.get('title'))
-                    metadata['artist'] = self._get_list_item(audio.tags.get('artist'))
-                    metadata['album'] = self._get_list_item(audio.tags.get('album'))
-                    metadata['album_artist'] = self._get_list_item(audio.tags.get('albumartist'))
-                    metadata['genre'] = self._get_list_item(audio.tags.get('genre'))
-                    metadata['year'] = self._parse_year(self._get_list_item(audio.tags.get('date')))
-                    metadata['track_number'] = self._parse_int(self._get_list_item(audio.tags.get('tracknumber')))
-                    metadata['disc_number'] = self._parse_int(self._get_list_item(audio.tags.get('discnumber')))
-                    
-                    if hasattr(audio, 'pictures'):
-                        metadata['has_artwork'] = len(audio.pictures) > 0
-            
-            # M4A / MP4
-            elif hasattr(audio, 'get'):
-                metadata['title'] = self._get_list_item(audio.get('©nam'))
-                metadata['artist'] = self._get_list_item(audio.get('©ART'))
-                metadata['album'] = self._get_list_item(audio.get('©alb'))
-                metadata['album_artist'] = self._get_list_item(audio.get('aART'))
-                metadata['genre'] = self._get_list_item(audio.get('©gen') or audio.get('gnre'))
-                metadata['year'] = self._parse_year(self._get_list_item(audio.get('©day')))
-                
-                # Track number in M4A is a tuple (track, total)
-                trkn = audio.get('trkn')
-                if trkn and len(trkn) > 0 and len(trkn[0]) > 0:
-                    metadata['track_number'] = int(trkn[0][0])
-                
-                disk = audio.get('disk')
-                if disk and len(disk) > 0 and len(disk[0]) > 0:
-                    metadata['disc_number'] = int(disk[0][0])
-                
-                metadata['has_artwork'] = 'covr' in audio
-            
-            # Duration (common to all formats)
-            if hasattr(audio.info, 'length'):
-                metadata['duration'] = int(audio.info.length)
-            
+            metadata = metadata_processor.read_metadata(file_path)
+            if metadata.get("format") == "MP4":
+                logger.debug(
+                    "Read MP4 atoms from %s: keys=%s, title=%r, artist=%r, album=%r, album_artist=%r, genre=%r, year=%r, track=%r, disc=%r, has_artwork=%r",
+                    file_path,
+                    metadata.get("tag_keys"),
+                    metadata.get("title"),
+                    metadata.get("artist"),
+                    metadata.get("album"),
+                    metadata.get("album_artist"),
+                    metadata.get("genre"),
+                    metadata.get("year"),
+                    metadata.get("track_number"),
+                    metadata.get("disc_number"),
+                    metadata.get("has_artwork")
+                )
             return metadata
         
         except Exception as e:
@@ -280,12 +241,38 @@ class LibraryScanner:
             def add_id3_tag(key, frame_cls, text_val, encoding=3):
                 if text_val:
                     # encoding=3 is utf-8
-                    audio.tags.add(frame_cls(encoding=encoding, text=[str(text_val)]))
+                    audio.tags.setall(key, [frame_cls(encoding=encoding, text=[str(text_val)])])
                     return True
                 return False
 
+            # MP4 / M4A
+            if isinstance(audio, MP4):
+                mapping = {
+                    'title': '\xa9nam',
+                    'artist': '\xa9ART',
+                    'album': '\xa9alb',
+                    'album_artist': 'aART',
+                    'genre': '\xa9gen'
+                }
+
+                for meta_key, atom_key in mapping.items():
+                    value = metadata.get(meta_key)
+                    if value and not audio.get(atom_key):
+                        audio[atom_key] = [str(value)]
+                        modified = True
+
+                if metadata.get("year") and not audio.get('\xa9day'):
+                    audio['\xa9day'] = [str(metadata["year"])]
+                    modified = True
+                if metadata.get("track_number") and not audio.get('trkn'):
+                    audio['trkn'] = [(int(metadata["track_number"]), 0)]
+                    modified = True
+                if metadata.get("disc_number") and not audio.get('disk'):
+                    audio['disk'] = [(int(metadata["disc_number"]), 0)]
+                    modified = True
+
             # MP3 (ID3)
-            if hasattr(audio, 'tags') and (hasattr(audio.tags, 'get') or audio.tags is None):
+            elif hasattr(audio, 'tags') and (isinstance(audio.tags, ID3) or audio.tags is None):
                 if audio.tags is None:
                     try:
                         audio.add_tags()
@@ -314,7 +301,7 @@ class LibraryScanner:
                         modified = True
             
             # FLAC / OGG (Vorbis Comments) / Modern formats with Dict-like tags
-            elif isinstance(audio.tags, dict):
+            elif isinstance(audio, (FLAC, OggVorbis)) and isinstance(audio.tags, dict):
                 # For Vorbis/FLAC, keys are case-insensitive usually, but standard is lowercase
                 for key, val in [('title', metadata.get('title')), 
                                  ('artist', metadata.get('artist')),
@@ -323,21 +310,6 @@ class LibraryScanner:
                                  ('genre', metadata.get('genre'))]:
                     if val and not audio.tags.get(key):
                         audio.tags[key] = str(val)
-                        modified = True
-
-            # M4A / MP4
-            elif hasattr(audio, 'get') and hasattr(audio, '__setitem__'):
-                # M4A keys
-                mapping = {
-                    'title': '©nam',
-                    'artist': '©ART',
-                    'album': '©alb',
-                    'album_artist': 'aART',
-                    'genre': '©gen'
-                }
-                for meta_key, tag_key in mapping.items():
-                    if metadata.get(meta_key) and not audio.get(tag_key):
-                        audio[tag_key] = str(metadata[meta_key])
                         modified = True
             
             if modified:
@@ -361,14 +333,10 @@ class LibraryScanner:
             metadata['title'] = file_path.stem
             
         # 2. Album fallback
-        # If parent is 'منوعات', album is the song title
-        # Otherwise, album is the parent folder
+        # Use the parent folder name as album when album metadata is missing.
         if not metadata.get('album'):
             parent_name = file_path.parent.name
-            if parent_name == 'منوعات':
-                metadata['album'] = metadata['title'] # Should be song title (which we just set if missing)
-            else:
-                metadata['album'] = parent_name
+            metadata['album'] = parent_name
             
         # 3. Artist fallback
         if not metadata.get('artist'):
@@ -376,7 +344,7 @@ class LibraryScanner:
             if metadata.get('album_artist'):
                 metadata['artist'] = metadata['album_artist']
             else:
-                # Try directory structure: /music/Artist/Album/Song or /music/Artist/منوعات/Song
+                # Try directory structure: /music/Artist/Album/Song
                 # We expect Artist to be at /music/Artist
                 try:
                     rel_path = file_path.relative_to(config.NAVIDROME_ROOT)
