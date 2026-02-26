@@ -74,6 +74,50 @@ class FileScanner:
         # This ensures the same file gets the same identifier even if renamed
         identifier_string = f"{file_path.absolute()}|{stat.st_size}|{stat.st_mtime}"
         return hashlib.sha256(identifier_string.encode()).hexdigest()
+
+    @staticmethod
+    def _normalize_text(value: Optional[str]) -> Optional[str]:
+        """Normalize optional text values by trimming whitespace."""
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    def infer_metadata_with_fallback(
+        self,
+        video_title: str,
+        channel: str,
+        existing_title: Optional[str],
+        existing_artist: Optional[str]
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """
+        Infer metadata via Gemini first, then fallback to embedded metadata.
+
+        Returns:
+            Tuple of (title, artist, error_message, raw_response).
+        """
+        logger.info(f"Attempting Gemini inference - video_title: {video_title}, channel: {channel}")
+
+        gemini_title, gemini_artist, error_msg, raw_response = gemini_client.infer_metadata(
+            video_title,
+            channel
+        )
+
+        gemini_title = self._normalize_text(gemini_title)
+        gemini_artist = self._normalize_text(gemini_artist)
+        existing_title = self._normalize_text(existing_title)
+        existing_artist = self._normalize_text(existing_artist)
+
+        title = gemini_title or existing_title
+        artist = gemini_artist or existing_artist
+
+        if (not gemini_title or not gemini_artist) and (existing_title or existing_artist):
+            logger.info(
+                "Gemini returned incomplete metadata. Falling back to embedded tags "
+                f"(title={bool(existing_title)}, artist={bool(existing_artist)})"
+            )
+
+        return title, artist, error_msg, raw_response
     
     def scan_directory(self) -> List[Path]:
         """
@@ -179,19 +223,14 @@ class FileScanner:
             
             video_title, channel = parsed
 
-            existing_title = (existing_metadata.get("title") or "").strip()
-            existing_artist = (existing_metadata.get("artist") or "").strip()
-            # Prefer existing embedded metadata when available
-            title = existing_title or None
-            artist = existing_artist or None
-            error_msg = None
-            raw_response = ""
-
-            # Fallback to Gemini if any required field is missing
-            if not title or not artist:
-                gemini_title, gemini_artist, error_msg, raw_response = gemini_client.infer_metadata(video_title, channel)
-                title = title or (gemini_title.strip() if gemini_title else None)
-                artist = artist or (gemini_artist.strip() if gemini_artist else None)
+            existing_title = existing_metadata.get("title")
+            existing_artist = existing_metadata.get("artist")
+            title, artist, error_msg, raw_response = self.infer_metadata_with_fallback(
+                video_title=video_title,
+                channel=channel,
+                existing_title=existing_title,
+                existing_artist=existing_artist
+            )
 
             # If still missing data, create needs_manual item
             if not title or not artist:
