@@ -23,9 +23,19 @@ const ARTIST_SUGGEST_DEBOUNCE_MS = 220;
 const ARTIST_SUGGEST_CACHE_TTL_MS = 60 * 1000;
 const ARTIST_CREATE_THRESHOLD = 72;
 const ARTIST_SUGGEST_LIMIT = 10;
+const LIBRARY_MOBILE_BREAKPOINT_PX = 768;
 const artistSuggestCache = new Map(); // `${query}|${limit}` -> {timestamp, data}
 const artistComboboxState = new Map(); // itemId -> combobox state
 const artistDraftValues = new Map(); // itemId -> in-progress input value
+const libraryArtistComboboxState = {
+    isOpen: false,
+    isLoading: false,
+    suggestions: [],
+    canCreate: false,
+    highlightedIndex: -1,
+    requestToken: 0,
+    debounceTimer: null
+};
 
 function timestampNow() {
     return new Date().toISOString();
@@ -1166,8 +1176,11 @@ const libraryState = {
     searchQuery: '',
     currentPage: 1,
     itemsPerPage: 50,
+    isMobileViewport: false,
+    mobileFiltersOpen: false,
     totalItems: 0,
     selectedTracks: new Set(),
+    expandedTrackCards: new Set(),
     multiSelectMode: false,
     currentData: {
         artists: [],
@@ -1184,6 +1197,313 @@ libraryState.trackMap = new Map();
 // Helper to cache tracks
 function cacheTracks(tracks) {
     tracks.forEach(track => libraryState.trackMap.set(track.id, track));
+}
+
+function isMobileLibraryViewport() {
+    return window.innerWidth < LIBRARY_MOBILE_BREAKPOINT_PX;
+}
+
+function getLibraryItemsPerPage() {
+    return isMobileLibraryViewport() ? 20 : 50;
+}
+
+function formatTrackDuration(seconds) {
+    const totalSeconds = Number(seconds);
+    if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return '';
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const secs = Math.floor(totalSeconds % 60);
+    if (hours > 0) {
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+    return `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
+function formatTrackTertiaryMeta(track) {
+    const parts = [];
+    if (track.year) parts.push(String(track.year));
+    if (track.track_number) parts.push(`#${track.track_number}`);
+    const durationLabel = formatTrackDuration(track.duration);
+    if (durationLabel) parts.push(durationLabel);
+    return parts.join(' • ');
+}
+
+function isTrackContextActive() {
+    return (
+        libraryState.currentView === 'tracks' ||
+        (libraryState.detailContext && ['album', 'genre'].includes(libraryState.detailContext.type))
+    );
+}
+
+function rerenderActiveTrackContext() {
+    if (!isTrackContextActive()) return;
+    renderTracks(libraryState.currentData.tracks);
+    if (libraryState.detailContext?.type === 'album') {
+        injectSelectAlbumButton(libraryState.currentData.tracks);
+    }
+}
+
+function resetLibraryArtistComboboxState() {
+    clearTimeout(libraryArtistComboboxState.debounceTimer);
+    libraryArtistComboboxState.requestToken += 1;
+    libraryArtistComboboxState.isOpen = false;
+    libraryArtistComboboxState.isLoading = false;
+    libraryArtistComboboxState.suggestions = [];
+    libraryArtistComboboxState.canCreate = false;
+    libraryArtistComboboxState.highlightedIndex = -1;
+    renderLibraryArtistSuggestions();
+}
+
+function getLibraryArtistOptions(inputValue) {
+    const options = (libraryArtistComboboxState.suggestions || []).map(suggestion => ({
+        type: 'existing',
+        id: suggestion.id,
+        name: suggestion.name,
+        score: Number(suggestion.score || 0)
+    }));
+
+    const trimmedInput = String(inputValue || '').trim();
+    if (libraryArtistComboboxState.canCreate && trimmedInput.length > 0) {
+        const normalizedInput = normalizeArtistClient(trimmedInput);
+        const hasEquivalent = options.some(option => normalizeArtistClient(option.name) === normalizedInput);
+        if (!hasEquivalent) {
+            options.push({
+                type: 'create',
+                id: null,
+                name: trimmedInput,
+                score: 0
+            });
+        }
+    }
+
+    return options;
+}
+
+function renderLibraryArtistSuggestions() {
+    const input = document.getElementById('batchArtist');
+    const suggestionsEl = document.getElementById('libraryArtistSuggestions');
+    const toggleBtn = document.getElementById('libraryArtistDropdownToggle');
+    if (!input || !suggestionsEl || !toggleBtn) return;
+
+    if (!libraryArtistComboboxState.isOpen) {
+        suggestionsEl.classList.remove('show');
+        suggestionsEl.innerHTML = '';
+        input.setAttribute('aria-expanded', 'false');
+        toggleBtn.classList.remove('open');
+        return;
+    }
+
+    suggestionsEl.classList.add('show');
+    input.setAttribute('aria-expanded', 'true');
+    toggleBtn.classList.add('open');
+
+    if (libraryArtistComboboxState.isLoading) {
+        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">جاري البحث...</div>';
+        return;
+    }
+
+    const options = getLibraryArtistOptions(input.value);
+    if (options.length === 0) {
+        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">لا توجد نتائج مطابقة</div>';
+        return;
+    }
+
+    if (
+        libraryArtistComboboxState.highlightedIndex < 0 ||
+        libraryArtistComboboxState.highlightedIndex >= options.length
+    ) {
+        libraryArtistComboboxState.highlightedIndex = 0;
+    }
+
+    suggestionsEl.innerHTML = options.map((option, index) => `
+        <div
+            class="artist-suggestion-item ${index === libraryArtistComboboxState.highlightedIndex ? 'active' : ''} ${option.type === 'create' ? 'create-option' : ''}"
+            role="option"
+            aria-selected="${index === libraryArtistComboboxState.highlightedIndex}"
+            data-index="${index}"
+        >
+            <span class="artist-suggestion-name">
+                ${option.type === 'create' ? `استخدام اسم جديد: ${escapeHtml(option.name)}` : escapeHtml(option.name)}
+            </span>
+            ${option.type === 'existing' ? `<span class="artist-suggestion-score">${Math.round(option.score)}</span>` : ''}
+        </div>
+    `).join('');
+
+    suggestionsEl.querySelectorAll('.artist-suggestion-item').forEach(optionEl => {
+        optionEl.addEventListener('mousedown', event => {
+            event.preventDefault();
+        });
+        optionEl.addEventListener('click', () => {
+            const optionIndex = Number(optionEl.dataset.index);
+            const selectedOption = options[optionIndex];
+            if (selectedOption) {
+                selectLibraryArtistOption(selectedOption);
+            }
+        });
+    });
+}
+
+function closeLibraryArtistDropdown() {
+    libraryArtistComboboxState.isOpen = false;
+    libraryArtistComboboxState.highlightedIndex = -1;
+    renderLibraryArtistSuggestions();
+}
+
+async function requestLibraryArtistSuggestions(query) {
+    libraryArtistComboboxState.requestToken += 1;
+    const currentToken = libraryArtistComboboxState.requestToken;
+    libraryArtistComboboxState.isLoading = true;
+    renderLibraryArtistSuggestions();
+
+    try {
+        const data = await fetchArtistSuggestions(query, ARTIST_SUGGEST_LIMIT);
+        if (libraryArtistComboboxState.requestToken !== currentToken) return;
+
+        libraryArtistComboboxState.suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+        libraryArtistComboboxState.canCreate = Boolean(data.canCreate);
+
+        if (
+            query &&
+            libraryArtistComboboxState.suggestions.length > 0 &&
+            Number(libraryArtistComboboxState.suggestions[0].score || 0) < ARTIST_CREATE_THRESHOLD
+        ) {
+            libraryArtistComboboxState.canCreate = true;
+        }
+
+        libraryArtistComboboxState.highlightedIndex =
+            libraryArtistComboboxState.suggestions.length > 0 ? 0 : -1;
+    } catch (error) {
+        logEvent('warn', 'Library artist suggestion lookup failed', {error: error.message});
+        libraryArtistComboboxState.suggestions = [];
+        libraryArtistComboboxState.canCreate = false;
+        libraryArtistComboboxState.highlightedIndex = -1;
+    } finally {
+        if (libraryArtistComboboxState.requestToken === currentToken) {
+            libraryArtistComboboxState.isLoading = false;
+            renderLibraryArtistSuggestions();
+        }
+    }
+}
+
+function queueLibraryArtistSuggestions(query) {
+    clearTimeout(libraryArtistComboboxState.debounceTimer);
+    libraryArtistComboboxState.debounceTimer = setTimeout(() => {
+        requestLibraryArtistSuggestions(query);
+    }, ARTIST_SUGGEST_DEBOUNCE_MS);
+}
+
+function openLibraryArtistDropdown() {
+    const modal = document.getElementById('batchEditModal');
+    if (!modal || modal.style.display !== 'flex') return;
+    libraryArtistComboboxState.isOpen = true;
+    renderLibraryArtistSuggestions();
+    const input = document.getElementById('batchArtist');
+    queueLibraryArtistSuggestions(input ? input.value : '');
+}
+
+function navigateLibraryArtistSuggestions(direction) {
+    const input = document.getElementById('batchArtist');
+    if (!input) return;
+    const options = getLibraryArtistOptions(input.value);
+    if (options.length === 0) return;
+
+    if (libraryArtistComboboxState.highlightedIndex < 0) {
+        libraryArtistComboboxState.highlightedIndex = 0;
+    } else {
+        libraryArtistComboboxState.highlightedIndex =
+            (libraryArtistComboboxState.highlightedIndex + direction + options.length) % options.length;
+    }
+    renderLibraryArtistSuggestions();
+}
+
+function selectLibraryArtistOption(option) {
+    const input = document.getElementById('batchArtist');
+    if (!input || !option) return;
+    input.value = option.name;
+    closeLibraryArtistDropdown();
+}
+
+function handleLibraryArtistInputKeydown(event) {
+    const input = document.getElementById('batchArtist');
+    if (!input) return;
+    const options = getLibraryArtistOptions(input.value);
+
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        if (!libraryArtistComboboxState.isOpen) {
+            openLibraryArtistDropdown();
+        } else {
+            navigateLibraryArtistSuggestions(1);
+        }
+        return;
+    }
+
+    if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        if (!libraryArtistComboboxState.isOpen) {
+            openLibraryArtistDropdown();
+        } else {
+            navigateLibraryArtistSuggestions(-1);
+        }
+        return;
+    }
+
+    if ((event.key === 'Enter' || event.key === 'Tab') && libraryArtistComboboxState.isOpen && options.length > 0) {
+        const optionIndex = libraryArtistComboboxState.highlightedIndex >= 0
+            ? libraryArtistComboboxState.highlightedIndex
+            : 0;
+        const option = options[optionIndex];
+        if (option) {
+            event.preventDefault();
+            selectLibraryArtistOption(option);
+        }
+        return;
+    }
+
+    if (event.key === 'Escape' && libraryArtistComboboxState.isOpen) {
+        event.preventDefault();
+        closeLibraryArtistDropdown();
+    }
+}
+
+function setupLibraryArtistCombobox() {
+    if (window.libraryArtistComboboxAttached) return;
+
+    const input = document.getElementById('batchArtist');
+    const toggleBtn = document.getElementById('libraryArtistDropdownToggle');
+    if (!input || !toggleBtn) return;
+
+    input.addEventListener('focus', () => {
+        openLibraryArtistDropdown();
+    });
+
+    input.addEventListener('click', () => {
+        openLibraryArtistDropdown();
+    });
+
+    input.addEventListener('input', () => {
+        queueLibraryArtistSuggestions(input.value);
+    });
+
+    input.addEventListener('keydown', handleLibraryArtistInputKeydown);
+
+    input.addEventListener('blur', () => {
+        setTimeout(() => {
+            closeLibraryArtistDropdown();
+        }, 120);
+    });
+
+    toggleBtn.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (libraryArtistComboboxState.isOpen) {
+            closeLibraryArtistDropdown();
+        } else {
+            openLibraryArtistDropdown();
+        }
+    });
+
+    window.libraryArtistComboboxAttached = true;
 }
 
 // Router
@@ -1208,6 +1528,10 @@ function initRouter() {
             // Initial load only if empty
             if (libraryState.totalItems === 0 && libraryState.currentData.tracks.length === 0) {
                 initLibrary();
+            } else {
+                updateMobileFilterControls();
+                updateSelectionBar();
+                rerenderActiveTrackContext();
             }
         } else {
             pendingPage.style.display = 'block';
@@ -1221,6 +1545,10 @@ function initRouter() {
 
 // Initialize Library
 async function initLibrary() {
+    libraryState.isMobileViewport = isMobileLibraryViewport();
+    libraryState.itemsPerPage = getLibraryItemsPerPage();
+    updateMobileFilterControls();
+
     // Load stats
     await loadLibraryStats();
     
@@ -1234,8 +1562,32 @@ async function initLibrary() {
     }
 }
 
+function updateMobileFilterControls() {
+    const toggleBtn = document.getElementById('mobileFiltersToggle');
+    const advancedControls = document.getElementById('libraryAdvancedControls');
+    if (!toggleBtn || !advancedControls) return;
+
+    if (isMobileLibraryViewport()) {
+        toggleBtn.style.display = 'inline-flex';
+        advancedControls.classList.toggle('open', libraryState.mobileFiltersOpen);
+        toggleBtn.setAttribute('aria-expanded', String(libraryState.mobileFiltersOpen));
+    } else {
+        toggleBtn.style.display = 'none';
+        advancedControls.classList.add('open');
+        toggleBtn.setAttribute('aria-expanded', 'true');
+    }
+}
+
 // Setup Library Event Listeners
 function setupLibraryListeners() {
+    const mobileFiltersToggle = document.getElementById('mobileFiltersToggle');
+    if (mobileFiltersToggle) {
+        mobileFiltersToggle.addEventListener('click', () => {
+            libraryState.mobileFiltersOpen = !libraryState.mobileFiltersOpen;
+            updateMobileFilterControls();
+        });
+    }
+
     // View tabs
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -1313,6 +1665,14 @@ function setupLibraryListeners() {
     if (cancelBatchEdit) {
         cancelBatchEdit.addEventListener('click', closeEditModal);
     }
+
+    setupLibraryArtistCombobox();
+
+    document.addEventListener('click', event => {
+        if (!event.target.closest('#libraryEditArtistCombobox')) {
+            closeLibraryArtistDropdown();
+        }
+    });
     
     // Back button
     const backBtn = document.getElementById('backBtn');
@@ -1327,16 +1687,44 @@ function setupLibraryListeners() {
         libraryState.detailContext = null;
     });
 
+    let libraryResizeTimer = null;
+    window.addEventListener('resize', () => {
+        clearTimeout(libraryResizeTimer);
+        libraryResizeTimer = setTimeout(() => {
+            const wasMobile = libraryState.isMobileViewport;
+            const isMobile = isMobileLibraryViewport();
+            libraryState.isMobileViewport = isMobile;
+            libraryState.itemsPerPage = getLibraryItemsPerPage();
+
+            if (!isMobile) {
+                libraryState.mobileFiltersOpen = false;
+            }
+            updateMobileFilterControls();
+            updateSelectionBar();
+
+            if (wasMobile !== isMobile && document.getElementById('libraryPage')?.style.display === 'block') {
+                libraryState.currentPage = 1;
+                loadViewData();
+            } else if (isTrackContextActive()) {
+                rerenderActiveTrackContext();
+            }
+        }, 150);
+    });
+
     // Global Key Listener (Escape)
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (document.getElementById('batchEditModal').style.display === 'flex') {
+            if (libraryArtistComboboxState.isOpen) {
+                closeLibraryArtistDropdown();
+            } else if (document.getElementById('batchEditModal').style.display === 'flex') {
                 closeEditModal();
             } else if (document.getElementById('detailView').style.display === 'block') {
                 document.getElementById('backBtn').click();
             }
         }
     });
+
+    updateMobileFilterControls();
 }
 
 // Load Library Stats
@@ -1362,6 +1750,7 @@ async function loadViewData() {
     const view = libraryState.currentView;
     const [sortBy, sortOrder] = libraryState.currentSort.split('-');
     const search = libraryState.searchQuery;
+    libraryState.itemsPerPage = getLibraryItemsPerPage();
     
     // Pagination params
     const limit = libraryState.itemsPerPage;
@@ -1501,19 +1890,19 @@ function updateSortOptions() {
         artists: [
             {value: 'name-asc', label: 'الاسم (أ - ي)'},
             {value: 'name-desc', label: 'الاسم (ي - أ)'},
-            {value: 'track_count-desc', label: 'عدد الأغاني'},
+            {value: 'track_count-desc', label: 'عدد الصوتيات'},
             {value: 'album_count-desc', label: 'عدد الألبومات'}
         ],
         albums: [
             {value: 'name-asc', label: 'الاسم (أ - ي)'},
             {value: 'name-desc', label: 'الاسم (ي - أ)'},
             {value: 'year-desc', label: 'السنة (الأحدث)'},
-            {value: 'track_count-desc', label: 'عدد الأغاني'}
+            {value: 'track_count-desc', label: 'عدد الصوتيات'}
         ],
         genres: [
             {value: 'name-asc', label: 'الاسم (أ - ي)'},
             {value: 'name-desc', label: 'الاسم (ي - أ)'},
-            {value: 'track_count-desc', label: 'عدد الأغاني'}
+            {value: 'track_count-desc', label: 'عدد الصوتيات'}
         ],
         tracks: [
             {value: 'artist-asc', label: 'الفنان'},
@@ -1591,32 +1980,17 @@ function renderGenres(genres) {
     `).join('');
 }
 
-// Render Tracks
-function renderTracks(tracks, showCheckboxes = true) {
-    const container = libraryState.detailContext 
-        ? document.getElementById('detailContent')
-        : document.getElementById('tracksList');
-    
-    if (tracks.length === 0) {
-        container.innerHTML = '<div class="empty-state"><p>لا توجد أغاني</p></div>';
-        return;
-    }
-    
-    // Helper to escape JSON for attribute
-    const escapeAttr = (str) => (str || '').replace(/"/g, '&quot;');
-    
-    container.innerHTML = tracks.map(track => {
-        // Safe JSON stringify for data attribute
+function renderDesktopTrackList(tracks) {
+    return tracks.map(track => {
         const trackJson = JSON.stringify(track).replace(/'/g, "&#39;");
         const isSelected = libraryState.selectedTracks.has(track.id);
-        
         return `
         <div class="list-item ${isSelected ? 'selected' : ''}" data-track-id="${track.id}" data-track-json='${trackJson}' onclick="handleTrackClick(event, this)">
             ${libraryState.multiSelectMode ? `<input type="checkbox" class="list-item-checkbox" data-track-id="${track.id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation()">` : ''}
             <div class="list-item-content">
                 <div class="list-item-title">${track.title || 'بدون عنوان'}</div>
                 <div class="list-item-meta">
-                    ${track.artist || 'غير معروف'} • 
+                    ${track.artist || 'غير معروف'} •
                     ${track.album || 'غير معروف'}
                     ${track.year ? ' • ' + track.year : ''}
                 </div>
@@ -1625,11 +1999,127 @@ function renderTracks(tracks, showCheckboxes = true) {
         </div>
         `;
     }).join('');
-    
-    // Checkbox listeners now inline to stop propagation
+}
+
+function renderMobileTrackCards(tracks) {
+    return tracks.map(track => {
+        const trackJson = JSON.stringify(track).replace(/'/g, "&#39;");
+        const isSelected = libraryState.selectedTracks.has(track.id);
+        const isExpanded = libraryState.expandedTrackCards.has(track.id);
+        const tertiaryMeta = formatTrackTertiaryMeta(track) || 'بدون بيانات إضافية';
+        const fileName = String(track.file_path || '').split('/').pop() || '';
+
+        return `
+        <div class="list-item track-mobile-card ${isSelected ? 'selected' : ''}" data-track-id="${track.id}" data-track-json='${trackJson}' onclick="handleTrackClick(event, this)">
+            <div class="track-mobile-main">
+                <div class="track-mobile-title-row">
+                    <div class="list-item-title">${track.title || 'بدون عنوان'}</div>
+                    ${libraryState.multiSelectMode ? `<input type="checkbox" class="list-item-checkbox track-mobile-checkbox" data-track-id="${track.id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation()">` : ''}
+                </div>
+                <div class="track-mobile-secondary">${track.artist || 'غير معروف'}</div>
+                <div class="track-mobile-secondary">${track.album || 'غير معروف'}</div>
+                <div class="track-mobile-tertiary">${tertiaryMeta}</div>
+                ${isExpanded ? `
+                <div class="track-mobile-details">
+                    <div>${track.genre || 'بدون نوع'}</div>
+                    <div>${escapeHtml(fileName)}</div>
+                </div>
+                ` : ''}
+            </div>
+            <div class="track-mobile-actions">
+                <button type="button" class="btn-secondary track-mobile-action" data-action="edit" data-track-id="${track.id}">
+                    تعديل
+                </button>
+                ${
+                    libraryState.multiSelectMode
+                        ? `<button type="button" class="btn-secondary track-mobile-action" data-action="toggle-select" data-track-id="${track.id}">${isSelected ? 'إلغاء' : 'تحديد'}</button>`
+                        : `<button type="button" class="btn-secondary track-mobile-action" data-action="more" data-track-id="${track.id}">${isExpanded ? 'أقل' : 'المزيد'}</button>`
+                }
+            </div>
+            ${isSelected && libraryState.multiSelectMode ? '<span class="selection-check">✓</span>' : ''}
+        </div>
+        `;
+    }).join('');
+}
+
+// Render Tracks
+function renderTracks(tracks) {
+    const container = libraryState.detailContext
+        ? document.getElementById('detailContent')
+        : document.getElementById('tracksList');
+
+    if (!container) return;
+
+    const activeTrackIds = new Set(tracks.map(track => track.id));
+    for (const trackId of Array.from(libraryState.expandedTrackCards)) {
+        if (!activeTrackIds.has(trackId)) {
+            libraryState.expandedTrackCards.delete(trackId);
+        }
+    }
+
+    if (tracks.length === 0) {
+        container.innerHTML = '<div class="empty-state show"><p>لا توجد صوتيات</p></div>';
+        return;
+    }
+
+    container.classList.add('items-list');
+    const useMobileCards = isMobileLibraryViewport();
+    container.classList.toggle('tracks-mobile-list', useMobileCards);
+    container.classList.toggle('tracks-desktop-list', !useMobileCards);
+    container.innerHTML = useMobileCards ? renderMobileTrackCards(tracks) : renderDesktopTrackList(tracks);
+
     container.querySelectorAll('.list-item-checkbox').forEach(cb => {
         cb.addEventListener('change', handleTrackSelection);
     });
+
+    container.querySelectorAll('.track-mobile-action').forEach(btn => {
+        btn.addEventListener('click', handleTrackMobileAction);
+    });
+}
+
+function toggleTrackSelection(trackId) {
+    if (libraryState.selectedTracks.has(trackId)) {
+        libraryState.selectedTracks.delete(trackId);
+    } else {
+        libraryState.selectedTracks.add(trackId);
+    }
+}
+
+function getTrackDataById(trackId) {
+    return libraryState.trackMap.get(trackId) || libraryState.currentData.tracks.find(track => track.id === trackId) || null;
+}
+
+function handleTrackMobileAction(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const action = event.currentTarget.dataset.action;
+    const trackId = parseInt(event.currentTarget.dataset.trackId, 10);
+    if (!Number.isInteger(trackId)) return;
+
+    if (action === 'edit') {
+        const trackData = getTrackDataById(trackId);
+        if (trackData) {
+            showEditModal('single', trackData);
+        }
+        return;
+    }
+
+    if (action === 'toggle-select') {
+        toggleTrackSelection(trackId);
+        updateSelectionBar();
+        rerenderActiveTrackContext();
+        return;
+    }
+
+    if (action === 'more') {
+        if (libraryState.expandedTrackCards.has(trackId)) {
+            libraryState.expandedTrackCards.delete(trackId);
+        } else {
+            libraryState.expandedTrackCards.add(trackId);
+        }
+        rerenderActiveTrackContext();
+    }
 }
 
 // Handle Track Click (Single Edit or Selection Toggle)
@@ -1641,27 +2131,11 @@ function handleTrackClick(event, element) {
     const trackData = JSON.parse(element.dataset.trackJson || '{}');
     
     if (libraryState.multiSelectMode) {
-        // In multi-select mode, toggle selection
-        if (libraryState.selectedTracks.has(trackId)) {
-            libraryState.selectedTracks.delete(trackId);
-        } else {
-            libraryState.selectedTracks.add(trackId);
-        }
+        toggleTrackSelection(trackId);
         updateSelectionBar();
-        // Re-render to update visual state
-        const tracks = libraryState.detailContext 
-            ? libraryState.currentData.tracks 
-            : libraryState.currentData.tracks;
-        if (libraryState.detailContext) {
-            // In detail view, we need to get the tracks from the API cache
-            renderTracks(Array.from(libraryState.trackMap.values()).filter(t => 
-                libraryState.currentData.tracks.some(ct => ct.id === t.id)
-            ));
-        } else {
-            renderTracks(libraryState.currentData.tracks);
-        }
+        rerenderActiveTrackContext();
     } else {
-        // Not in multi-select mode, open edit modal
+        libraryState.expandedTrackCards.delete(trackId);
         showEditModal('single', trackData);
     }
 }
@@ -1703,6 +2177,30 @@ async function viewArtistAlbums(artistName) {
     }
 }
 
+function injectSelectAlbumButton(tracks) {
+    if (libraryState.detailContext?.type !== 'album') return;
+    const detailContent = document.getElementById('detailContent');
+    if (!detailContent) return;
+
+    const existingBtn = document.getElementById('selectAlbumBtn');
+    if (existingBtn) {
+        existingBtn.remove();
+    }
+
+    detailContent.insertAdjacentHTML('afterbegin', `
+        <button id="selectAlbumBtn" class="btn-secondary select-album-btn" type="button">
+            تحديد جميع الصوتيات (${tracks.length})
+        </button>
+    `);
+
+    const selectAlbumBtn = document.getElementById('selectAlbumBtn');
+    if (selectAlbumBtn) {
+        selectAlbumBtn.addEventListener('click', () => {
+            selectAllAlbumTracks(tracks);
+        });
+    }
+}
+
 // View Album Tracks
 async function viewAlbumTracks(albumName) {
     const name = decodeURIComponent(albumName);
@@ -1719,31 +2217,17 @@ async function viewAlbumTracks(albumName) {
         document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
         const detailView = document.getElementById('detailView');
         detailView.style.display = 'block';
-        document.getElementById('detailTitle').textContent = `أغاني ألبوم ${name}`;
+        document.getElementById('detailTitle').textContent = `صوتيات ألبوم ${name}`;
         
         const detailContent = document.getElementById('detailContent');
         detailContent.className = 'items-list'; // Reset to list layout
         
         cacheTracks(data.tracks);
-        
-        // Add "Select All Album" button before tracks
-        const selectAllBtn = `
-            <button id="selectAlbumBtn" class="btn-secondary" style="margin-bottom: 12px; width: 100%;">
-                تحديد جميع الأغاني (${data.tracks.length})
-            </button>
-        `;
-        
-        // Render tracks then prepend button
         renderTracks(data.tracks);
-        detailContent.insertAdjacentHTML('afterbegin', selectAllBtn);
-        
-        // Attach select all handler
-        document.getElementById('selectAlbumBtn').addEventListener('click', () => {
-            selectAllAlbumTracks(data.tracks);
-        });
+        injectSelectAlbumButton(data.tracks);
     } catch (error) {
         logEvent('error', 'Error loading album tracks', {album: name, error: error.message});
-        showAlert(`فشل تحميل أغاني الألبوم: ${error.message}`, 'error');
+        showAlert(`فشل تحميل صوتيات الألبوم: ${error.message}`, 'error');
     }
 }
 
@@ -1762,21 +2246,10 @@ function selectAllAlbumTracks(tracks) {
     // Clear previous selection and select all tracks in this album
     libraryState.selectedTracks.clear();
     tracks.forEach(track => libraryState.selectedTracks.add(track.id));
+    libraryState.currentData.tracks = tracks;
     
     updateSelectionBar();
-    renderTracks(tracks);
-    
-    // Re-add select all button
-    const detailContent = document.getElementById('detailContent');
-    const selectAllBtn = `
-        <button id="selectAlbumBtn" class="btn-secondary" style="margin-bottom: 12px; width: 100%;">
-            تحديد جميع الأغاني (${tracks.length})
-        </button>
-    `;
-    detailContent.insertAdjacentHTML('afterbegin', selectAllBtn);
-    document.getElementById('selectAlbumBtn').addEventListener('click', () => {
-        selectAllAlbumTracks(tracks);
-    });
+    rerenderActiveTrackContext();
 }
 
 // View Genre Tracks
@@ -1790,17 +2263,18 @@ async function viewGenreTracks(genreName) {
         const data = await response.json();
         
         libraryState.detailContext = {type: 'genre', name: name};
+        libraryState.currentData.tracks = data.tracks;
         
         document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
         const detailView = document.getElementById('detailView');
         detailView.style.display = 'block';
-        document.getElementById('detailTitle').textContent = `أغاني نوع ${name}`;
+        document.getElementById('detailTitle').textContent = `صوتيات نوع ${name}`;
         
         cacheTracks(data.tracks);
         renderTracks(data.tracks);
     } catch (error) {
         logEvent('error', 'Error loading genre tracks', {genre: name, error: error.message});
-        showAlert(`فشل تحميل أغاني النوع: ${error.message}`, 'error');
+        showAlert(`فشل تحميل صوتيات النوع: ${error.message}`, 'error');
     }
 }
 
@@ -1815,6 +2289,7 @@ function handleTrackSelection(event) {
     }
     
     updateSelectionBar();
+    rerenderActiveTrackContext();
 }
 
 // Update Selection Bar
@@ -1831,7 +2306,7 @@ function updateSelectionBar() {
     
     selectionBar.style.display = 'flex';
     // Add padding to prevent selection bar from overlaying content
-    if (libraryPage) libraryPage.style.paddingBottom = '80px';
+    if (libraryPage) libraryPage.style.paddingBottom = isMobileLibraryViewport() ? '132px' : '80px';
     document.getElementById('selectionCount').textContent = count > 0 ? `${count} محدد` : 'اختر العناصر';
     document.getElementById('selectionDetails').textContent = '';
 }
@@ -1839,6 +2314,9 @@ function updateSelectionBar() {
 // Toggle Multi-Select Mode
 function toggleMultiSelectMode() {
     libraryState.multiSelectMode = !libraryState.multiSelectMode;
+    if (!libraryState.multiSelectMode) {
+        libraryState.selectedTracks.clear();
+    }
     
     // Update button text
     const btn = document.getElementById('multiSelectBtn');
@@ -1851,15 +2329,7 @@ function toggleMultiSelectMode() {
     updateSelectionBar();
     
     // Re-render current tracks to show/hide checkboxes
-    if (libraryState.currentView === 'tracks' || libraryState.detailContext) {
-        if (libraryState.detailContext) {
-            renderTracks(Array.from(libraryState.trackMap.values()).filter(t => 
-                libraryState.currentData.tracks.some(ct => ct.id === t.id)
-            ));
-        } else {
-            renderTracks(libraryState.currentData.tracks);
-        }
-    }
+    rerenderActiveTrackContext();
 }
 
 // Clear Selection
@@ -1878,21 +2348,14 @@ function clearSelection() {
     updateSelectionBar();
     
     // Re-render to remove checkboxes
-    if (libraryState.currentView === 'tracks' || libraryState.detailContext) {
-        if (libraryState.detailContext) {
-            renderTracks(Array.from(libraryState.trackMap.values()).filter(t => 
-                libraryState.currentData.tracks.some(ct => ct.id === t.id)
-            ));
-        } else {
-            renderTracks(libraryState.currentData.tracks);
-        }
-    }
+    rerenderActiveTrackContext();
 }
 
 // Show Edit Modal
 function showEditModal(mode, trackData = null) {
     libraryState.editMode = mode;
     libraryState.editTrackData = trackData;
+    resetLibraryArtistComboboxState();
     
     // Reset form
     document.getElementById('batchEditForm').reset();
@@ -2034,6 +2497,7 @@ function showEditModal(mode, trackData = null) {
 
 // Close Edit Modal
 function closeEditModal() {
+    resetLibraryArtistComboboxState();
     document.getElementById('batchEditModal').style.display = 'none';
     libraryState.editMode = null;
     libraryState.editTrackData = null;

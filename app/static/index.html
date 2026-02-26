@@ -101,11 +101,18 @@
 
                 <!-- Search and Sort -->
                 <div class="search-sort-bar">
-                    <input type="text" id="librarySearch" class="search-input" placeholder="بحث...">
-                    <select id="librarySort" class="sort-select">
-                        <option value="name-asc">الاسم (أ - ي)</option>
-                        <option value="name-desc">الاسم (ي - أ)</option>
-                    </select>
+                    <div class="search-row">
+                        <input type="text" id="librarySearch" class="search-input" placeholder="بحث...">
+                        <button id="mobileFiltersToggle" class="btn-secondary mobile-filters-toggle" type="button" aria-expanded="false" aria-controls="libraryAdvancedControls">
+                            الفرز
+                        </button>
+                    </div>
+                    <div id="libraryAdvancedControls" class="library-advanced-controls">
+                        <select id="librarySort" class="sort-select">
+                            <option value="name-asc">الاسم (أ - ي)</option>
+                            <option value="name-desc">الاسم (ي - أ)</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -169,7 +176,23 @@
                     </div>
                     <div class="form-group">
                         <label>الفنان</label>
-                        <input type="text" id="batchArtist" class="field-input">
+                        <div id="libraryEditArtistCombobox" class="library-artist-combobox">
+                            <input
+                                type="text"
+                                id="batchArtist"
+                                class="field-input library-artist-input"
+                                autocomplete="off"
+                                role="combobox"
+                                aria-autocomplete="list"
+                                aria-expanded="false"
+                                aria-haspopup="listbox"
+                                aria-controls="libraryArtistSuggestions"
+                            >
+                            <button type="button" id="libraryArtistDropdownToggle" class="library-artist-dropdown-toggle" aria-label="اقتراحات الفنان">
+                                <span class="artist-dropdown-icon">▾</span>
+                            </button>
+                            <div class="artist-suggestions library-artist-suggestions" id="libraryArtistSuggestions" role="listbox"></div>
+                        </div>
                         <label><input type="checkbox" id="batchArtistKeep" checked> عدم التغيير</label>
                     </div>
                     <div class="form-group">

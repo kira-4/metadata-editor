@@ -805,6 +805,29 @@ body {
 .search-sort-bar {
     display: flex;
     gap: var(--spacing-md);
+    align-items: center;
+}
+
+.search-row {
+    display: flex;
+    gap: var(--spacing-md);
+    flex: 1;
+    align-items: center;
+}
+
+.mobile-filters-toggle {
+    display: none;
+    white-space: nowrap;
+}
+
+.library-advanced-controls {
+    display: flex;
+    align-items: center;
+    min-width: 180px;
+}
+
+.library-advanced-controls .sort-select {
+    width: 100%;
 }
 
 .search-input {
@@ -838,6 +861,12 @@ body {
 .sort-select:focus {
     outline: none;
     border-color: var(--accent-primary);
+}
+
+.select-album-btn {
+    margin-bottom: 12px;
+    width: 100%;
+    min-height: 44px;
 }
 
 /* View Content */
@@ -891,6 +920,48 @@ body {
 .list-item-meta {
     font-size: 0.85rem;
     color: var(--text-secondary);
+}
+
+.track-mobile-card .track-mobile-actions,
+.track-mobile-card .track-mobile-tertiary,
+.track-mobile-card .track-mobile-secondary,
+.track-mobile-card .track-mobile-details {
+    display: none;
+}
+
+.library-artist-combobox {
+    position: relative;
+}
+
+.library-artist-combobox .library-artist-input {
+    padding-inline-start: 2.2rem;
+}
+
+.library-artist-dropdown-toggle {
+    position: absolute;
+    inset-inline-start: 0.35rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1.6rem;
+    height: 1.6rem;
+    border: none;
+    border-radius: 0.35rem;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.library-artist-dropdown-toggle:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.library-artist-dropdown-toggle.open .artist-dropdown-icon {
+    transform: rotate(180deg);
 }
 
 /* Albums Grid */
@@ -1146,4 +1217,216 @@ body {
     font-weight: 600;
     display: inline-block;
     margin-bottom: var(--spacing-sm);
+}
+
+@media (max-width: 768px) {
+    .library-controls {
+        position: sticky;
+        top: 0.5rem;
+        z-index: 90;
+        padding: var(--spacing-md);
+        margin-bottom: var(--spacing-md);
+    }
+
+    .library-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--spacing-sm);
+        margin-bottom: var(--spacing-md);
+    }
+
+    .library-header h2 {
+        font-size: 1.35rem;
+    }
+
+    .library-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--spacing-sm);
+    }
+
+    .library-actions .btn-secondary {
+        min-height: 44px;
+    }
+
+    .library-stats {
+        grid-column: 1 / -1;
+        text-align: center;
+    }
+
+    .view-tabs {
+        overflow-x: auto;
+        white-space: nowrap;
+        gap: var(--spacing-xs);
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .tab-btn {
+        flex: 0 0 auto;
+        min-height: 44px;
+        padding: 0.5rem 0.9rem;
+        font-size: 0.95rem;
+    }
+
+    .search-sort-bar {
+        flex-direction: column;
+        gap: var(--spacing-sm);
+    }
+
+    .search-row {
+        width: 100%;
+        gap: var(--spacing-sm);
+    }
+
+    .search-input {
+        min-height: 44px;
+    }
+
+    .mobile-filters-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding-inline: var(--spacing-md);
+    }
+
+    .library-advanced-controls {
+        display: none;
+        width: 100%;
+    }
+
+    .library-advanced-controls.open {
+        display: block;
+    }
+
+    .library-advanced-controls .sort-select {
+        width: 100%;
+        min-height: 44px;
+    }
+
+    .albums-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--spacing-sm);
+    }
+
+    .track-mobile-card {
+        display: block;
+        position: relative;
+        padding: var(--spacing-sm);
+    }
+
+    .track-mobile-card .track-mobile-main {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+    }
+
+    .track-mobile-card .track-mobile-title-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: var(--spacing-sm);
+    }
+
+    .track-mobile-card .track-mobile-secondary {
+        display: block;
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        line-height: 1.35;
+    }
+
+    .track-mobile-card .track-mobile-tertiary {
+        display: block;
+        font-size: 0.82rem;
+        color: var(--text-muted);
+        margin-top: 0.1rem;
+    }
+
+    .track-mobile-card .track-mobile-details {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        margin-top: var(--spacing-xs);
+        padding-top: var(--spacing-xs);
+        border-top: 1px solid var(--border-color);
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        direction: ltr;
+        text-align: left;
+    }
+
+    .track-mobile-card .track-mobile-actions {
+        display: flex;
+        gap: var(--spacing-sm);
+        margin-top: var(--spacing-sm);
+    }
+
+    .track-mobile-card .track-mobile-action {
+        flex: 1;
+        min-height: 44px;
+        font-size: 0.92rem;
+        padding: 0.45rem var(--spacing-sm);
+    }
+
+    .track-mobile-card .track-mobile-checkbox {
+        width: 22px;
+        height: 22px;
+    }
+
+    .track-mobile-card .selection-check {
+        position: absolute;
+        top: var(--spacing-xs);
+        inset-inline-end: var(--spacing-xs);
+        margin: 0;
+    }
+
+    .selection-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--spacing-sm);
+        padding: var(--spacing-sm) var(--spacing-md);
+    }
+
+    .selection-info {
+        justify-content: space-between;
+        gap: var(--spacing-sm);
+    }
+
+    .selection-actions {
+        gap: var(--spacing-sm);
+    }
+
+    .selection-actions button {
+        flex: 1;
+        min-height: 44px;
+    }
+
+    .modal {
+        align-items: flex-end;
+        padding: 0;
+    }
+
+    .modal-content {
+        width: 100%;
+        max-width: none;
+        max-height: 88vh;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        padding: var(--spacing-lg);
+    }
+
+    .modal-actions {
+        position: sticky;
+        bottom: 0;
+        background: var(--bg-secondary);
+        padding-top: var(--spacing-sm);
+        border-top: 1px solid var(--border-color);
+    }
+
+    .modal-actions button {
+        min-height: 44px;
+    }
+
+    .field-input {
+        min-height: 44px;
+    }
 }
