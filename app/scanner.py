@@ -132,10 +132,14 @@ class FileScanner:
             logger.warning(f"Incoming directory does not exist: {config.INCOMING_ROOT}")
             return audio_files
         
-        # Recursively find audio files
-        for ext in config.AUDIO_EXTENSIONS:
-            audio_files.extend(config.INCOMING_ROOT.rglob(f"*{ext}"))
-        
+        # Recursively find audio files — use case-insensitive suffix comparison so
+        # files with uppercase extensions (e.g. .MP3, .M4A) are not silently skipped
+        # on Linux's case-sensitive filesystem.
+        audio_files = [
+            f for f in config.INCOMING_ROOT.rglob("*")
+            if f.is_file() and f.suffix.lower() in config.AUDIO_EXTENSIONS
+        ]
+
         return audio_files
     
     def process_file(self, file_path: Path):
@@ -327,8 +331,8 @@ class FileScanner:
             if staging_dir and staging_dir.exists():
                 try:
                     shutil.rmtree(staging_dir)
-                except:
-                    pass
+                except Exception as cleanup_err:
+                    logger.warning(f"Failed to clean up staging dir {staging_dir}: {cleanup_err}")
         finally:
             db.close()
     

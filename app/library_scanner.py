@@ -12,7 +12,7 @@ from mutagen.oggvorbis import OggVorbis
 from sqlalchemy.orm import Session
 
 from app.config import config
-from app.database import get_db, LibraryManager
+from app.database import SessionLocal, LibraryManager
 from app.metadata_processor import metadata_processor
 
 logger = logging.getLogger(__name__)
@@ -55,10 +55,10 @@ class LibraryScanner:
         try:
             logger.info(f"Starting library scan of {config.NAVIDROME_ROOT}")
             
-            # Get database session
-            db_gen = get_db()
-            db: Session = next(db_gen)
-            
+            # Get database session directly — avoids misuse of the get_db() generator
+            # which is designed for FastAPI's dependency injection, not manual use.
+            db: Session = SessionLocal()
+
             try:
                 # Find all audio files
                 audio_files = []
@@ -278,8 +278,8 @@ class LibraryScanner:
                         audio.add_tags()
                     except ID3NoHeaderError:
                         pass
-                    except Exception:
-                        pass # Should have tags now
+                    except Exception as e:
+                        logger.warning(f"Could not add ID3 tags to {file_path}: {e}")
                 
                 # Standardize as ID3 if possible, or use the object capabilities
                 # If it's an MP3 file, audio.tags is explicitly ID3 usually
