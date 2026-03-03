@@ -324,19 +324,22 @@ async function init() {
         clearInterval(pendingPollTimer);
     }
     pendingPollTimer = setInterval(() => {
-        loadPendingItems({silent: true});
+        loadPendingItems({silent: true, smartUpdate: true});
     }, 15000);
 }
 
 // Load pending items from API
 async function loadPendingItems(options = {}) {
-    const {showLoading = false, silent = false} = options;
+    const {showLoading = false, silent = false, smartUpdate = false} = options;
     const focusSnapshot = captureFocusSnapshot();
 
     try {
         const container = document.getElementById('pendingItems');
         if (showLoading && container) {
-            container.innerHTML = '<div class="loading"><span class="spinning">🔄</span> جاري تحميل الملفات...</div>';
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'loading';
+            loadingDiv.textContent = 'جاري تحميل الملفات...';
+            container.replaceChildren(loadingDiv);
         }
 
         const response = await fetch(`${API_BASE}/pending`);
@@ -344,29 +347,123 @@ async function loadPendingItems(options = {}) {
             const detail = await parseApiError(response, 'فشل تحميل قائمة الانتظار');
             throw new Error(detail);
         }
-        
-        pendingItems = await response.json();
-        pendingItems.forEach(item => {
-            if (artistDraftValues.has(item.id)) {
-                item.current_artist = artistDraftValues.get(item.id);
-            }
-            if (titleDraftValues.has(item.id)) {
-                item.current_title = titleDraftValues.get(item.id);
-            }
-        });
-        pendingItems.forEach(item => {
-            if (item.genre && item.genre.trim()) {
-                selectedGenres[item.id] = item.genre.trim();
-            }
-        });
 
-        renderItems({focusSnapshot});
+        const freshItems = await response.json();
+
+        if (smartUpdate) {
+            smartUpdatePendingList(freshItems, focusSnapshot);
+        } else {
+            pendingItems = freshItems;
+            pendingItems.forEach(item => {
+                if (artistDraftValues.has(item.id)) {
+                    item.current_artist = artistDraftValues.get(item.id);
+                }
+                if (titleDraftValues.has(item.id)) {
+                    item.current_title = titleDraftValues.get(item.id);
+                }
+            });
+            pendingItems.forEach(item => {
+                if (item.genre && item.genre.trim()) {
+                    selectedGenres[item.id] = item.genre.trim();
+                }
+            });
+            renderItems({focusSnapshot});
+        }
+
         if (!silent) {
             logEvent('info', `تم تحميل قائمة الانتظار (${pendingItems.length}) عنصر`);
         }
     } catch (error) {
         logEvent('error', 'فشل تحميل قائمة الانتظار', {error: error.message});
         showAlert(`فشل تحميل قائمة الانتظار: ${error.message}`, 'error');
+    }
+}
+
+// Surgically add/remove cards without touching existing ones
+function smartUpdatePendingList(freshItems, focusSnapshot = null) {
+    const container = document.getElementById('pendingItems');
+    if (!container) return;
+
+    const oldIds = new Set(pendingItems.map(i => i.id));
+    const newIds = new Set(freshItems.map(i => i.id));
+
+    // Apply draft values to fresh data
+    freshItems.forEach(item => {
+        if (artistDraftValues.has(item.id)) item.current_artist = artistDraftValues.get(item.id);
+        if (titleDraftValues.has(item.id)) item.current_title = titleDraftValues.get(item.id);
+        if (item.genre && item.genre.trim()) selectedGenres[item.id] = item.genre.trim();
+    });
+
+    pendingItems = freshItems;
+
+    // Remove cards no longer in the list
+    oldIds.forEach(id => {
+        if (!newIds.has(id)) {
+            removeItemCardFromDOM(id, container);
+        }
+    });
+
+    // Add genuinely new cards at the top (createItemCard uses escapeHtml for all user data)
+    // eslint-disable-next-line no-unsanitized/method
+    freshItems.forEach(item => {
+        if (!oldIds.has(item.id)) {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = createItemCard(item); // createItemCard escapes all user-provided values
+            const newCard = tmp.firstElementChild;
+            container.prepend(newCard);
+            attachItemListeners(item.id);
+            updateConfirmButton(item.id);
+        }
+    });
+
+    updatePendingCountUI();
+    cleanupArtistState();
+
+    if (focusSnapshot) {
+        restoreFocusSnapshot(focusSnapshot);
+    }
+}
+
+// Remove a single item card from the DOM with a fade-out, no API call needed
+function removeItemCardFromDOM(itemId, container) {
+    const card = (container || document).querySelector(`.item-card[data-id="${itemId}"]`);
+    if (card) {
+        card.classList.add('card-removing');
+        setTimeout(() => {
+            if (card.parentNode) card.parentNode.removeChild(card);
+        }, 300);
+    }
+    pendingItems = pendingItems.filter(i => i.id !== itemId);
+    artistComboboxState.delete(itemId);
+    artistDraftValues.delete(itemId);
+    titleDraftValues.delete(itemId);
+    delete selectedGenres[itemId];
+    delete customGenreVisible[itemId];
+    updatePendingCountUI();
+}
+
+// Update badge, count, and empty-state without touching item cards
+function updatePendingCountUI() {
+    const badge = document.getElementById('pendingBadge');
+    const itemCount = document.getElementById('itemCount');
+    const emptyState = document.getElementById('emptyState');
+    const container = document.getElementById('pendingItems');
+
+    if (badge) {
+        if (pendingItems.length > 0) {
+            badge.textContent = pendingItems.length;
+            badge.style.display = 'inline-flex';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+    if (pendingItems.length === 0) {
+        if (container) container.replaceChildren();
+        if (emptyState) emptyState.classList.add('show');
+        if (itemCount) itemCount.textContent = '0 ملف';
+    } else {
+        if (emptyState) emptyState.classList.remove('show');
+        if (itemCount) itemCount.textContent = `${pendingItems.length} ملف`;
     }
 }
 
@@ -1197,9 +1294,15 @@ function setupSSE() {
     eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
         logEvent('info', `SSE event: ${data.type}`, data);
-        
-        if (['item_confirmed', 'new_item', 'item_deleted', 'item_updated', 'item_error'].includes(data.type)) {
-            loadPendingItems({silent: true});
+
+        if (data.type === 'item_confirmed' || data.type === 'item_deleted') {
+            // Card is gone — remove it directly, no API call needed
+            removeItemCardFromDOM(data.id);
+        } else if (data.type === 'item_updated') {
+            // Local state already updated by updateField — nothing to do
+        } else if (data.type === 'new_item' || data.type === 'item_error') {
+            // Need fresh server data: add new card or refresh error badge
+            loadPendingItems({silent: true, smartUpdate: true});
         }
     };
     

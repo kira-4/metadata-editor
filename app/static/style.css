@@ -592,8 +592,24 @@ body {
     }
 }
 
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+}
+
 .item-card {
     animation: fadeIn 0.3s ease;
+}
+
+.item-card.card-removing {
+    animation: fadeOut 0.28s ease forwards;
+    pointer-events: none;
 }
 
 /* Pagination */
