@@ -243,6 +243,11 @@ function setupGlobalUI() {
         refreshBtn.addEventListener('click', () => loadPendingItems({showLoading: true}));
     }
 
+    const confirmAllReadyBtn = document.getElementById('confirmAllReadyBtn');
+    if (confirmAllReadyBtn) {
+        confirmAllReadyBtn.addEventListener('click', confirmAllReady);
+    }
+
     const debugModeBtn = document.getElementById('debugModeBtn');
     if (debugModeBtn) {
         debugModeBtn.addEventListener('click', () => {
@@ -490,6 +495,7 @@ function renderItems(options = {}) {
         container.innerHTML = '';
         emptyState.classList.add('show');
         itemCount.textContent = '0 ملف';
+        updateConfirmAllButton();
         return;
     }
     
@@ -1065,18 +1071,68 @@ function handleGenreClick(itemId, genre) {
 function updateConfirmButton(itemId) {
     const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
     if (!card) return;
-    
+
     const confirmBtn = card.querySelector('.confirm-btn');
     const titleInput = card.querySelector('.title-input');
     const artistInput = card.querySelector('.artist-input');
-    
+
     if (!confirmBtn || !titleInput || !artistInput) return;
-    
+
     const hasGenre = selectedGenres[itemId] && selectedGenres[itemId].trim().length > 0;
     const hasTitle = titleInput.value.trim().length > 0;
     const hasArtist = artistInput.value.trim().length > 0;
-    
+
     confirmBtn.disabled = !(hasGenre && hasTitle && hasArtist);
+    updateConfirmAllButton();
+}
+
+// Show/hide the "confirm all ready" button based on how many cards are ready
+function updateConfirmAllButton() {
+    const btn = document.getElementById('confirmAllReadyBtn');
+    if (!btn) return;
+    const readyCount = document.querySelectorAll('.confirm-btn:not(:disabled)').length;
+    btn.style.display = readyCount >= 2 ? 'inline-flex' : 'none';
+    btn.textContent = `✓ تأكيد ونقل الجاهزة (${readyCount})`;
+}
+
+// Confirm all ready items sequentially
+async function confirmAllReady() {
+    const btn = document.getElementById('confirmAllReadyBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'جاري النقل...';
+    }
+
+    // Collect IDs of ready items at the moment the button is clicked
+    const readyIds = Array.from(document.querySelectorAll('.confirm-btn:not(:disabled)'))
+        .map(el => el.dataset.id)
+        .filter(Boolean);
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const itemId of readyIds) {
+        // Re-check: item may have been removed by a prior iteration's renderItems()
+        const stillExists = document.querySelector(`.confirm-btn[data-id="${itemId}"]:not(:disabled)`);
+        if (!stillExists) continue;
+
+        try {
+            await confirmItem(itemId);
+            successCount++;
+        } catch {
+            failCount++;
+        }
+    }
+
+    if (btn) btn.disabled = false;
+
+    if (failCount === 0) {
+        showAlert(`تم تأكيد ونقل ${successCount} ملف بنجاح.`, 'success');
+    } else {
+        showAlert(`تم نقل ${successCount} ملف، فشل ${failCount}.`, 'warn');
+    }
+
+    updateConfirmAllButton();
 }
 
 // Update field via API

@@ -505,6 +505,33 @@ body {
     opacity: 0.6;
 }
 
+.btn-confirm-all {
+    background: linear-gradient(135deg, var(--success), #00b894);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: var(--spacing-sm) var(--spacing-lg);
+    color: white;
+    font-family: var(--font-family);
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-confirm-all:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(0, 212, 170, 0.4);
+}
+
+.btn-confirm-all:active {
+    transform: translateY(0);
+}
+
+.btn-confirm-all:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .error-badge {
     background: var(--error);
     color: white;
