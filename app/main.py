@@ -50,11 +50,13 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware
+# CORS middleware — wildcard origin is incompatible with allow_credentials=True per the
+# CORS spec, so credentials are disabled. This app has no cookie/session auth, so this
+# has no functional impact.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

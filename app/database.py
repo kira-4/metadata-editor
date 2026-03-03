@@ -1,10 +1,9 @@
 """Database models and operations."""
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional, List
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 from app.config import config
 
@@ -32,9 +31,9 @@ class PendingItem(Base):
     error_message = Column(Text, nullable=True)
     file_identifier = Column(Text, nullable=True, index=True)  # Stable hash for duplicate detection
     raw_gemini_response = Column(Text, nullable=True)  # Raw response for debugging parse failures
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
     def to_dict(self):
         """Convert to dictionary for API responses."""
         return {
@@ -77,8 +76,8 @@ class LibraryTrack(Base):
     file_size = Column(Integer, nullable=True)  # bytes
     file_modified = Column(DateTime, nullable=True)
     has_artwork = Column(Integer, default=0)  # Boolean as int
-    indexed_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    indexed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     def to_dict(self):
         """Convert to dictionary for API responses."""
@@ -238,7 +237,7 @@ class DatabaseManager:
         if genre is not None:
             item.genre = genre
         
-        item.updated_at = datetime.utcnow()
+        item.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(item)
         return item
@@ -257,7 +256,7 @@ class DatabaseManager:
         
         item.status = status
         item.error_message = error_message
-        item.updated_at = datetime.utcnow()
+        item.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(item)
         return item
@@ -272,7 +271,7 @@ class DatabaseManager:
         item.status = "done"
         item.current_path = new_path
         item.error_message = None  # Clear any previous errors
-        item.updated_at = datetime.utcnow()
+        item.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(item)
         return item
@@ -321,7 +320,7 @@ class LibraryManager:
             track.has_artwork = 1 if metadata.get('has_artwork') else 0
             track.file_size = file_stats.get('size')
             track.file_modified = file_stats.get('modified')
-            track.updated_at = datetime.utcnow()
+            track.updated_at = datetime.now(timezone.utc)
         else:
             # Create new track
             track = LibraryTrack(
@@ -427,8 +426,9 @@ class LibraryManager:
         ).filter(LibraryTrack.artist.isnot(None))
         
         if search:
-            query = query.filter(LibraryTrack.artist.like(f'%{search}%'))
-        
+            escaped = search.replace('%', r'\%').replace('_', r'\_')
+            query = query.filter(LibraryTrack.artist.like(f'%{escaped}%'))
+
         query = query.group_by(LibraryTrack.artist)
         
         results = query.all()
@@ -519,7 +519,8 @@ class LibraryManager:
         ).filter(LibraryTrack.album.isnot(None))
         
         if search:
-            query = query.filter(LibraryTrack.album.like(f'%{search}%'))
+            escaped = search.replace('%', r'\%').replace('_', r'\_')
+            query = query.filter(LibraryTrack.album.like(f'%{escaped}%'))
         
         if artist:
             query = query.filter(
@@ -552,7 +553,8 @@ class LibraryManager:
         ).filter(LibraryTrack.genre.isnot(None))
         
         if search:
-            query = query.filter(LibraryTrack.genre.like(f'%{search}%'))
+            escaped = search.replace('%', r'\%').replace('_', r'\_')
+            query = query.filter(LibraryTrack.genre.like(f'%{escaped}%'))
         
         query = query.group_by(LibraryTrack.genre)
         
@@ -579,10 +581,11 @@ class LibraryManager:
         query = db.query(LibraryTrack)
         
         if search:
+            escaped = search.replace('%', r'\%').replace('_', r'\_')
             query = query.filter(
-                (LibraryTrack.title.like(f'%{search}%')) |
-                (LibraryTrack.artist.like(f'%{search}%')) |
-                (LibraryTrack.album.like(f'%{search}%'))
+                (LibraryTrack.title.like(f'%{escaped}%')) |
+                (LibraryTrack.artist.like(f'%{escaped}%')) |
+                (LibraryTrack.album.like(f'%{escaped}%'))
             )
         
         if artist:

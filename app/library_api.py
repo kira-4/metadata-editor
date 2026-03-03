@@ -1,5 +1,8 @@
 """Library API routes for browsing and editing the music library."""
 import logging
+import os
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
@@ -371,18 +374,22 @@ async def upload_artwork(
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="Track file not found")
         
-        # Validate image type
-        if not file.content_type or not file.content_type.startswith('image/'):
-            raise HTTPException(status_code=400, detail="File must be an image")
-        
-        # Read image data
+        # Read image data first so we can validate via magic bytes rather than
+        # trusting the client-supplied Content-Type header, which can be spoofed.
         image_data = await file.read()
-        
+
+        if image_data[:2] == b'\xff\xd8':
+            mime_type = 'image/jpeg'
+        elif image_data[:4] == b'\x89PNG':
+            mime_type = 'image/png'
+        else:
+            raise HTTPException(status_code=400, detail="File must be a valid JPEG or PNG image")
+
         # Embed artwork
         success = metadata_processor.embed_artwork_safe(
             file_path,
             image_data,
-            file.content_type
+            mime_type
         )
         
         if not success:
@@ -390,7 +397,7 @@ async def upload_artwork(
         
         # Update database flag
         track.has_artwork = 1
-        track.updated_at = datetime.utcnow()
+        track.updated_at = datetime.now(timezone.utc)
         db.commit()
         
         return {
@@ -419,28 +426,26 @@ async def get_track_artwork(track_id: int, db: Session = Depends(get_db)):
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="Track file not found")
         
-        # Extract artwork from file
-        artwork_data = metadata_processor.extract_artwork(file_path, Path("/tmp/temp_artwork"))
-        
-        if not artwork_data:
-            raise HTTPException(status_code=404, detail="No artwork in file")
-        
-        # Read extracted artwork
-        temp_path = Path("/tmp/temp_artwork")
-        if not temp_path.exists():
-            raise HTTPException(status_code=404, detail="Failed to extract artwork")
-        
-        with open(temp_path, 'rb') as f:
-            image_data = f.read()
-        
-        # Cleanup temp file
-        temp_path.unlink()
-        
-        # Determine content type
-        content_type = "image/jpeg"
-        if image_data[:4] == b'\x89PNG':
-            content_type = "image/png"
-        
+        # Use a unique temp file per request to avoid race conditions when multiple
+        # requests arrive concurrently — the old hardcoded /tmp/temp_artwork was shared.
+        tmp_fd, tmp_name = tempfile.mkstemp(suffix=".jpg")
+        os.close(tmp_fd)
+        temp_path = Path(tmp_name)
+
+        try:
+            extracted = metadata_processor.extract_artwork(file_path, temp_path)
+
+            if not extracted or not temp_path.exists():
+                raise HTTPException(status_code=404, detail="No artwork in file")
+
+            with open(temp_path, 'rb') as f:
+                image_data = f.read()
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+        # Determine content type from magic bytes
+        content_type = "image/png" if image_data[:4] == b'\x89PNG' else "image/jpeg"
+
         return Response(content=image_data, media_type=content_type)
     
     except HTTPException:
@@ -505,5 +510,3 @@ async def get_library_stats(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Import datetime for artwork endpoint
-from datetime import datetime

@@ -23,10 +23,18 @@ class Config:
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
     
     # Scanner settings
-    SCAN_INTERVAL_SECONDS = int(os.getenv("SCAN_INTERVAL_SECONDS", "30"))
-    
+    _scan_interval = os.getenv("SCAN_INTERVAL_SECONDS", "30")
+    try:
+        SCAN_INTERVAL_SECONDS = max(1, int(_scan_interval))
+    except ValueError:
+        raise ValueError(f"SCAN_INTERVAL_SECONDS must be a positive integer, got: {_scan_interval!r}")
+
     # Web server
-    PORT = int(os.getenv("PORT", "8090"))
+    _port = os.getenv("PORT", "8090")
+    try:
+        PORT = int(_port)
+    except ValueError:
+        raise ValueError(f"PORT must be an integer, got: {_port!r}")
     HOST = os.getenv("HOST", "0.0.0.0")
     
     # Supported audio formats

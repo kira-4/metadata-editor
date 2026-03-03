@@ -1,5 +1,6 @@
 """FastAPI routes."""
 import logging
+import shutil
 from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -340,7 +341,6 @@ async def confirm_item(
             staging_dir = current_path.parent
             # Only delete if it's in staging directory (safety check)
             if staging_dir.is_relative_to(config.STAGING_DIR):
-                import shutil
                 shutil.rmtree(staging_dir)
                 logger.info(f"Cleaned up staging directory: {staging_dir}")
         except Exception as e:
@@ -359,8 +359,8 @@ async def confirm_item(
         try:
             DatabaseManager.update_item_error(db, item_id, str(e))
             await notify_sse_clients({"type": "item_error", "id": item_id})
-        except:
-            pass
+        except Exception as notify_err:
+            logger.warning(f"Failed to record error state for item {item_id}: {notify_err}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -444,13 +444,19 @@ async def event_generator():
     """SSE event generator."""
     queue = asyncio.Queue()
     sse_clients.append(queue)
-    
+
     try:
         while True:
             data = await queue.get()
             yield f"data: {json.dumps(data)}\n\n"
     except asyncio.CancelledError:
-        sse_clients.remove(queue)
+        pass
+    finally:
+        # Always remove the queue so disconnected clients don't accumulate
+        try:
+            sse_clients.remove(queue)
+        except ValueError:
+            pass  # Already removed (shouldn't happen, but safe)
 
 
 @router.get("/events")

@@ -123,8 +123,11 @@ class GeminiClient:
         try:
             # Format the prompt with system instructions prepended
             # (since older SDK version doesn't support system_instruction parameter)
-            prompt = SYSTEM_INSTRUCTIONS.replace("<video_title>", video_title).replace(
-                "<channel>", channel
+            # Replace each placeholder exactly once and in isolation so that a
+            # video_title containing the literal string "<channel>" cannot bleed
+            # into the channel slot (prompt injection).
+            prompt = SYSTEM_INSTRUCTIONS.replace("<video_title>", video_title, 1).replace(
+                "<channel>", channel, 1
             )
 
             logger.info(
@@ -140,7 +143,7 @@ class GeminiClient:
             title, artist = self._parse_response(response_text)
 
             if not title or not artist:
-                error_msg = f"Failed to parse Gemini response"
+                error_msg = "Failed to parse Gemini response"
                 logger.error(f"{error_msg}: {response_text}")
                 return title, artist, error_msg, response_text
 
