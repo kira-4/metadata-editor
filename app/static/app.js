@@ -1188,7 +1188,8 @@ const libraryState = {
         genres: [],
         tracks: []
     },
-    detailContext: null // {type: 'artist', name: 'Artist Name'}
+    detailContext: null, // {type: 'artist', name: 'Artist Name'}
+    navigationStack: [] // stack of back-navigation targets
 };
 
 // Track Cache for Batch Editing
@@ -1597,6 +1598,7 @@ function setupLibraryListeners() {
             // Reset detail view state
             document.getElementById('detailView').style.display = 'none';
             libraryState.detailContext = null;
+            libraryState.navigationStack = [];
             
             updateViewTabs();
             updateSortOptions();
@@ -1677,14 +1679,21 @@ function setupLibraryListeners() {
     // Back button
     const backBtn = document.getElementById('backBtn');
     if (backBtn) backBtn.addEventListener('click', () => {
-        document.getElementById('detailView').style.display = 'none';
-        const mainView = document.querySelector(`#${libraryState.currentView}View`);
-        if (mainView) {
-            mainView.classList.add('active');
+        const backTarget = libraryState.navigationStack.pop();
+        if (backTarget?.type === 'artist') {
+            // Go back to the artist's album list (don't push to stack again)
+            viewArtistAlbums(encodeURIComponent(backTarget.name), false);
         } else {
-            logEvent('warn', `Main view #${libraryState.currentView}View not found`);
+            // Go back to the main list view
+            document.getElementById('detailView').style.display = 'none';
+            const mainView = document.querySelector(`#${libraryState.currentView}View`);
+            if (mainView) {
+                mainView.classList.add('active');
+            } else {
+                logEvent('warn', `Main view #${libraryState.currentView}View not found`);
+            }
+            libraryState.detailContext = null;
         }
-        libraryState.detailContext = null;
     });
 
     let libraryResizeTimer = null;
@@ -2141,15 +2150,18 @@ function handleTrackClick(event, element) {
 }
 
 // View Artist Albums
-async function viewArtistAlbums(artistName) {
+async function viewArtistAlbums(artistName, pushToStack = true) {
     const name = decodeURIComponent(artistName);
-    
+
     try {
         const response = await fetch(`/api/library/albums?artist=${encodeURIComponent(name)}`);
         if (!response.ok) throw new Error('Failed to load albums');
-        
+
         const data = await response.json();
-        
+
+        if (pushToStack) {
+            libraryState.navigationStack.push(null); // back leads to main list
+        }
         libraryState.detailContext = {type: 'artist', name: name};
         
         document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
@@ -2202,15 +2214,23 @@ function injectSelectAlbumButton(tracks) {
 }
 
 // View Album Tracks
-async function viewAlbumTracks(albumName) {
+async function viewAlbumTracks(albumName, pushToStack = true) {
     const name = decodeURIComponent(albumName);
-    
+
     try {
         const response = await fetch(`/api/library/tracks?album=${encodeURIComponent(name)}&limit=500`);
         if (!response.ok) throw new Error('Failed to load tracks');
-        
+
         const data = await response.json();
-        
+
+        if (pushToStack) {
+            // If we came from an artist's album list, save that context for back navigation
+            if (libraryState.detailContext?.type === 'artist') {
+                libraryState.navigationStack.push({type: 'artist', name: libraryState.detailContext.name});
+            } else {
+                libraryState.navigationStack.push(null);
+            }
+        }
         libraryState.detailContext = {type: 'album', name: name};
         libraryState.currentData.tracks = data.tracks; // Store for select all
         
@@ -2253,15 +2273,18 @@ function selectAllAlbumTracks(tracks) {
 }
 
 // View Genre Tracks
-async function viewGenreTracks(genreName) {
+async function viewGenreTracks(genreName, pushToStack = true) {
     const name = decodeURIComponent(genreName);
-    
+
     try {
         const response = await fetch(`/api/library/tracks?genre=${encodeURIComponent(name)}&limit=500`);
         if (!response.ok) throw new Error('Failed to load tracks');
-        
+
         const data = await response.json();
-        
+
+        if (pushToStack) {
+            libraryState.navigationStack.push(null);
+        }
         libraryState.detailContext = {type: 'genre', name: name};
         libraryState.currentData.tracks = data.tracks;
         
