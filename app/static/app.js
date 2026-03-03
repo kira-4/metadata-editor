@@ -27,6 +27,7 @@ const LIBRARY_MOBILE_BREAKPOINT_PX = 768;
 const artistSuggestCache = new Map(); // `${query}|${limit}` -> {timestamp, data}
 const artistComboboxState = new Map(); // itemId -> combobox state
 const artistDraftValues = new Map(); // itemId -> in-progress input value
+const titleDraftValues = new Map(); // itemId -> in-progress title input value
 const libraryArtistComboboxState = {
     isOpen: false,
     isLoading: false,
@@ -171,6 +172,12 @@ function cleanupArtistState() {
             artistDraftValues.delete(itemId);
         }
     }
+
+    for (const itemId of titleDraftValues.keys()) {
+        if (!activeIds.has(itemId)) {
+            titleDraftValues.delete(itemId);
+        }
+    }
 }
 
 function captureFocusSnapshot() {
@@ -188,11 +195,34 @@ function captureFocusSnapshot() {
         };
     }
 
+    if (activeElement.classList.contains('title-input')) {
+        return {
+            type: 'title',
+            itemId: Number(activeElement.dataset.id),
+            selectionStart: activeElement.selectionStart,
+            selectionEnd: activeElement.selectionEnd
+        };
+    }
+
     return null;
 }
 
 function restoreFocusSnapshot(snapshot) {
-    if (!snapshot || snapshot.type !== 'artist') {
+    if (!snapshot) {
+        return;
+    }
+
+    if (snapshot.type === 'title') {
+        const titleInput = document.querySelector(`.title-input[data-id="${snapshot.itemId}"]`);
+        if (!titleInput) return;
+        titleInput.focus();
+        if (typeof snapshot.selectionStart === 'number' && typeof snapshot.selectionEnd === 'number') {
+            titleInput.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd);
+        }
+        return;
+    }
+
+    if (snapshot.type !== 'artist') {
         return;
     }
 
@@ -319,6 +349,9 @@ async function loadPendingItems(options = {}) {
         pendingItems.forEach(item => {
             if (artistDraftValues.has(item.id)) {
                 item.current_artist = artistDraftValues.get(item.id);
+            }
+            if (titleDraftValues.has(item.id)) {
+                item.current_title = titleDraftValues.get(item.id);
             }
         });
         pendingItems.forEach(item => {
@@ -829,6 +862,14 @@ function attachItemListeners(itemId) {
     const artistInput = card.querySelector('.artist-input');
     
     if (titleInput) {
+        titleInput.addEventListener('input', () => {
+            titleDraftValues.set(itemId, titleInput.value);
+            const item = pendingItems.find(entry => entry.id === itemId);
+            if (item) {
+                item.current_title = titleInput.value;
+            }
+            updateConfirmButton(itemId);
+        });
         titleInput.addEventListener('blur', () => updateField(itemId, 'title', titleInput.value));
     }
     
@@ -968,6 +1009,9 @@ async function updateField(itemId, field, value) {
 
         if (field === 'artist') {
             artistDraftValues.delete(itemId);
+        }
+        if (field === 'title') {
+            titleDraftValues.delete(itemId);
         }
         
         updateConfirmButton(itemId);
