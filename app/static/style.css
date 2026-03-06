@@ -563,6 +563,18 @@ body {
     width: 100%;
 }
 
+.btn-secondary.delete-btn {
+    width: 100%;
+    border-color: var(--error);
+    color: var(--error);
+    margin-top: var(--spacing-sm);
+}
+
+.btn-secondary.delete-btn:hover {
+    background: rgba(255, 87, 87, 0.1);
+    border-color: var(--error);
+}
+
 .item-status {
     min-height: 1.2rem;
     font-size: 0.82rem;

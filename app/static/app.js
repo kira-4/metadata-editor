@@ -612,11 +612,9 @@ function createItemCard(item) {
                     ✓ تأكيد ونقل إلى المكتبة
                 </button>
                 <div class="item-status" id="itemStatus-${item.id}"></div>
-                ${(hasError || isManual) ? `
-                <button class="btn-secondary delete-btn" style="margin-top: 1rem; width: 100%; border-color: var(--error); color: var(--error);" onclick="deleteItem('${item.id}')">
+                <button class="btn-secondary delete-btn" onclick="deleteItem('${item.id}')">
                     حذف الملف
                 </button>
-                ` : ''}
             </div>
         </div>
     `;
