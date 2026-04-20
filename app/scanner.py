@@ -12,6 +12,7 @@ from app.config import config
 from app.database import DatabaseManager, SessionLocal
 from app.gemini_client import gemini_client
 from app.metadata_processor import metadata_processor
+from app.telegram_notifier import notify_actionable
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +209,7 @@ class FileScanner:
                 # Create manual edit entry with fallback values
                 inferred_title = existing_metadata.get("title") or file_path.stem
                 inferred_artist = existing_metadata.get("artist") or ""
-                DatabaseManager.create_pending_item(
+                item = DatabaseManager.create_pending_item(
                     db=db,
                     original_path=str(file_path),
                     current_path=str(staged_path),
@@ -223,6 +224,10 @@ class FileScanner:
                     file_identifier=file_identifier
                 )
                 logger.warning(f"Created manual edit entry for unparsed file: {file_path}")
+                try:
+                    notify_actionable(item, "needs_manual")
+                except Exception as notify_err:
+                    logger.warning(f"Telegram notification failed: {notify_err}")
                 return
             
             video_title, channel = parsed
@@ -238,7 +243,7 @@ class FileScanner:
 
             # If still missing data, create needs_manual item
             if not title or not artist:
-                DatabaseManager.create_pending_item(
+                item = DatabaseManager.create_pending_item(
                     db=db,
                     original_path=str(file_path),
                     current_path=str(staged_path),
@@ -254,6 +259,10 @@ class FileScanner:
                     raw_gemini_response=raw_response
                 )
                 logger.warning(f"Created needs_manual entry for Gemini failure: {file_path}")
+                try:
+                    notify_actionable(item, "needs_manual")
+                except Exception as notify_err:
+                    logger.warning(f"Telegram notification failed: {notify_err}")
                 return
             
             # Apply initial metadata to STAGED file (without genre)
@@ -271,7 +280,7 @@ class FileScanner:
                 
                 if not success:
                     # Create needs_manual entry instead of error
-                    DatabaseManager.create_pending_item(
+                    item = DatabaseManager.create_pending_item(
                         db=db,
                         original_path=str(file_path),
                         current_path=str(staged_path),
@@ -287,6 +296,10 @@ class FileScanner:
                         raw_gemini_response=raw_response
                     )
                     logger.warning(f"Created manual edit entry for metadata failure: {file_path}")
+                    try:
+                        notify_actionable(item, "needs_manual")
+                    except Exception as notify_err:
+                        logger.warning(f"Telegram notification failed: {notify_err}")
                     return
             
             # Create pending item in database pointing to STAGED file
@@ -306,13 +319,17 @@ class FileScanner:
             )
             
             logger.info(f"Successfully processed: {file_path} -> staged (item_id={item.id})")
-            
+            try:
+                notify_actionable(item, "pending")
+            except Exception as notify_err:
+                logger.warning(f"Telegram notification failed: {notify_err}")
+
         except Exception as e:
             logger.error(f"Error processing file {file_path}: {e}", exc_info=True)
             # Try to create an error entry so the file appears in UI
             try:
                 file_identifier = self.compute_file_identifier(file_path)
-                DatabaseManager.create_pending_item(
+                error_item = DatabaseManager.create_pending_item(
                     db=db,
                     original_path=str(file_path),
                     current_path=str(staged_path) if staged_path else str(file_path),
@@ -325,6 +342,10 @@ class FileScanner:
                     error_message=f"Processing error: {str(e)}",
                     file_identifier=file_identifier
                 )
+                try:
+                    notify_actionable(error_item, "error")
+                except Exception as notify_err:
+                    logger.warning(f"Telegram notification failed: {notify_err}")
             except Exception as inner_e:
                 logger.error(f"Failed to create error entry: {inner_e}")
             # Clean up staging on error
