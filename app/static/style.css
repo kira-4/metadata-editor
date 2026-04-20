@@ -1274,6 +1274,122 @@ body {
     margin-bottom: var(--spacing-sm);
 }
 
+/* ==========================================
+   Settings page (Telegram notifications)
+   ========================================== */
+
+.settings-header {
+    margin-bottom: var(--spacing-lg);
+}
+
+.settings-header h2 {
+    color: var(--accent-primary);
+}
+
+.settings-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+    box-shadow: 0 2px 8px var(--shadow);
+    margin-bottom: var(--spacing-lg);
+}
+
+.settings-card h3 {
+    color: var(--accent-primary);
+    margin-bottom: var(--spacing-sm);
+}
+
+.settings-description {
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-lg);
+    font-size: 0.95rem;
+}
+
+.settings-form .form-group {
+    margin-bottom: var(--spacing-lg);
+}
+
+.settings-form .form-group label {
+    display: block;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-xs);
+}
+
+.field-hint {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    margin-top: 0.35rem;
+    line-height: 1.5;
+}
+
+.field-hint code {
+    background: var(--bg-tertiary);
+    border-radius: 0.25rem;
+    padding: 0 0.3rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85em;
+}
+
+.field-optional {
+    color: var(--text-muted);
+    font-weight: 400;
+    font-size: 0.85rem;
+}
+
+.token-input-wrapper {
+    position: relative;
+    display: block;
+}
+
+.token-input-wrapper .field-input {
+    padding-inline-end: 2.6rem;
+    letter-spacing: 0.05em;
+}
+
+.token-toggle-btn {
+    position: absolute;
+    inset-inline-end: 0.4rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.token-toggle-btn:hover {
+    background: var(--bg-hover);
+    color: var(--accent-primary);
+}
+
+.settings-actions {
+    display: flex;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+    margin-top: var(--spacing-lg);
+}
+
+.settings-actions .btn-primary,
+.settings-actions .btn-secondary {
+    min-width: 10rem;
+}
+
+.settings-actions .btn-secondary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
 @media (max-width: 768px) {
     .library-controls {
         position: sticky;
