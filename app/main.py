@@ -10,6 +10,7 @@ from app.database import init_db
 from app.scanner import file_scanner
 from app.api import router
 from app.library_api import library_router
+from app.settings_api import settings_router
 
 # Configure logging
 logging.basicConfig(
@@ -64,6 +65,7 @@ app.add_middleware(
 # Include API router
 app.include_router(router)
 app.include_router(library_router)
+app.include_router(settings_router)
 
 # Serve static files
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
