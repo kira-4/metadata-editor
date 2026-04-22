@@ -11,6 +11,7 @@ from mutagen.mp4 import MP4
 from mutagen.id3 import ID3, TPE1, TPE2
 from mutagen.flac import FLAC
 
+from app.artist_matching import derive_album_artist
 from app.metadata_processor import metadata_processor
 from app.mover import FileMover
 from app.gemini_client import GeminiClient
@@ -198,6 +199,31 @@ class TestJoinArtistsHelper(unittest.TestCase):
     def test_join_empty_list(self):
         result = metadata_processor._join_artists([])
         self.assertIsNone(result)
+
+
+class TestDeriveAlbumArtist(unittest.TestCase):
+    """Test derive_album_artist helper."""
+
+    def test_prefers_channel_match(self):
+        result = derive_album_artist("باسم الكربلائي; حيدر البراك", "قناة باسم الكربلائي")
+        self.assertEqual(result, "باسم الكربلائي")
+
+    def test_fallback_to_first_artist(self):
+        result = derive_album_artist("باسم الكربلائي; حيدر البراك", "قناة الولاء")
+        self.assertEqual(result, "باسم الكربلائي")
+
+    def test_single_artist(self):
+        result = derive_album_artist("باسم الكربلائي", "قناة الولاء")
+        self.assertEqual(result, "باسم الكربلائي")
+
+    def test_empty_artists_fallback_to_channel(self):
+        result = derive_album_artist("", "قناة الولاء")
+        self.assertEqual(result, "قناة الولاء")
+
+    def test_channel_contained_in_artist(self):
+        result = derive_album_artist("السيد وائل السلامي", "كربلاء لايف")
+        # No match, fallback to first artist
+        self.assertEqual(result, "السيد وائل السلامي")
 
 
 if __name__ == "__main__":
