@@ -1669,14 +1669,10 @@ body {
     position: relative;
 }
 
-.artist-combobox.album-artist-row {
-    border: 2px solid #d4a017;
-    border-radius: var(--radius-sm);
-    padding: 2px;
-    background: rgba(212, 160, 23, 0.05);
+.artist-combobox.album-artist-row .artist-input {
+    border: 1px solid rgba(212, 160, 23, 0.35);
 }
 
-.artist-combobox.album-artist-row:focus-within {
-    border-color: #f0c040;
-    box-shadow: 0 0 0 2px rgba(212, 160, 23, 0.25);
+.artist-combobox.album-artist-row .artist-input:focus {
+    border-color: rgba(212, 160, 23, 0.6);
 }
