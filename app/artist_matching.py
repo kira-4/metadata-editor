@@ -187,6 +187,33 @@ def score_artist_similarity(query: ArtistNameKey, candidate: ArtistNameKey) -> f
     return round(min(100.0, max(0.0, base_score)), 2)
 
 
+def derive_album_artist(artists: str, channel: str) -> str:
+    """
+    Derive album_artist from a semicolon-separated artists string.
+
+    Rules:
+    - Must be one of the listed artists.
+    - Prefer the artist that matches (or is contained in) the channel name.
+    - Fallback to the first artist if no channel match.
+    - If artists is empty, fallback to the channel name itself.
+    """
+    if not artists:
+        return (channel or "").strip()
+
+    artist_list = [a.strip() for a in artists.split(";") if a.strip()]
+    if not artist_list:
+        return (channel or "").strip()
+
+    norm_channel = normalize_artist_name(channel or "")
+    if norm_channel:
+        for artist in artist_list:
+            norm_artist = normalize_artist_name(artist)
+            if norm_artist in norm_channel or norm_channel in norm_artist:
+                return artist
+
+    return artist_list[0]
+
+
 def rank_artist_candidates(
     query: str,
     candidates: Iterable[Dict[str, object]],

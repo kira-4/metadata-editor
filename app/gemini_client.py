@@ -33,8 +33,8 @@ Given a YouTube video title and channel name, extract the Arabic **title**, **ar
 **Rules:**
 
 1. Extract only the recitation/track title and the performers' names — ignore anything else (quality tags like 4K, locations, years, channel branding, etc.)
-2. **artists**: List ALL performers found in the video title, separated by `; `. If only one performer is found, use that single name.
-3. **album_artist**: Use the channel name as the album_artist when there are multiple artists, OR when no artist is found in the video title. If there is exactly one artist and the channel is just a generic aggregator, use that single artist as album_artist too.
+2. **artists**: List ALL performers found in the video title, separated by `; `. If only one performer is found, use that single name. Order them so the primary performer (the one matching the channel name) comes first.
+3. **album_artist**: MUST be one of the artists listed above. Prefer the artist that matches (or is contained in) the channel name. If none match the channel, use the first artist. If no artist is found in the title, fallback to the channel name.
 4. For artist names, apply prefix normalization:
    - Keep **السيد** and **الشيخ** (and normalize variants: `سيد` → `السيد`, `شيخ` → `الشيخ`)
    - Remove ALL other prefixes such as: `الملا`, `الملة`, `ملا`, `الحاج`, `حاج`, `الشاعر`, `المنشد`, `الرادود`, etc.
@@ -91,7 +91,7 @@ channel: قناة الولاء
 
 title: يا حسين
 artists: باسم الكربلائي; حيدر البراك
-album_artist: قناة الولاء
+album_artist: باسم الكربلائي
 ```
 
 Now process:
