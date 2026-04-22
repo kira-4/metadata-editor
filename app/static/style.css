@@ -1666,13 +1666,17 @@ body {
 }
 
 .album-artist-row {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
+    position: relative;
 }
 
-.album-artist-star {
-    font-size: 0.9rem;
-    line-height: 1;
-    flex-shrink: 0;
+.album-artist-row .artist-combobox {
+    border: 2px solid #d4a017;
+    border-radius: var(--radius-sm);
+    padding: 2px;
+    background: rgba(212, 160, 23, 0.05);
+}
+
+.album-artist-row .artist-combobox:focus-within {
+    border-color: #f0c040;
+    box-shadow: 0 0 0 2px rgba(212, 160, 23, 0.25);
 }

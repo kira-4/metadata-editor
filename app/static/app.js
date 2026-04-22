@@ -538,10 +538,9 @@ function createItemCard(item) {
     const artistRowsHtml = artistList.map((artist, index) => `
         <div class="artist-row" data-item-id="${item.id}" data-row-index="${index}">
             <div class="artist-combobox ${index === 0 ? 'album-artist-row' : ''}" data-row-id="${item.id}_artist_${index}">
-                ${index === 0 ? '<span class="album-artist-star" title="فنان الألبوم">⭐</span>' : ''}
                 <input
                     type="text"
-                    class="field-input artist-input"
+                    class="field-input artist-input ${index === 0 ? 'album-artist-input' : ''}"
                     value="${escapeHtml(artist)}"
                     data-row-id="${item.id}_artist_${index}"
                     data-item-id="${item.id}"
@@ -587,7 +586,7 @@ function createItemCard(item) {
                     </div>
 
                     <div class="field-group">
-                        <label class="field-label">الفنانون <small class="field-hint">(الأول مع ⭐ هو فنان الألبوم)</small></label>
+                        <label class="field-label">الفنانون</label>
                         <div class="multi-artist-list" data-id="${item.id}">
                             ${artistRowsHtml}
                         </div>
