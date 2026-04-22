@@ -702,11 +702,21 @@ function addArtistRow(itemId) {
 }
 
 function removeArtistRow(itemId, rowIndex) {
+    // Sync from DOM to avoid stale values
+    const existingCard = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    if (existingCard) {
+        const inputs = existingCard.querySelectorAll('.artist-input');
+        const currentRows = [];
+        inputs.forEach(input => currentRows.push(input.value));
+        if (currentRows.length > 0) {
+            artistRowsMap.set(itemId, currentRows);
+        }
+    }
     const rows = artistRowsMap.get(itemId) || [''];
     if (rows.length <= 1) return;
     rows.splice(rowIndex, 1);
     artistRowsMap.set(itemId, rows);
-    const joined = rows.filter(Boolean).join('; ');
+    const joined = rows.join('; ');
     const item = pendingItems.find(entry => entry.id === itemId);
     if (item) {
         item.current_artist = joined;
@@ -714,10 +724,8 @@ function removeArtistRow(itemId, rowIndex) {
     artistDraftValues.set(itemId, joined);
     updateField(itemId, 'artist', joined);
     // Re-render the card
-    const container = document.getElementById('pendingItems');
-    const card = container?.querySelector(`.item-card[data-id="${itemId}"]`);
-    if (card && item) {
-        card.outerHTML = createItemCard(item);
+    if (existingCard && item) {
+        existingCard.outerHTML = createItemCard(item);
         attachItemListeners(itemId);
     }
 }
