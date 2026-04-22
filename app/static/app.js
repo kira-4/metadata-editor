@@ -696,7 +696,9 @@ function addArtistRow(itemId) {
         const newCard = container.querySelector(`.item-card[data-id="${itemId}"]`);
         const newInputs = newCard?.querySelectorAll('.artist-input');
         if (newInputs && newInputs.length > 0) {
-            newInputs[newInputs.length - 1].focus();
+            setTimeout(() => {
+                newInputs[newInputs.length - 1].focus();
+            }, 0);
         }
     }
 }
