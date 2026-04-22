@@ -531,8 +531,11 @@ function createItemCard(item) {
     const titleValue = item.current_title || item.inferred_title || '';
     const hasArtistDraft = artistDraftValues.has(item.id);
     const artistValue = hasArtistDraft ? artistDraftValues.get(item.id) : (item.current_artist || item.inferred_artist || '');
-    const artistList = artistValue.split(';').map(a => a.trim()).filter(Boolean);
-    if (artistList.length === 0) artistList.push('');
+    const artistList = artistValue.split(';').map(a => a.trim());
+    if (artistList.length === 0 || artistList.every(a => a === '')) {
+        artistList.length = 0;
+        artistList.push('');
+    }
     artistRowsMap.set(item.id, artistList);
 
     const artistRowsHtml = artistList.map((artist, index) => `
@@ -668,25 +671,23 @@ function addArtistRow(itemId) {
     const rows = artistRowsMap.get(itemId) || [''];
     rows.push('');
     artistRowsMap.set(itemId, rows);
+    const joined = rows.join('; ');
+    const item = pendingItems.find(p => p.id === itemId);
+    if (item) {
+        item.current_artist = joined;
+    }
+    artistDraftValues.set(itemId, joined);
     // Re-render the card to add the new row
     const container = document.getElementById('pendingItems');
     const card = container?.querySelector(`.item-card[data-id="${itemId}"]`);
-    if (card) {
-        const item = pendingItems.find(p => p.id === itemId);
-        if (item) {
-            // Preserve focus state
-            const focusSnapshot = saveFocusSnapshot();
-            card.outerHTML = createItemCard(item);
-            attachItemListeners(itemId);
-            if (focusSnapshot) {
-                restoreFocusSnapshot(focusSnapshot);
-            }
-            // Focus the new artist input
-            const newCard = container.querySelector(`.item-card[data-id="${itemId}"]`);
-            const newInputs = newCard?.querySelectorAll('.artist-input');
-            if (newInputs && newInputs.length > 0) {
-                newInputs[newInputs.length - 1].focus();
-            }
+    if (card && item) {
+        card.outerHTML = createItemCard(item);
+        attachItemListeners(itemId);
+        // Focus the new artist input
+        const newCard = container.querySelector(`.item-card[data-id="${itemId}"]`);
+        const newInputs = newCard?.querySelectorAll('.artist-input');
+        if (newInputs && newInputs.length > 0) {
+            newInputs[newInputs.length - 1].focus();
         }
     }
 }
