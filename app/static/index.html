@@ -23,6 +23,7 @@
                     <span id="pendingBadge" class="nav-badge" style="display: none;">0</span>
                 </a>
                 <a href="#/library" class="nav-link" data-route="library">محرر المكتبة</a>
+                <a href="#/settings" class="nav-link" data-route="settings">الإعدادات</a>
             </div>
         </nav>
 
@@ -163,6 +164,83 @@
                     <button id="clearSelectionBtn" class="btn-secondary">إلغاء التحديد</button>
                 </div>
             </div>
+        </div>
+
+        <!-- Settings Page -->
+        <div id="settingsPage" class="page-content" style="display: none;">
+            <main class="main-content">
+                <div class="settings-header">
+                    <h2>الإعدادات</h2>
+                </div>
+
+                <div id="settingsAlert" class="global-alert" style="display: none;"></div>
+
+                <section class="settings-card">
+                    <h3>إشعارات Telegram</h3>
+                    <p class="settings-description">
+                        أدخل بيانات بوت Telegram ليتم تنبيهك عند وصول ملف جديد يتطلب المراجعة.
+                    </p>
+
+                    <form id="telegramSettingsForm" class="settings-form">
+                        <div class="form-group">
+                            <label for="telegramBotToken">Bot Token</label>
+                            <div class="token-input-wrapper">
+                                <input
+                                    type="password"
+                                    id="telegramBotToken"
+                                    class="field-input"
+                                    autocomplete="off"
+                                    placeholder="••••••••"
+                                >
+                                <button
+                                    type="button"
+                                    id="telegramTokenToggle"
+                                    class="token-toggle-btn"
+                                    aria-label="إظهار/إخفاء الرمز"
+                                >
+                                    <span id="telegramTokenToggleIcon">👁</span>
+                                </button>
+                            </div>
+                            <small class="field-hint">
+                                اترك الحقل فارغاً للإبقاء على الرمز المحفوظ حالياً.
+                            </small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="telegramChatId">Chat ID</label>
+                            <input
+                                type="text"
+                                id="telegramChatId"
+                                class="field-input"
+                                autocomplete="off"
+                                placeholder="مثال: 123456789 أو -1001234567890"
+                            >
+                            <small class="field-hint">
+                                يدعم المحادثات الفردية والمجموعات الخارقة (تبدأ بـ <code>-100</code>).
+                            </small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="telegramThreadId">Topic ID <span class="field-optional">(اختياري)</span></label>
+                            <input
+                                type="number"
+                                id="telegramThreadId"
+                                class="field-input"
+                                autocomplete="off"
+                                placeholder="للمجموعات ذات المواضيع فقط"
+                            >
+                            <small class="field-hint">
+                                استخدمه لإرسال الإشعارات إلى موضوع محدد داخل مجموعة خارقة.
+                            </small>
+                        </div>
+
+                        <div class="settings-actions">
+                            <button type="submit" class="btn-primary">حفظ</button>
+                            <button type="button" id="telegramTestBtn" class="btn-secondary">إرسال رسالة اختبار</button>
+                        </div>
+                    </form>
+                </section>
+            </main>
         </div>
 
         <!-- Batch Edit Modal -->

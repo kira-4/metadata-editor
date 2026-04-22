@@ -1722,11 +1722,13 @@ function initRouter() {
         // Show/hide pages
         const pendingPage = document.getElementById('pendingPage');
         const libraryPage = document.getElementById('libraryPage');
-        
+        const settingsPage = document.getElementById('settingsPage');
+
         if (route === 'library') {
             pendingPage.style.display = 'none';
             libraryPage.style.display = 'block';
-            
+            if (settingsPage) settingsPage.style.display = 'none';
+
             // Initial load only if empty
             if (libraryState.totalItems === 0 && libraryState.currentData.tracks.length === 0) {
                 initLibrary();
@@ -1735,9 +1737,15 @@ function initRouter() {
                 updateSelectionBar();
                 rerenderActiveTrackContext();
             }
+        } else if (route === 'settings') {
+            pendingPage.style.display = 'none';
+            libraryPage.style.display = 'none';
+            if (settingsPage) settingsPage.style.display = 'block';
+            initSettingsPage();
         } else {
             pendingPage.style.display = 'block';
             libraryPage.style.display = 'none';
+            if (settingsPage) settingsPage.style.display = 'none';
         }
     }
     
@@ -2873,6 +2881,185 @@ async function startRescan() {
         btn.disabled = false;
         icon.classList.remove('spinning');
     }
+}
+
+// ==========================================
+// Settings page (Telegram notifications)
+// ==========================================
+
+let settingsListenersAttached = false;
+const TELEGRAM_TOKEN_PLACEHOLDER = '••••••••';
+
+function showSettingsAlert(message, type = 'info', timeout = 5000) {
+    const alertEl = document.getElementById('settingsAlert');
+    if (!alertEl) return;
+    alertEl.textContent = message;
+    alertEl.className = `global-alert ${type}`;
+    alertEl.style.display = 'block';
+
+    if (timeout > 0) {
+        setTimeout(() => {
+            if (alertEl.textContent === message) {
+                alertEl.style.display = 'none';
+            }
+        }, timeout);
+    }
+}
+
+function updateTelegramTestButtonState() {
+    const chatInput = document.getElementById('telegramChatId');
+    const testBtn = document.getElementById('telegramTestBtn');
+    if (!chatInput || !testBtn) return;
+    testBtn.disabled = !chatInput.value.trim();
+}
+
+async function loadTelegramSettings() {
+    const tokenInput = document.getElementById('telegramBotToken');
+    const chatInput = document.getElementById('telegramChatId');
+    const threadInput = document.getElementById('telegramThreadId');
+    if (!tokenInput || !chatInput || !threadInput) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/settings/telegram`);
+        if (!response.ok) {
+            const msg = await parseApiError(response, 'تعذر تحميل إعدادات Telegram');
+            showSettingsAlert(msg, 'error');
+            return;
+        }
+        const data = await response.json();
+
+        // Keep the token input empty — blank on save preserves the stored token.
+        tokenInput.value = '';
+        tokenInput.placeholder = data.bot_token_set
+            ? (data.bot_token_masked || TELEGRAM_TOKEN_PLACEHOLDER)
+            : TELEGRAM_TOKEN_PLACEHOLDER;
+
+        chatInput.value = data.chat_id || '';
+        threadInput.value = data.message_thread_id ?? '';
+
+        updateTelegramTestButtonState();
+    } catch (error) {
+        logEvent('error', 'Failed to load Telegram settings', {error: error.message});
+        showSettingsAlert('خطأ في الاتصال بالخادم', 'error');
+    }
+}
+
+function collectTelegramFormPayload() {
+    const tokenInput = document.getElementById('telegramBotToken');
+    const chatInput = document.getElementById('telegramChatId');
+    const threadInput = document.getElementById('telegramThreadId');
+
+    const threadRaw = (threadInput.value || '').trim();
+    let threadId = null;
+    if (threadRaw !== '') {
+        const parsed = parseInt(threadRaw, 10);
+        threadId = Number.isFinite(parsed) ? parsed : null;
+    }
+
+    return {
+        bot_token: tokenInput.value || '',
+        chat_id: (chatInput.value || '').trim(),
+        message_thread_id: threadId
+    };
+}
+
+async function saveTelegramSettings(event) {
+    event.preventDefault();
+
+    const form = event.target;
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const payload = collectTelegramFormPayload();
+
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+        const response = await fetch(`${API_BASE}/settings/telegram`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const msg = await parseApiError(response, 'تعذر حفظ الإعدادات');
+            showSettingsAlert(msg, 'error');
+            return;
+        }
+
+        showSettingsAlert('تم حفظ الإعدادات بنجاح', 'success');
+        await loadTelegramSettings();
+    } catch (error) {
+        logEvent('error', 'Failed to save Telegram settings', {error: error.message});
+        showSettingsAlert('خطأ في الاتصال بالخادم', 'error');
+    } finally {
+        if (submitBtn) submitBtn.disabled = false;
+    }
+}
+
+async function sendTelegramTestMessage() {
+    const payload = collectTelegramFormPayload();
+    if (!payload.chat_id) {
+        showSettingsAlert('يجب إدخال Chat ID قبل إرسال رسالة الاختبار', 'error');
+        return;
+    }
+
+    const testBtn = document.getElementById('telegramTestBtn');
+    if (testBtn) testBtn.disabled = true;
+
+    try {
+        const response = await fetch(`${API_BASE}/settings/telegram/test`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok) {
+            const msg = (data && data.detail) || 'تعذر إرسال رسالة الاختبار';
+            showSettingsAlert(msg, 'error');
+            return;
+        }
+
+        if (data && data.ok) {
+            showSettingsAlert('تم إرسال رسالة الاختبار بنجاح', 'success');
+        } else {
+            const err = (data && data.error) || 'فشل إرسال رسالة الاختبار';
+            showSettingsAlert(err, 'error');
+        }
+    } catch (error) {
+        logEvent('error', 'Failed to send Telegram test message', {error: error.message});
+        showSettingsAlert('خطأ في الاتصال بالخادم', 'error');
+    } finally {
+        if (testBtn) testBtn.disabled = false;
+        updateTelegramTestButtonState();
+    }
+}
+
+function toggleTelegramTokenVisibility() {
+    const tokenInput = document.getElementById('telegramBotToken');
+    const icon = document.getElementById('telegramTokenToggleIcon');
+    if (!tokenInput) return;
+    const isHidden = tokenInput.type === 'password';
+    tokenInput.type = isHidden ? 'text' : 'password';
+    if (icon) icon.textContent = isHidden ? '🙈' : '👁';
+}
+
+function initSettingsPage() {
+    if (!settingsListenersAttached) {
+        const form = document.getElementById('telegramSettingsForm');
+        const testBtn = document.getElementById('telegramTestBtn');
+        const toggleBtn = document.getElementById('telegramTokenToggle');
+        const chatInput = document.getElementById('telegramChatId');
+
+        if (form) form.addEventListener('submit', saveTelegramSettings);
+        if (testBtn) testBtn.addEventListener('click', sendTelegramTestMessage);
+        if (toggleBtn) toggleBtn.addEventListener('click', toggleTelegramTokenVisibility);
+        if (chatInput) chatInput.addEventListener('input', updateTelegramTestButtonState);
+
+        settingsListenersAttached = true;
+    }
+
+    loadTelegramSettings();
 }
 
 // Start app when DOM is ready

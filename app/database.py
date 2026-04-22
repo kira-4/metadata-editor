@@ -101,6 +101,22 @@ class LibraryTrack(Base):
         }
 
 
+class TelegramSettings(Base):
+    """Singleton row holding Telegram bot credentials for actionable notifications."""
+
+    __tablename__ = "telegram_settings"
+
+    id = Column(Integer, primary_key=True)  # always 1
+    bot_token = Column(Text, nullable=True)
+    chat_id = Column(Text, nullable=True)  # supports negative supergroup IDs like -100...
+    message_thread_id = Column(Integer, nullable=True)  # optional topic thread
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
 # Database setup
 engine = create_engine(f"sqlite:///{config.DB_PATH}", connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -614,3 +630,46 @@ class LibraryManager:
         db.query(LibraryTrack).delete()
         db.commit()
         return count
+
+
+class SettingsManager:
+    """Manager for application settings stored in the database."""
+
+    @staticmethod
+    def get_telegram_settings(db: Session) -> TelegramSettings:
+        """Return the singleton Telegram settings row, creating an empty one on first call."""
+        settings = db.query(TelegramSettings).filter(TelegramSettings.id == 1).first()
+        if settings is None:
+            settings = TelegramSettings(id=1, bot_token=None, chat_id=None, message_thread_id=None)
+            db.add(settings)
+            db.commit()
+            db.refresh(settings)
+        return settings
+
+    @staticmethod
+    def update_telegram_settings(
+        db: Session,
+        bot_token: Optional[str] = None,
+        chat_id: Optional[str] = None,
+        message_thread_id: Optional[int] = None,
+        update_bot_token: bool = True,
+    ) -> TelegramSettings:
+        """
+        Update the singleton Telegram settings row.
+
+        When update_bot_token is False, the existing bot_token is preserved
+        regardless of the `bot_token` argument — lets the UI submit a blank
+        token field to mean "leave it alone".
+        """
+        settings = SettingsManager.get_telegram_settings(db)
+
+        if update_bot_token:
+            settings.bot_token = bot_token
+
+        settings.chat_id = chat_id
+        settings.message_thread_id = message_thread_id
+        settings.updated_at = datetime.now(timezone.utc)
+
+        db.commit()
+        db.refresh(settings)
+        return settings
