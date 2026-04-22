@@ -16,20 +16,20 @@ class FileMover:
 
     @staticmethod
     def build_destination_path(
-        artist: str,
+        album_artist: str,
         title: str,
         extension: str
     ) -> Path:
         """
         Build destination path without moving the file.
 
-        Destination structure: {NAVIDROME_ROOT}/{artist}/{title}/{title}.{ext}
+        Destination structure: {NAVIDROME_ROOT}/{album_artist}/{title}/{title}.{ext}
         """
-        safe_artist = metadata_processor.sanitize_filename(artist)
+        safe_album_artist = metadata_processor.sanitize_filename(album_artist)
         safe_title = metadata_processor.sanitize_filename(title)
         safe_album = safe_title
 
-        artist_dir = config.NAVIDROME_ROOT / safe_artist
+        artist_dir = config.NAVIDROME_ROOT / safe_album_artist
         album_dir = artist_dir / safe_album
         dest_filename = f"{safe_title}{extension}"
         dest_path = album_dir / dest_filename
@@ -44,12 +44,12 @@ class FileMover:
 
     @staticmethod
     def get_destination_preview(
-        artist: str,
+        album_artist: str,
         title: str,
         extension: str
     ) -> Dict[str, object]:
         """Return dry-run preview for move destination and write permissions."""
-        destination = FileMover.build_destination_path(artist, title, extension)
+        destination = FileMover.build_destination_path(album_artist, title, extension)
         closest_existing_parent = destination.parent
         while not closest_existing_parent.exists() and closest_existing_parent != closest_existing_parent.parent:
             closest_existing_parent = closest_existing_parent.parent
@@ -71,18 +71,18 @@ class FileMover:
     @staticmethod
     def move_to_navidrome(
         source_path: Path,
-        artist: str,
+        album_artist: str,
         title: str,
         extension: str
     ) -> Optional[Path]:
         """
         Move file to Navidrome library.
         
-        Destination structure: {NAVIDROME_ROOT}/{artist}/{title}/{title}.{ext}
+        Destination structure: {NAVIDROME_ROOT}/{album_artist}/{title}/{title}.{ext}
         
         Args:
             source_path: Current path of the file
-            artist: Artist name
+            album_artist: Album artist name (used for folder naming)
             title: Track title
             extension: File extension (with dot)
             
@@ -90,7 +90,7 @@ class FileMover:
             New path if successful, None otherwise
         """
         try:
-            dest_path = FileMover.build_destination_path(artist, title, extension)
+            dest_path = FileMover.build_destination_path(album_artist, title, extension)
             dest_path.parent.mkdir(parents=True, exist_ok=True)
             
             # Move the file

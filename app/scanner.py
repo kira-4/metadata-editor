@@ -90,35 +90,37 @@ class FileScanner:
         channel: str,
         existing_title: Optional[str],
         existing_artist: Optional[str]
-    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], str]:
         """
         Infer metadata via Gemini first, then fallback to embedded metadata.
 
         Returns:
-            Tuple of (title, artist, error_message, raw_response).
+            Tuple of (title, artists, album_artist, error_message, raw_response).
         """
         logger.info(f"Attempting Gemini inference - video_title: {video_title}, channel: {channel}")
 
-        gemini_title, gemini_artist, error_msg, raw_response = gemini_client.infer_metadata(
+        gemini_title, gemini_artists, gemini_album_artist, error_msg, raw_response = gemini_client.infer_metadata(
             video_title,
             channel
         )
 
         gemini_title = self._normalize_text(gemini_title)
-        gemini_artist = self._normalize_text(gemini_artist)
+        gemini_artists = self._normalize_text(gemini_artists)
+        gemini_album_artist = self._normalize_text(gemini_album_artist)
         existing_title = self._normalize_text(existing_title)
         existing_artist = self._normalize_text(existing_artist)
 
         title = gemini_title or existing_title
-        artist = gemini_artist or existing_artist
+        artists = gemini_artists or existing_artist
+        album_artist = gemini_album_artist or artists or existing_artist
 
-        if (not gemini_title or not gemini_artist) and (existing_title or existing_artist):
+        if (not gemini_title or not gemini_artists) and (existing_title or existing_artist):
             logger.info(
                 "Gemini returned incomplete metadata. Falling back to embedded tags "
                 f"(title={bool(existing_title)}, artist={bool(existing_artist)})"
             )
 
-        return title, artist, error_msg, raw_response
+        return title, artists, album_artist, error_msg, raw_response
     
     def scan_directory(self) -> List[Path]:
         """
@@ -234,7 +236,7 @@ class FileScanner:
 
             existing_title = existing_metadata.get("title")
             existing_artist = existing_metadata.get("artist")
-            title, artist, error_msg, raw_response = self.infer_metadata_with_fallback(
+            title, artists, album_artist, error_msg, raw_response = self.infer_metadata_with_fallback(
                 video_title=video_title,
                 channel=channel,
                 existing_title=existing_title,
@@ -242,7 +244,7 @@ class FileScanner:
             )
 
             # If still missing data, create needs_manual item
-            if not title or not artist:
+            if not title or not artists:
                 item = DatabaseManager.create_pending_item(
                     db=db,
                     original_path=str(file_path),
@@ -251,7 +253,8 @@ class FileScanner:
                     channel=channel,
                     extension=file_path.suffix,
                     inferred_title=title or video_title,  # Fallback to video_title
-                    inferred_artist=artist or channel,    # Fallback to channel
+                    inferred_artist=artists or channel,    # Fallback to channel
+                    album_artist=album_artist or channel,
                     artwork_path=artwork_path,
                     status="needs_manual",
                     error_message=f"Metadata detection failed: {error_msg or 'Incomplete data'}",
@@ -266,17 +269,37 @@ class FileScanner:
                 return
             
             # Apply initial metadata to STAGED file (without genre)
-            if title and artist:
+            if title and artists:
                 success = metadata_processor.apply_metadata(
                     staged_path,
                     title=title,
-                    artist=artist,
+                    artist=artists,
+                    album_artist=album_artist,
                     album=title,
                     genre=existing_metadata.get("genre"),
                     year=existing_metadata.get("year"),
                     track_number=existing_metadata.get("track_number"),
                     disc_number=existing_metadata.get("disc_number"),
                 )
+                
+                if not success:
+                    # Create needs_manual entry instead of error
+                    item = DatabaseManager.create_pending_item(
+                        db=db,
+                        original_path=str(file_path),
+                        current_path=str(staged_path),
+                        video_title=video_title,
+                        channel=channel,
+                        extension=file_path.suffix,
+                        inferred_title=title,
+                        inferred_artist=artists,
+                        album_artist=album_artist,
+                        artwork_path=artwork_path,
+                        status="needs_manual",
+                        error_message="Failed to apply metadata tags - please check file",
+                        file_identifier=file_identifier,
+                        raw_gemini_response=raw_response
+                    )
                 
                 if not success:
                     # Create needs_manual entry instead of error
@@ -311,11 +334,12 @@ class FileScanner:
                 channel=channel,
                 extension=file_path.suffix,
                 inferred_title=title,
-                inferred_artist=artist,
+                inferred_artist=artists,
+                album_artist=album_artist,
                 artwork_path=artwork_path,
                 status="pending",
                 file_identifier=file_identifier,
-                raw_gemini_response=raw_response if title and artist else None
+                raw_gemini_response=raw_response if title and artists else None
             )
             
             logger.info(f"Successfully processed: {file_path} -> staged (item_id={item.id})")

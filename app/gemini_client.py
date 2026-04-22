@@ -28,21 +28,23 @@ logger = logging.getLogger(__name__)
 SYSTEM_INSTRUCTIONS = """
 You are a metadata extractor for Shia Islamic media (لطميات، جلوات، قرآن، أدعية، etc.).
 
-Given a YouTube video title and channel name, extract the Arabic **title** and **artist**.
+Given a YouTube video title and channel name, extract the Arabic **title**, **artists** (performers), and **album_artist**.
 
 **Rules:**
 
-1. Extract only the recitation/track title and the performer's name — ignore anything else (quality tags like 4K, locations, years, channel branding, etc.)
-2. If no artist is found in the video title, use the channel name as the artist (in Arabic).
-3. For artist names, apply prefix normalization:
+1. Extract only the recitation/track title and the performers' names — ignore anything else (quality tags like 4K, locations, years, channel branding, etc.)
+2. **artists**: List ALL performers found in the video title, separated by `; `. If only one performer is found, use that single name.
+3. **album_artist**: Use the channel name as the album_artist when there are multiple artists, OR when no artist is found in the video title. If there is exactly one artist and the channel is just a generic aggregator, use that single artist as album_artist too.
+4. For artist names, apply prefix normalization:
    - Keep **السيد** and **الشيخ** (and normalize variants: `سيد` → `السيد`, `شيخ` → `الشيخ`)
    - Remove ALL other prefixes such as: `الملا`, `الملة`, `ملا`, `الحاج`, `حاج`, `الشاعر`, `المنشد`, `الرادود`, etc.
-4. Return ONLY the two fields below — no explanation, no extra text.
+5. Return ONLY the three fields below — no explanation, no extra text.
 
 **Output format (strict):**
 ```
 title: <Arabic title>
-artist: <Arabic artist>
+artists: <artist1>; <artist2>
+album_artist: <album artist>
 ```
 
 **Examples:**
@@ -52,7 +54,8 @@ video_title: ملا باسم الكربلائي | يا حسين | جلسة خا�
 channel: قناة الولاء
 
 title: يا حسين
-artist: باسم الكربلائي
+artists: باسم الكربلائي
+album_artist: باسم الكربلائي
 ```
 
 ```
@@ -60,7 +63,8 @@ video_title: دعاء كميل | الشيخ حسين الأكرف | ليلة ا�
 channel: Shia Media
 
 title: دعاء كميل
-artist: الشيخ حسين الأكرف
+artists: الشيخ حسين الأكرف
+album_artist: الشيخ حسين الأكرف
 ```
 
 ```
@@ -68,7 +72,8 @@ video_title: لطمية رائعة - يا أبا الفضل | تصوير: الن
 channel: قناة الإمامين
 
 title: يا أبا الفضل
-artist: قناة الإمامين
+artists: قناة الإمامين
+album_artist: قناة الإمامين
 ```
 
 ```
@@ -76,7 +81,17 @@ video_title: سيد وائل السلامي - من كربلاء | حسين يا 
 channel: كربلاء لايف
 
 title: حسين يا مظلوم
-artist: السيد وائل السلامي
+artists: السيد وائل السلامي
+album_artist: السيد وائل السلامي
+```
+
+```
+video_title: يا حسين | باسم الكربلائي و حيدر البراك | جلسة خاصة
+channel: قناة الولاء
+
+title: يا حسين
+artists: باسم الكربلائي; حيدر البراك
+album_artist: قناة الولاء
 ```
 
 Now process:
@@ -106,18 +121,18 @@ class GeminiClient:
 
     def infer_metadata(
         self, video_title: str, channel: str
-    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str], str]:
         """
-        Infer title and artist from video_title and channel.
+        Infer title, artists, and album_artist from video_title and channel.
 
         Args:
             video_title: The video title from filename
             channel: The channel name from filename
 
         Returns:
-            Tuple of (title, artist, error_message, raw_response)
+            Tuple of (title, artists, album_artist, error_message, raw_response)
             - If successful, error_message is None
-            - If failed, title and artist may be None or partial
+            - If failed, fields may be None or partial
             - raw_response always contains the raw text from Gemini
         """
         try:
@@ -140,45 +155,50 @@ class GeminiClient:
             logger.info(f"Gemini response: {response_text}")
 
             # Parse the response
-            title, artist = self._parse_response(response_text)
+            title, artists, album_artist = self._parse_response(response_text)
 
-            if not title or not artist:
+            if not title or not artists:
                 error_msg = "Failed to parse Gemini response"
                 logger.error(f"{error_msg}: {response_text}")
-                return title, artist, error_msg, response_text
+                return title, artists, album_artist, error_msg, response_text
 
-            return title, artist, None, response_text
+            return title, artists, album_artist, None, response_text
 
         except Exception as e:
             error_msg = f"Gemini API error: {str(e)}"
             logger.error(error_msg)
-            return None, None, error_msg, ""
+            return None, None, None, error_msg, ""
 
     def _parse_response(
         self, response_text: str
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
-        Parse the response to extract title and artist.
+        Parse the response to extract title, artists, and album_artist.
 
         Handles multiple formats:
-        1. Two-line format:
+        1. Three-line format:
+           title: <title>
+           artists: <artist1>; <artist2>
+           album_artist: <album_artist>
+        2. Legacy two-line format:
            title: <title>
            artist: <artist>
-        2. JSON format:
-           {"title": "...", "artist": "..."}
-        3. JSON in code fences:
+        3. JSON format:
+           {"title": "...", "artists": "...", "album_artist": "..."}
+        4. JSON in code fences:
            ```json
-           {"title": "...", "artist": "..."}
+           {"title": "...", "artists": "...", "album_artist": "..."}
            ```
 
         Args:
             response_text: The raw response from Gemini
 
         Returns:
-            Tuple of (title, artist) or (None, None) if parsing fails
+            Tuple of (title, artists, album_artist) or (None, None, None) if parsing fails
         """
         title = None
-        artist = None
+        artists = None
+        album_artist = None
 
         # Try JSON parsing first (Gemini sometimes returns JSON despite instructions)
         try:
@@ -201,33 +221,46 @@ class GeminiClient:
             data = json.loads(cleaned)
             if isinstance(data, dict):
                 title = data.get("title")
-                artist = data.get("artist")
-                if title and artist:
-                    logger.info(f"Parsed JSON response: title={title}, artist={artist}")
-                    return title, artist
+                artists = data.get("artists") or data.get("artist")
+                album_artist = data.get("album_artist") or data.get("albumArtist")
+                if title and artists:
+                    logger.info(f"Parsed JSON response: title={title}, artists={artists}, album_artist={album_artist}")
+                    return title, artists, album_artist
         except (json.JSONDecodeError, ValueError):
             # Not JSON, continue to regex parsing
             pass
 
-        # Try regex parsing for two-line format
-        # Match lines like "title: something" (case-insensitive, flexible whitespace)
+        # Try regex parsing for three-line format (new)
         title_match = re.search(
             r"^\s*title\s*:\s*(.+?)\s*$", response_text, re.MULTILINE | re.IGNORECASE
         )
-        artist_match = re.search(
+        artists_match = re.search(
+            r"^\s*artists\s*:\s*(.+?)\s*$", response_text, re.MULTILINE | re.IGNORECASE
+        )
+        album_artist_match = re.search(
+            r"^\s*album_artist\s*:\s*(.+?)\s*$", response_text, re.MULTILINE | re.IGNORECASE
+        )
+
+        # Fallback to legacy "artist" field if "artists" not found
+        legacy_artist_match = re.search(
             r"^\s*artist\s*:\s*(.+?)\s*$", response_text, re.MULTILINE | re.IGNORECASE
         )
 
         if title_match:
             title = title_match.group(1).strip()
 
-        if artist_match:
-            artist = artist_match.group(1).strip()
+        if artists_match:
+            artists = artists_match.group(1).strip()
+        elif legacy_artist_match:
+            artists = legacy_artist_match.group(1).strip()
 
-        if title and artist:
-            logger.info(f"Parsed two-line response: title={title}, artist={artist}")
+        if album_artist_match:
+            album_artist = album_artist_match.group(1).strip()
 
-        return title, artist
+        if title and artists:
+            logger.info(f"Parsed response: title={title}, artists={artists}, album_artist={album_artist}")
+
+        return title, artists, album_artist
 
 
 # Global instance

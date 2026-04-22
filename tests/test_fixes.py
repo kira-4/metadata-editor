@@ -13,7 +13,7 @@ client = GeminiClient()
 
 # Test case 1: JSON format
 json_response = '{"title": "ذهب", "artist": "محمد الحجيرات"}'
-title, artist = client._parse_response(json_response)
+title, artist, album_artist = client._parse_response(json_response)
 assert title == "ذهب", f"Expected 'ذهب', got '{title}'"
 assert artist == "محمد الحجيرات", f"Expected 'محمد الحجيرات', got '{artist}'"
 print(f"✓ JSON format: title={title}, artist={artist}")
@@ -22,7 +22,7 @@ print(f"✓ JSON format: title={title}, artist={artist}")
 json_fenced = '''```json
 {"title": "عنوان", "artist": "فنان"}
 ```'''
-title, artist = client._parse_response(json_fenced)
+title, artist, album_artist = client._parse_response(json_fenced)
 assert title == "عنوان", f"Expected 'عنوان', got '{title}'"
 assert artist == "فنان", f"Expected 'فنان', got '{artist}'"
 print(f"✓ JSON in code fence: title={title}, artist={artist}")
@@ -30,7 +30,7 @@ print(f"✓ JSON in code fence: title={title}, artist={artist}")
 # Test case 3: Two-line format (original)
 two_line_response = '''title: أغنية
 artist: مؤدي'''
-title, artist = client._parse_response(two_line_response)
+title, artist, album_artist = client._parse_response(two_line_response)
 assert title == "أغنية", f"Expected 'أغنية', got '{title}'"
 assert artist == "مؤدي", f"Expected 'مؤدي', got '{artist}'"
 print(f"✓ Two-line format: title={title}, artist={artist}")

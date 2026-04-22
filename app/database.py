@@ -24,6 +24,7 @@ class PendingItem(Base):
     inferred_artist = Column(Text, nullable=True)
     current_title = Column(Text, nullable=True)
     current_artist = Column(Text, nullable=True)
+    album_artist = Column(Text, nullable=True)
     genre = Column(String(200), nullable=True)
     extension = Column(String(10), nullable=False)
     artwork_path = Column(Text, nullable=True)
@@ -46,6 +47,7 @@ class PendingItem(Base):
             "inferred_artist": self.inferred_artist,
             "current_title": self.current_title,
             "current_artist": self.current_artist,
+            "album_artist": self.album_artist,
             "genre": self.genre,
             "extension": self.extension,
             "artwork_url": f"/api/artwork/{self.id}" if self.artwork_path else None,
@@ -145,6 +147,12 @@ def init_db():
             import logging
             logging.getLogger(__name__).info("Added raw_gemini_response column to database")
 
+        if 'album_artist' not in columns:
+            conn.execute(text('ALTER TABLE pending_items ADD COLUMN album_artist TEXT'))
+            conn.commit()
+            import logging
+            logging.getLogger(__name__).info("Added album_artist column to database")
+
 
 def get_db() -> Session:
     """Get a database session."""
@@ -168,6 +176,7 @@ class DatabaseManager:
         extension: str,
         inferred_title: Optional[str] = None,
         inferred_artist: Optional[str] = None,
+        album_artist: Optional[str] = None,
         artwork_path: Optional[str] = None,
         error_message: Optional[str] = None,
         file_identifier: Optional[str] = None,
@@ -207,6 +216,7 @@ class DatabaseManager:
             channel=channel,
             inferred_title=inferred_title,
             inferred_artist=inferred_artist,
+            album_artist=album_artist,
             current_title=inferred_title,  # Initially same as inferred
             current_artist=inferred_artist,
             extension=extension,
@@ -239,6 +249,7 @@ class DatabaseManager:
         item_id: int,
         title: Optional[str] = None,
         artist: Optional[str] = None,
+        album_artist: Optional[str] = None,
         genre: Optional[str] = None
     ) -> Optional[PendingItem]:
         """Update item fields."""
@@ -250,6 +261,8 @@ class DatabaseManager:
             item.current_title = title
         if artist is not None:
             item.current_artist = artist
+        if album_artist is not None:
+            item.album_artist = album_artist
         if genre is not None:
             item.genre = genre
         

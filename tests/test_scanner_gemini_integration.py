@@ -16,9 +16,9 @@ class TestScannerGeminiIntegration(unittest.TestCase):
 
     @patch("app.scanner.gemini_client.infer_metadata")
     def test_prefers_gemini_when_available(self, mock_infer):
-        mock_infer.return_value = ("AI Title", "AI Artist", None, "raw")
+        mock_infer.return_value = ("AI Title", "AI Artist", "AI Album Artist", None, "raw")
 
-        title, artist, error, raw = self.scanner.infer_metadata_with_fallback(
+        title, artist, album_artist, error, raw = self.scanner.infer_metadata_with_fallback(
             video_title="Video",
             channel="Channel",
             existing_title="Embedded Title",
@@ -27,15 +27,16 @@ class TestScannerGeminiIntegration(unittest.TestCase):
 
         self.assertEqual(title, "AI Title")
         self.assertEqual(artist, "AI Artist")
+        self.assertEqual(album_artist, "AI Album Artist")
         self.assertIsNone(error)
         self.assertEqual(raw, "raw")
         mock_infer.assert_called_once_with("Video", "Channel")
 
     @patch("app.scanner.gemini_client.infer_metadata")
     def test_uses_embedded_fallback_for_missing_gemini_fields(self, mock_infer):
-        mock_infer.return_value = (None, "AI Artist", "Failed to parse Gemini response", "raw")
+        mock_infer.return_value = (None, "AI Artist", None, "Failed to parse Gemini response", "raw")
 
-        title, artist, error, raw = self.scanner.infer_metadata_with_fallback(
+        title, artist, album_artist, error, raw = self.scanner.infer_metadata_with_fallback(
             video_title="Video",
             channel="Channel",
             existing_title="Embedded Title",
@@ -44,14 +45,15 @@ class TestScannerGeminiIntegration(unittest.TestCase):
 
         self.assertEqual(title, "Embedded Title")
         self.assertEqual(artist, "AI Artist")
+        self.assertEqual(album_artist, "AI Artist")
         self.assertEqual(error, "Failed to parse Gemini response")
         self.assertEqual(raw, "raw")
 
     @patch("app.scanner.gemini_client.infer_metadata")
     def test_uses_embedded_metadata_when_gemini_fails(self, mock_infer):
-        mock_infer.return_value = (None, None, "Gemini API error: bad key", "")
+        mock_infer.return_value = (None, None, None, "Gemini API error: bad key", "")
 
-        title, artist, error, raw = self.scanner.infer_metadata_with_fallback(
+        title, artist, album_artist, error, raw = self.scanner.infer_metadata_with_fallback(
             video_title="Video",
             channel="Channel",
             existing_title="Embedded Title",
@@ -60,14 +62,15 @@ class TestScannerGeminiIntegration(unittest.TestCase):
 
         self.assertEqual(title, "Embedded Title")
         self.assertEqual(artist, "Embedded Artist")
+        self.assertEqual(album_artist, "Embedded Artist")
         self.assertEqual(error, "Gemini API error: bad key")
         self.assertEqual(raw, "")
 
     @patch("app.scanner.gemini_client.infer_metadata")
     def test_returns_none_when_no_gemini_or_embedded_metadata(self, mock_infer):
-        mock_infer.return_value = (None, None, "Gemini API error", "")
+        mock_infer.return_value = (None, None, None, "Gemini API error", "")
 
-        title, artist, error, raw = self.scanner.infer_metadata_with_fallback(
+        title, artist, album_artist, error, raw = self.scanner.infer_metadata_with_fallback(
             video_title="Video",
             channel="Channel",
             existing_title=None,
@@ -76,6 +79,7 @@ class TestScannerGeminiIntegration(unittest.TestCase):
 
         self.assertIsNone(title)
         self.assertIsNone(artist)
+        self.assertIsNone(album_artist)
         self.assertEqual(error, "Gemini API error")
         self.assertEqual(raw, "")
 

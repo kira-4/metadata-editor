@@ -32,6 +32,7 @@ class UpdateItemRequest(BaseModel):
     """Request to update item fields."""
     title: Optional[str] = None
     artist: Optional[str] = None
+    album_artist: Optional[str] = None
     genre: Optional[str] = None
 
 
@@ -106,6 +107,7 @@ async def dry_run_item(item_id: int, db: Session = Depends(get_db)):
 
         title = (item.current_title or "").strip()
         artist = (item.current_artist or "").strip()
+        album_artist = (item.album_artist or artist or "").strip()
         genre = (item.genre or "").strip()
 
         missing_fields = []
@@ -113,11 +115,13 @@ async def dry_run_item(item_id: int, db: Session = Depends(get_db)):
             missing_fields.append("title")
         if not artist:
             missing_fields.append("artist")
+        if not album_artist:
+            missing_fields.append("album_artist")
         if not genre:
             missing_fields.append("genre")
 
         preview = file_mover.get_destination_preview(
-            artist=artist or "unknown",
+            album_artist=album_artist or "unknown",
             title=title or "untitled",
             extension=item.extension
         )
@@ -130,11 +134,11 @@ async def dry_run_item(item_id: int, db: Session = Depends(get_db)):
         m4a_atoms = None
         if item.extension.lower() == ".m4a":
             m4a_atoms = {
-                "title": {"atom": "©nam", "value": title},
-                "artist": {"atom": "©ART", "value": artist},
-                "album_artist": {"atom": "aART", "value": artist},
-                "album": {"atom": "©alb", "value": title},
-                "genre": {"atom": "©gen", "value": genre}
+                "title": {"atom": "\xa9nam", "value": title},
+                "artist": {"atom": "\xa9ART", "value": artist},
+                "album_artist": {"atom": "aART", "value": album_artist},
+                "album": {"atom": "\xa9alb", "value": title},
+                "genre": {"atom": "\xa9gen", "value": genre}
             }
 
         permission_ok = bool(
@@ -151,7 +155,7 @@ async def dry_run_item(item_id: int, db: Session = Depends(get_db)):
             "metadata_preview": {
                 "title": title,
                 "artist": artist,
-                "album_artist": artist,
+                "album_artist": album_artist,
                 "album": title,
                 "genre": genre,
                 "m4a_atoms": m4a_atoms
@@ -198,6 +202,12 @@ async def update_item(
                 raise HTTPException(status_code=400, detail="اسم الفنان طويل جداً (max 300 chars)")
             update_kwargs["artist"] = artist
 
+        if request.album_artist is not None:
+            album_artist = request.album_artist.strip()
+            if len(album_artist) > 300:
+                raise HTTPException(status_code=400, detail="اسم فنان الألبوم طويل جداً (max 300 chars)")
+            update_kwargs["album_artist"] = album_artist
+
         if request.genre is not None:
             genre = request.genre.strip()
             if genre == "أخرى…":
@@ -211,6 +221,7 @@ async def update_item(
             item_id,
             title=update_kwargs.get("title"),
             artist=update_kwargs.get("artist"),
+            album_artist=update_kwargs.get("album_artist"),
             genre=update_kwargs.get("genre")
         )
         
@@ -250,6 +261,9 @@ async def confirm_item(
         
         if not item.current_artist or not item.current_artist.strip():
             raise HTTPException(status_code=400, detail="اسم الفنان مطلوب (Artist is required)")
+
+        if not item.album_artist or not item.album_artist.strip():
+            raise HTTPException(status_code=400, detail="فنان الألبوم مطلوب (Album Artist is required)")
         
         if not item.genre or not item.genre.strip():
             raise HTTPException(status_code=400, detail="النوع الموسيقي مطلوب (Genre is required)")
@@ -264,6 +278,7 @@ async def confirm_item(
         
         title = item.current_title.strip()
         artist = item.current_artist.strip()
+        album_artist = item.album_artist.strip()
         genre = item.genre.strip()
 
         current_path = Path(item.current_path)
@@ -301,7 +316,7 @@ async def confirm_item(
             title=title,
             artist=artist,
             album=title,
-            album_artist=artist,
+            album_artist=album_artist,
             genre=genre
         )
         
@@ -314,7 +329,7 @@ async def confirm_item(
         # Move to Navidrome
         new_path = file_mover.move_to_navidrome(
             current_path,
-            artist=artist,
+            album_artist=album_artist,
             title=title,
             extension=item.extension
         )

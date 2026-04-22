@@ -105,11 +105,35 @@ class MetadataProcessor:
         return str(value)
 
     @staticmethod
+    def _join_artists(value: Any) -> Optional[str]:
+        """Join multiple artist values into a single ;-delimited string."""
+        if value is None:
+            return None
+        if isinstance(value, (list, tuple)):
+            # Filter out empty values and join with ;
+            artists = [str(v).strip() for v in value if v is not None and str(v).strip()]
+            if not artists:
+                return None
+            return "; ".join(artists)
+        s = str(value).strip()
+        return s or None
+
+    @staticmethod
     def _id3_text(tag: Any) -> Optional[str]:
         """Extract text from ID3 frame."""
         if tag is None or not hasattr(tag, "text") or not tag.text:
             return None
         return str(tag.text[0])
+
+    @staticmethod
+    def _id3_artists(tag: Any) -> Optional[str]:
+        """Extract all artist values from ID3 frame and join with ; ."""
+        if tag is None or not hasattr(tag, "text") or not tag.text:
+            return None
+        artists = [str(t).strip() for t in tag.text if str(t).strip()]
+        if not artists:
+            return None
+        return "; ".join(artists)
 
     @staticmethod
     def _parse_int(value: Optional[str]) -> Optional[int]:
@@ -166,7 +190,7 @@ class MetadataProcessor:
             if isinstance(audio, MP4):
                 metadata["tag_keys"] = sorted(audio.keys())
                 metadata["title"] = MetadataProcessor._first_value(audio.get('\xa9nam'))
-                metadata["artist"] = MetadataProcessor._first_value(audio.get('\xa9ART'))
+                metadata["artist"] = MetadataProcessor._join_artists(audio.get('\xa9ART'))
                 metadata["album"] = MetadataProcessor._first_value(audio.get('\xa9alb'))
                 metadata["album_artist"] = MetadataProcessor._first_value(audio.get('aART'))
                 metadata["genre"] = MetadataProcessor._first_value(audio.get('\xa9gen') or audio.get('gnre'))
@@ -188,9 +212,9 @@ class MetadataProcessor:
             elif hasattr(audio, 'tags') and isinstance(audio.tags, ID3):
                 metadata["tag_keys"] = sorted(audio.tags.keys())
                 metadata["title"] = MetadataProcessor._id3_text(audio.tags.get('TIT2'))
-                metadata["artist"] = MetadataProcessor._id3_text(audio.tags.get('TPE1'))
+                metadata["artist"] = MetadataProcessor._id3_artists(audio.tags.get('TPE1'))
                 metadata["album"] = MetadataProcessor._id3_text(audio.tags.get('TALB'))
-                metadata["album_artist"] = MetadataProcessor._id3_text(audio.tags.get('TPE2'))
+                metadata["album_artist"] = MetadataProcessor._id3_artists(audio.tags.get('TPE2'))
                 metadata["genre"] = MetadataProcessor._id3_text(audio.tags.get('TCON'))
                 metadata["year"] = MetadataProcessor._parse_year(
                     MetadataProcessor._id3_text(audio.tags.get('TDRC') or audio.tags.get('TYER'))
@@ -211,9 +235,9 @@ class MetadataProcessor:
                 tags = audio.tags or {}
                 metadata["tag_keys"] = sorted(tags.keys())
                 metadata["title"] = MetadataProcessor._first_value(tags.get('title'))
-                metadata["artist"] = MetadataProcessor._first_value(tags.get('artist'))
+                metadata["artist"] = MetadataProcessor._join_artists(tags.get('artist'))
                 metadata["album"] = MetadataProcessor._first_value(tags.get('album'))
-                metadata["album_artist"] = MetadataProcessor._first_value(tags.get('albumartist'))
+                metadata["album_artist"] = MetadataProcessor._join_artists(tags.get('albumartist'))
                 metadata["genre"] = MetadataProcessor._first_value(tags.get('genre'))
                 metadata["year"] = MetadataProcessor._parse_year(
                     MetadataProcessor._first_value(tags.get('date'))
@@ -256,6 +280,12 @@ class MetadataProcessor:
             if key in {"year", "track_number", "disc_number"}:
                 if MetadataProcessor._parse_int(actual_value) != MetadataProcessor._parse_int(expected_value):
                     mismatches.append((key, expected_value, actual_value))
+            elif key in {"artist", "album_artist"}:
+                # Normalize ;-separated artist lists for comparison
+                norm_expected = "; ".join([a.strip() for a in str(expected_value or "").split(';') if a.strip()])
+                norm_actual = "; ".join([a.strip() for a in str(actual_value or "").split(';') if a.strip()])
+                if norm_expected != norm_actual:
+                    mismatches.append((key, expected_value, actual_value))
             else:
                 if str(actual_value or "").strip() != str(expected_value).strip():
                     mismatches.append((key, expected_value, actual_value))
@@ -274,6 +304,7 @@ class MetadataProcessor:
         audio_path: Path,
         title: str,
         artist: str,
+        album_artist: Optional[str] = None,
         genre: Optional[str] = None,
         album: Optional[str] = None,
         **kwargs
@@ -284,7 +315,8 @@ class MetadataProcessor:
         Args:
             audio_path: Path to audio file
             title: Track title
-            artist: Track artist
+            artist: Track artist(s) — may contain multiple values separated by ';'
+            album_artist: Album artist (single value, defaults to first artist if not provided)
             genre: Track genre (optional)
             album: Album name (defaults to title when not provided)
             **kwargs: Additional metadata (year, track_number, disc_number)
@@ -299,14 +331,20 @@ class MetadataProcessor:
             if audio is None:
                 logger.error(f"Could not open audio file: {audio_path}")
                 return False
+
+            # Split artist into list for multi-value tags
+            artist_list = [a.strip() for a in artist.split(';') if a.strip()]
+            if not artist_list:
+                artist_list = [artist.strip()]
+            album_artist_value = album_artist.strip() if album_artist and album_artist.strip() else artist_list[0]
             
             # Handle different file formats
             if isinstance(audio, MP4):
                 # M4A files
                 audio['\xa9nam'] = [title]
-                audio['\xa9ART'] = [artist]
+                audio['\xa9ART'] = artist_list
                 audio['\xa9alb'] = [album_value]
-                audio['aART'] = [artist]  # Album artist
+                audio['aART'] = [album_artist_value]
                 if genre:
                     audio['\xa9gen'] = [genre]
                 # Add missing M4A fields
@@ -332,9 +370,9 @@ class MetadataProcessor:
                 
                 if isinstance(audio.tags, ID3):
                     audio.tags.setall('TIT2', [TIT2(encoding=3, text=title)])
-                    audio.tags.setall('TPE1', [TPE1(encoding=3, text=artist)])
+                    audio.tags.setall('TPE1', [TPE1(encoding=3, text=artist_list)])
                     audio.tags.setall('TALB', [TALB(encoding=3, text=album_value)])
-                    audio.tags.setall('TPE2', [TPE2(encoding=3, text=artist)])  # Album artist
+                    audio.tags.setall('TPE2', [TPE2(encoding=3, text=album_artist_value)])
                     if genre:
                         audio.tags.setall('TCON', [TCON(encoding=3, text=genre)])
                     # Add missing ID3 fields
@@ -348,9 +386,9 @@ class MetadataProcessor:
                 # FLAC or OGG
                 elif isinstance(audio, (FLAC, OggVorbis)):
                     audio['title'] = title
-                    audio['artist'] = artist
+                    audio['artist'] = artist_list
                     audio['album'] = album_value
-                    audio['albumartist'] = artist
+                    audio['albumartist'] = album_artist_value
                     if genre:
                         audio['genre'] = genre
                     if kwargs.get('year'):
@@ -363,9 +401,9 @@ class MetadataProcessor:
             audio.save()
             expected = {
                 "title": title,
-                "artist": artist,
+                "artist": "; ".join(artist_list),
                 "album": album_value,
-                "album_artist": artist,
+                "album_artist": album_artist_value,
                 "genre": genre,
                 "year": kwargs.get("year"),
                 "track_number": kwargs.get("track_number"),
@@ -465,17 +503,18 @@ class MetadataProcessor:
                 # Handle different file formats
                 if isinstance(audio, MP4):
                     if title is not None:
-                        audio['©nam'] = [title]
+                        audio['\xa9nam'] = [title]
                     if artist is not None:
-                        audio['©ART'] = [artist]
+                        artist_list = [a.strip() for a in artist.split(';') if a.strip()]
+                        audio['\xa9ART'] = artist_list
                     if album is not None:
-                        audio['©alb'] = [album]
+                        audio['\xa9alb'] = [album]
                     if album_artist is not None:
                         audio['aART'] = [album_artist]
                     if genre is not None:
-                        audio['©gen'] = [genre]
+                        audio['\xa9gen'] = [genre]
                     if year is not None:
-                        audio['©day'] = [str(year)]
+                        audio['\xa9day'] = [str(year)]
                     if track_number is not None:
                         # M4A track number is tuple (track, total)
                         existing = audio.get('trkn', [(0, 0)])[0]
@@ -492,7 +531,8 @@ class MetadataProcessor:
                         if title is not None:
                             audio.tags.setall('TIT2', [TIT2(encoding=3, text=title)])
                         if artist is not None:
-                            audio.tags.setall('TPE1', [TPE1(encoding=3, text=artist)])
+                            artist_list = [a.strip() for a in artist.split(';') if a.strip()]
+                            audio.tags.setall('TPE1', [TPE1(encoding=3, text=artist_list)])
                         if album is not None:
                             audio.tags.setall('TALB', [TALB(encoding=3, text=album)])
                         if album_artist is not None:
@@ -510,7 +550,8 @@ class MetadataProcessor:
                         if title is not None:
                             audio['title'] = title
                         if artist is not None:
-                            audio['artist'] = artist
+                            artist_list = [a.strip() for a in artist.split(';') if a.strip()]
+                            audio['artist'] = artist_list
                         if album is not None:
                             audio['album'] = album
                         if album_artist is not None:
