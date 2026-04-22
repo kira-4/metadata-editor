@@ -668,6 +668,16 @@ function rebuildArtistValue(itemId) {
 }
 
 function addArtistRow(itemId) {
+    // Sync from DOM to avoid stale values overwriting what the user typed
+    const existingCard = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    if (existingCard) {
+        const inputs = existingCard.querySelectorAll('.artist-input');
+        const currentRows = [];
+        inputs.forEach(input => currentRows.push(input.value));
+        if (currentRows.length > 0) {
+            artistRowsMap.set(itemId, currentRows);
+        }
+    }
     const rows = artistRowsMap.get(itemId) || [''];
     rows.push('');
     artistRowsMap.set(itemId, rows);
@@ -679,9 +689,8 @@ function addArtistRow(itemId) {
     artistDraftValues.set(itemId, joined);
     // Re-render the card to add the new row
     const container = document.getElementById('pendingItems');
-    const card = container?.querySelector(`.item-card[data-id="${itemId}"]`);
-    if (card && item) {
-        card.outerHTML = createItemCard(item);
+    if (existingCard && item) {
+        existingCard.outerHTML = createItemCard(item);
         attachItemListeners(itemId);
         // Focus the new artist input
         const newCard = container.querySelector(`.item-card[data-id="${itemId}"]`);
