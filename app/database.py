@@ -451,6 +451,26 @@ class LibraryManager:
         return [a.strip() for a in value.split(';') if a.strip()]
 
     @staticmethod
+    def _artist_match_filter(field, artist_name):
+        """Generate SQLAlchemy OR filter for matching an artist in a semicolon-delimited field.
+
+        Handles both ';' and '; ' separators so that multi-artist values like
+        "ArtistA; ArtistB" correctly match individual artist names.
+        """
+        from sqlalchemy import or_
+        n = artist_name
+        return or_(
+            field == n,
+            field.like(f'{n};%'),
+            field.like(f'{n} ;%'),
+            field.like(f'%;{n}'),
+            field.like(f'%; {n}'),
+            field.like(f'%;{n};%'),
+            field.like(f'%; {n};%'),
+            field.like(f'%;{n} ;%'),
+        )
+
+    @staticmethod
     def get_all_artists(db: Session, search: Optional[str] = None) -> List[dict]:
         """Get all unique individual artists with track and album counts.
 
@@ -590,14 +610,8 @@ class LibraryManager:
             from sqlalchemy import or_
             query = query.filter(
                 or_(
-                    LibraryTrack.artist == artist,
-                    LibraryTrack.artist.like(f'{artist};%'),
-                    LibraryTrack.artist.like(f'%;{artist}'),
-                    LibraryTrack.artist.like(f'%;{artist};%'),
-                    LibraryTrack.album_artist == artist,
-                    LibraryTrack.album_artist.like(f'{artist};%'),
-                    LibraryTrack.album_artist.like(f'%;{artist}'),
-                    LibraryTrack.album_artist.like(f'%;{artist};%'),
+                    LibraryManager._artist_match_filter(LibraryTrack.artist, artist),
+                    LibraryManager._artist_match_filter(LibraryTrack.album_artist, artist),
                 )
             )
         
@@ -666,10 +680,8 @@ class LibraryManager:
             from sqlalchemy import or_
             query = query.filter(
                 or_(
-                    LibraryTrack.artist == artist,
-                    LibraryTrack.artist.like(f'{artist};%'),
-                    LibraryTrack.artist.like(f'%;{artist}'),
-                    LibraryTrack.artist.like(f'%;{artist};%'),
+                    LibraryManager._artist_match_filter(LibraryTrack.artist, artist),
+                    LibraryManager._artist_match_filter(LibraryTrack.album_artist, artist),
                 )
             )
         
