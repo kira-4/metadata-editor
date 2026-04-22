@@ -8,6 +8,7 @@ from typing import List, Tuple, Optional
 import time
 import threading
 
+from app.artist_matching import derive_album_artist
 from app.config import config
 from app.database import DatabaseManager, SessionLocal
 from app.gemini_client import gemini_client
@@ -92,7 +93,7 @@ class FileScanner:
         existing_artist: Optional[str]
     ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], str]:
         """
-        Infer metadata via Gemini first, then fallback to embedded metadata.
+        Infer title, artists, and album_artist from video_title and channel.
 
         Returns:
             Tuple of (title, artists, album_artist, error_message, raw_response).
@@ -112,7 +113,14 @@ class FileScanner:
 
         title = gemini_title or existing_title
         artists = gemini_artists or existing_artist
-        album_artist = gemini_album_artist or artists or existing_artist
+
+        # Derive album_artist: must be one of the artists, preferring channel match
+        if artists:
+            album_artist = derive_album_artist(artists, channel)
+        elif gemini_album_artist:
+            album_artist = gemini_album_artist
+        else:
+            album_artist = existing_artist or channel
 
         if (not gemini_title or not gemini_artists) and (existing_title or existing_artist):
             logger.info(
