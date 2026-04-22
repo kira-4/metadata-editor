@@ -531,14 +531,14 @@ function createItemCard(item) {
     const titleValue = item.current_title || item.inferred_title || '';
     const hasArtistDraft = artistDraftValues.has(item.id);
     const artistValue = hasArtistDraft ? artistDraftValues.get(item.id) : (item.current_artist || item.inferred_artist || '');
-    const albumArtistValue = item.album_artist || '';
     const artistList = artistValue.split(';').map(a => a.trim()).filter(Boolean);
     if (artistList.length === 0) artistList.push('');
     artistRowsMap.set(item.id, artistList);
 
     const artistRowsHtml = artistList.map((artist, index) => `
         <div class="artist-row" data-item-id="${item.id}" data-row-index="${index}">
-            <div class="artist-combobox" data-row-id="${item.id}_artist_${index}">
+            <div class="artist-combobox ${index === 0 ? 'album-artist-row' : ''}" data-row-id="${item.id}_artist_${index}">
+                ${index === 0 ? '<span class="album-artist-star" title="فنان الألبوم">⭐</span>' : ''}
                 <input
                     type="text"
                     class="field-input artist-input"
@@ -587,22 +587,11 @@ function createItemCard(item) {
                     </div>
 
                     <div class="field-group">
-                        <label class="field-label">الفنانون</label>
+                        <label class="field-label">الفنانون <small class="field-hint">(الأول مع ⭐ هو فنان الألبوم)</small></label>
                         <div class="multi-artist-list" data-id="${item.id}">
                             ${artistRowsHtml}
                         </div>
                         <button type="button" class="btn-add-artist" data-id="${item.id}">+ إضافة فنان</button>
-                    </div>
-
-                    <div class="field-group">
-                        <label class="field-label">فنان الألبوم</label>
-                        <input
-                            type="text"
-                            class="field-input album-artist-input"
-                            value="${escapeHtml(albumArtistValue)}"
-                            data-id="${item.id}"
-                            placeholder="فنان الألبوم (مطلوب)"
-                        >
                     </div>
 
                     <div class="source-text">
@@ -1089,19 +1078,6 @@ function attachItemListeners(itemId) {
         });
     });
 
-    // Album artist input
-    const albumArtistInput = card.querySelector('.album-artist-input');
-    if (albumArtistInput) {
-        albumArtistInput.addEventListener('input', () => {
-            const item = pendingItems.find(entry => entry.id === itemId);
-            if (item) {
-                item.album_artist = albumArtistInput.value;
-            }
-            updateConfirmButton(itemId);
-        });
-        albumArtistInput.addEventListener('blur', () => updateField(itemId, 'album_artist', albumArtistInput.value));
-    }
-    
     // Genre button listeners
     const genreButtons = card.querySelectorAll('.genre-btn');
     genreButtons.forEach(btn => {
@@ -1197,16 +1173,14 @@ function updateConfirmButton(itemId) {
     const confirmBtn = card.querySelector('.confirm-btn');
     const titleInput = card.querySelector('.title-input');
     const artistInputs = card.querySelectorAll('.artist-input');
-    const albumArtistInput = card.querySelector('.album-artist-input');
 
     if (!confirmBtn || !titleInput || artistInputs.length === 0) return;
 
     const hasGenre = selectedGenres[itemId] && selectedGenres[itemId].trim().length > 0;
     const hasTitle = titleInput.value.trim().length > 0;
     const hasArtist = Array.from(artistInputs).some(input => input.value.trim().length > 0);
-    const hasAlbumArtist = albumArtistInput && albumArtistInput.value.trim().length > 0;
 
-    confirmBtn.disabled = !(hasGenre && hasTitle && hasArtist && hasAlbumArtist);
+    confirmBtn.disabled = !(hasGenre && hasTitle && hasArtist);
     updateConfirmAllButton();
 }
 

@@ -1664,3 +1664,15 @@ body {
 .album-artist-input {
     width: 100%;
 }
+
+.album-artist-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.album-artist-star {
+    font-size: 0.9rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
