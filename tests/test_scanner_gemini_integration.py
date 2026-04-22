@@ -27,7 +27,8 @@ class TestScannerGeminiIntegration(unittest.TestCase):
 
         self.assertEqual(title, "AI Title")
         self.assertEqual(artist, "AI Artist")
-        self.assertEqual(album_artist, "AI Album Artist")
+        # album_artist is now derived from artists list (first artist since no channel match)
+        self.assertEqual(album_artist, "AI Artist")
         self.assertIsNone(error)
         self.assertEqual(raw, "raw")
         mock_infer.assert_called_once_with("Video", "Channel")
@@ -79,7 +80,8 @@ class TestScannerGeminiIntegration(unittest.TestCase):
 
         self.assertIsNone(title)
         self.assertIsNone(artist)
-        self.assertIsNone(album_artist)
+        # When no artists are available, album_artist falls back to channel name
+        self.assertEqual(album_artist, "Channel")
         self.assertEqual(error, "Gemini API error")
         self.assertEqual(raw, "")
 
