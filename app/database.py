@@ -444,30 +444,63 @@ class LibraryManager:
         return track
     
     @staticmethod
+    def _split_artists(value: Optional[str]) -> List[str]:
+        """Split a semicolon-delimited artist string into individual artist names."""
+        if not value or not value.strip():
+            return []
+        return [a.strip() for a in value.split(';') if a.strip()]
+
+    @staticmethod
     def get_all_artists(db: Session, search: Optional[str] = None) -> List[dict]:
-        """Get all unique artists with track and album counts."""
-        from sqlalchemy import func, distinct
-        
-        query = db.query(
+        """Get all unique individual artists with track and album counts.
+
+        Splits semicolon-delimited artist strings so that each individual artist
+        appears as a separate entry, with aggregated counts across all their tracks.
+        """
+        from collections import defaultdict
+
+        # Fetch all tracks with artist and album_artist
+        rows = db.query(
             LibraryTrack.artist,
-            func.count(LibraryTrack.id).label('track_count'),
-            func.count(distinct(LibraryTrack.album)).label('album_count')
-        ).filter(LibraryTrack.artist.isnot(None))
-        
+            LibraryTrack.album_artist,
+            LibraryTrack.album,
+            LibraryTrack.id
+        ).filter(
+            (LibraryTrack.artist.isnot(None)) | (LibraryTrack.album_artist.isnot(None))
+        ).all()
+
+        # Accumulate per-individual-artist counts
+        track_counts: Dict[str, int] = defaultdict(int)
+        album_sets: Dict[str, set] = defaultdict(set)
+
+        for row in rows:
+            # Split artist field
+            if row.artist:
+                for name in LibraryManager._split_artists(row.artist):
+                    track_counts[name] += 1
+                    if row.album:
+                        album_sets[name].add(row.album)
+
+            # Split album_artist field
+            if row.album_artist:
+                for name in LibraryManager._split_artists(row.album_artist):
+                    track_counts[name] += 1
+                    if row.album:
+                        album_sets[name].add(row.album)
+
+        # Build result list
+        all_names = set(track_counts.keys())
         if search:
             escaped = search.replace('%', r'\%').replace('_', r'\_')
-            query = query.filter(LibraryTrack.artist.like(f'%{escaped}%'))
+            all_names = {n for n in all_names if n.lower().find(escaped.lower()) >= 0}
 
-        query = query.group_by(LibraryTrack.artist)
-        
-        results = query.all()
         return [
             {
-                'name': r.artist,
-                'track_count': r.track_count,
-                'album_count': r.album_count
+                'name': name,
+                'track_count': track_counts[name],
+                'album_count': len(album_sets.get(name, set()))
             }
-            for r in results
+            for name in sorted(all_names)
         ]
 
     @staticmethod
@@ -506,7 +539,8 @@ class LibraryManager:
             name = (row.name or "").strip()
             if not name:
                 continue
-            merged[name] = merged.get(name, 0) + int(row.track_count or 0)
+            for individual in LibraryManager._split_artists(name):
+                merged[individual] = merged.get(individual, 0) + int(row.track_count or 0)
 
         album_artist_rows = (
             db.query(
@@ -522,7 +556,8 @@ class LibraryManager:
             name = (row.name or "").strip()
             if not name:
                 continue
-            merged[name] = merged.get(name, 0) + int(row.track_count or 0)
+            for individual in LibraryManager._split_artists(name):
+                merged[individual] = merged.get(individual, 0) + int(row.track_count or 0)
 
         return [
             {"name": name, "track_count": track_count}
@@ -552,8 +587,18 @@ class LibraryManager:
             query = query.filter(LibraryTrack.album.like(f'%{escaped}%'))
         
         if artist:
+            from sqlalchemy import or_
             query = query.filter(
-                (LibraryTrack.artist == artist) | (LibraryTrack.album_artist == artist)
+                or_(
+                    LibraryTrack.artist == artist,
+                    LibraryTrack.artist.like(f'{artist};%'),
+                    LibraryTrack.artist.like(f'%;{artist}'),
+                    LibraryTrack.artist.like(f'%;{artist};%'),
+                    LibraryTrack.album_artist == artist,
+                    LibraryTrack.album_artist.like(f'{artist};%'),
+                    LibraryTrack.album_artist.like(f'%;{artist}'),
+                    LibraryTrack.album_artist.like(f'%;{artist};%'),
+                )
             )
         
         query = query.group_by(LibraryTrack.album, LibraryTrack.album_artist, LibraryTrack.year)
@@ -618,7 +663,15 @@ class LibraryManager:
             )
         
         if artist:
-            query = query.filter(LibraryTrack.artist == artist)
+            from sqlalchemy import or_
+            query = query.filter(
+                or_(
+                    LibraryTrack.artist == artist,
+                    LibraryTrack.artist.like(f'{artist};%'),
+                    LibraryTrack.artist.like(f'%;{artist}'),
+                    LibraryTrack.artist.like(f'%;{artist};%'),
+                )
+            )
         
         if album:
             query = query.filter(LibraryTrack.album == album)
