@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 import asyncio
 import json
 
-from app.artist_matching import normalize_artist_name, rank_artist_candidates
+from app.artist_matching import derive_album_artist, normalize_artist_name, rank_artist_candidates
 from app.config import config
 from app.database import get_db, DatabaseManager, LibraryManager
 from app.metadata_processor import metadata_processor
@@ -32,7 +32,6 @@ class UpdateItemRequest(BaseModel):
     """Request to update item fields."""
     title: Optional[str] = None
     artist: Optional[str] = None
-    album_artist: Optional[str] = None
     genre: Optional[str] = None
 
 
@@ -107,7 +106,7 @@ async def dry_run_item(item_id: int, db: Session = Depends(get_db)):
 
         title = (item.current_title or "").strip()
         artist = (item.current_artist or "").strip()
-        album_artist = (item.album_artist or artist or "").strip()
+        album_artist = (derive_album_artist(artist, item.channel) or "").strip()
         genre = (item.genre or "").strip()
 
         missing_fields = []
@@ -188,6 +187,10 @@ async def update_item(
 ):
     """Update item fields."""
     try:
+        item = DatabaseManager.get_item_by_id(db, item_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+
         update_kwargs = {}
 
         if request.title is not None:
@@ -201,12 +204,8 @@ async def update_item(
             if len(artist) > 300:
                 raise HTTPException(status_code=400, detail="اسم الفنان طويل جداً (max 300 chars)")
             update_kwargs["artist"] = artist
-
-        if request.album_artist is not None:
-            album_artist = request.album_artist.strip()
-            if len(album_artist) > 300:
-                raise HTTPException(status_code=400, detail="اسم فنان الألبوم طويل جداً (max 300 chars)")
-            update_kwargs["album_artist"] = album_artist
+            # Auto-derive album_artist from the updated artist list
+            update_kwargs["album_artist"] = derive_album_artist(artist, item.channel)
 
         if request.genre is not None:
             genre = request.genre.strip()
@@ -261,9 +260,6 @@ async def confirm_item(
         
         if not item.current_artist or not item.current_artist.strip():
             raise HTTPException(status_code=400, detail="اسم الفنان مطلوب (Artist is required)")
-
-        if not item.album_artist or not item.album_artist.strip():
-            raise HTTPException(status_code=400, detail="فنان الألبوم مطلوب (Album Artist is required)")
         
         if not item.genre or not item.genre.strip():
             raise HTTPException(status_code=400, detail="النوع الموسيقي مطلوب (Genre is required)")
@@ -278,7 +274,7 @@ async def confirm_item(
         
         title = item.current_title.strip()
         artist = item.current_artist.strip()
-        album_artist = item.album_artist.strip()
+        album_artist = derive_album_artist(artist, item.channel)
         genre = item.genre.strip()
 
         current_path = Path(item.current_path)
