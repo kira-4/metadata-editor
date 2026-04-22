@@ -5,17 +5,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 **Run the app locally:**
+
 ```bash
 python -m uvicorn app.main:app --reload --port 8090
 ```
 
 **Run tests:**
+
 ```bash
 python -m pytest tests/ -v          # Full test suite
 python -m pytest tests/test_basic.py  # Single test file
 ```
 
 **Docker:**
+
 ```bash
 docker-compose up -d
 docker-compose logs -f metadata-editor
