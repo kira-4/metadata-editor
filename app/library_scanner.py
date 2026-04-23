@@ -1,9 +1,10 @@
 """Library scanner for indexing music files in /music directory."""
 import logging
+import os
 import threading
 from pathlib import Path
 from typing import Optional, Callable
-from datetime import datetime
+from datetime import datetime, timezone
 from mutagen import File as MutagenFile
 from mutagen.id3 import ID3NoHeaderError, ID3, TIT2, TPE1, TALB, TPE2, TCON
 from mutagen.mp4 import MP4
@@ -12,7 +13,7 @@ from mutagen.oggvorbis import OggVorbis
 from sqlalchemy.orm import Session
 
 from app.config import config
-from app.database import SessionLocal, LibraryManager
+from app.database import SessionLocal, LibraryManager, LibraryMetaManager
 from app.metadata_processor import metadata_processor
 
 logger = logging.getLogger(__name__)
@@ -40,34 +41,84 @@ class LibraryScanner:
         self.scan_thread.start()
         return True
     
+    @staticmethod
+    def _collect_audio_files(
+        root: Path,
+        audio_extensions: set,
+        last_scan_at: Optional[datetime] = None,
+    ) -> list:
+        """
+        Walk root recursively, yielding audio files.
+
+        Prunes subdirectories whose mtime is older than last_scan_at
+        (if provided) — a directory that hasn't changed can be skipped
+        entirely because none of its descendants changed either.
+
+        Uses a single os.scandir-based walk instead of multiple rglob calls,
+        and filters by suffix.lower() instead of running one rglob per extension.
+        """
+        audio_extensions_lower = {ext.lower() for ext in audio_extensions}
+        audio_files = []
+
+        def _walk(dir_path: Path):
+            try:
+                entries = list(os.scandir(dir_path))
+            except PermissionError:
+                logger.warning(f"Permission denied: {dir_path}")
+                return
+
+            for entry in entries:
+                if entry.is_dir(follow_symlinks=False):
+                    entry_path = Path(entry.path)
+                    if last_scan_at is not None:
+                        try:
+                            dir_mtime = datetime.fromtimestamp(entry.stat().st_mtime, tz=timezone.utc)
+                        except OSError:
+                            dir_mtime = None
+                        if dir_mtime is not None and dir_mtime < last_scan_at:
+                            continue
+                    _walk(entry_path)
+                elif entry.is_file(follow_symlinks=False):
+                    if Path(entry.name).suffix.lower() in audio_extensions_lower:
+                        audio_files.append(Path(entry.path))
+
+        _walk(root)
+        return audio_files
+
     def _scan_library(self, force_full: bool = False):
         """
         Scan library directory and index all audio files.
-        
+
         Args:
-            force_full: If True, re-scan all files. If False, only scan new/modified files.
+            force_full: If True, re-scan all files and run cleanup for deleted files.
+                        If False, only scan new/modified files (skips unchanged dirs).
         """
         self.is_scanning = True
         self.total_files = 0
         self.processed_files = 0
         self.errors = []
-        
+
         try:
             logger.info(f"Starting library scan of {config.NAVIDROME_ROOT}")
-            
-            # Get database session directly — avoids misuse of the get_db() generator
-            # which is designed for FastAPI's dependency injection, not manual use.
+
             db: Session = SessionLocal()
 
             try:
-                # Find all audio files
-                audio_files = []
-                for ext in config.AUDIO_EXTENSIONS:
-                    audio_files.extend(config.NAVIDROME_ROOT.rglob(f"*{ext}"))
-                
+                # Determine cutoff for directory-mtime pruning
+                last_scan_at = None
+                if not force_full:
+                    last_scan_at = LibraryMetaManager.get_last_scan_at(db)
+                    if last_scan_at:
+                        logger.info(f"Incremental scan: skipping dirs unchanged since {last_scan_at}")
+
+                # Single-pass walk with directory-mtime pruning
+                audio_files = self._collect_audio_files(
+                    config.NAVIDROME_ROOT, config.AUDIO_EXTENSIONS, last_scan_at
+                )
+
                 self.total_files = len(audio_files)
-                logger.info(f"Found {self.total_files} audio files")
-                
+                logger.info(f"Found {self.total_files} audio files to scan")
+
                 if self.progress_callback:
                     self.progress_callback({
                         'status': 'scanning',
@@ -75,13 +126,17 @@ class LibraryScanner:
                         'processed': 0,
                         'errors': []
                     })
-                
+
+                # Collect discovered file paths for set-based cleanup
+                scanned_paths = set()
+
                 # Process each file
                 for audio_file in audio_files:
                     try:
-                        self._index_file(db, audio_file, force_full)
+                        self._index_file(db, audio_file, force=force_full, last_scan_at=last_scan_at)
                         self.processed_files += 1
-                        
+                        scanned_paths.add(str(audio_file))
+
                         # Report progress every 10 files
                         if self.processed_files % 10 == 0 and self.progress_callback:
                             self.progress_callback({
@@ -90,18 +145,21 @@ class LibraryScanner:
                                 'processed': self.processed_files,
                                 'errors': self.errors
                             })
-                    
+
                     except Exception as e:
                         error_msg = f"Error processing {audio_file}: {str(e)}"
                         logger.error(error_msg)
                         self.errors.append(error_msg)
-                
-                # Cleanup: remove tracks for files that no longer exist
-                if not force_full:
-                    self._cleanup_missing_files(db)
-                
+
+                # Cleanup: only when force_full=True (user explicitly requested)
+                if force_full:
+                    self._cleanup_missing_files(db, scanned_paths)
+
+                # Record successful scan timestamp
+                LibraryMetaManager.set_last_scan_at(db, datetime.now(timezone.utc))
+
                 logger.info(f"Library scan complete. Processed {self.processed_files}/{self.total_files} files")
-                
+
                 if self.progress_callback:
                     self.progress_callback({
                         'status': 'complete',
@@ -109,14 +167,14 @@ class LibraryScanner:
                         'processed': self.processed_files,
                         'errors': self.errors
                     })
-            
+
             finally:
                 db.close()
-        
+
         except Exception as e:
             logger.error(f"Library scan failed: {e}")
             self.errors.append(f"Scan failed: {str(e)}")
-            
+
             if self.progress_callback:
                 self.progress_callback({
                     'status': 'error',
@@ -124,67 +182,73 @@ class LibraryScanner:
                     'processed': self.processed_files,
                     'errors': self.errors
                 })
-        
+
         finally:
             self.is_scanning = False
     
-    def _index_file(self, db: Session, file_path: Path, force: bool = False):
+    def _index_file(self, db: Session, file_path: Path, force: bool = False, last_scan_at: Optional[datetime] = None):
         """
         Index a single audio file.
-        
+
         Args:
             db: Database session
             file_path: Path to audio file
             force: If True, re-index even if file hasn't changed
+            last_scan_at: Timestamp of last successful scan, for fast-path skip
         """
         try:
             # Get file stats
             stat = file_path.stat()
-            file_modified = datetime.fromtimestamp(stat.st_mtime)
+            file_modified = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
             file_size = stat.st_size
-            
+
+            # Fast-path: if we have a last_scan_at timestamp and the file
+            # hasn't been modified since then, skip only if already in DB.
+            if not force and last_scan_at is not None:
+                if file_modified < last_scan_at:
+                    existing = LibraryManager.get_track_by_path(db, str(file_path))
+                    if existing:
+                        return
+
             # Check if file needs indexing
             if not force:
                 existing = LibraryManager.get_track_by_path(db, str(file_path))
                 if existing and existing.file_modified and existing.file_modified >= file_modified:
-                    # File hasn't changed, skip
                     return
-            
+
             # Read metadata (raw tags from file)
             metadata = self._read_raw_metadata(file_path)
-            
+
             # Infer missing metadata (does not modify file yet)
             inferred_metadata = self._infer_missing_metadata(metadata.copy(), file_path)
-            
+
             # Write back to file if changes were made (and ensure required fields exist)
             if self._should_write_metadata(metadata, inferred_metadata):
                 logger.info(f"Writing inferred metadata to {file_path}")
                 self._write_metadata(file_path, inferred_metadata)
                 # Update file modified time in stats since we just modified it
                 stat = file_path.stat()
-                file_modified = datetime.fromtimestamp(stat.st_mtime)
+                file_modified = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
                 file_size = stat.st_size
-                # Use the new metadata for the DB
                 metadata = inferred_metadata
             else:
-                # No write needed, just use the inferred metadata
                 metadata = inferred_metadata
-            
+
             # Create or update track
             file_stats = {
                 'size': file_size,
                 'modified': file_modified
             }
-            
+
             LibraryManager.create_or_update_track(
                 db,
                 str(file_path),
                 metadata,
                 file_stats
             )
-            
+
             logger.debug(f"Indexed: {file_path}")
-        
+
         except Exception as e:
             logger.error(f"Failed to index {file_path}: {e}")
             raise
@@ -434,19 +498,19 @@ class LibraryScanner:
         except (ValueError, TypeError):
             return None
     
-    def _cleanup_missing_files(self, db: Session):
+    def _cleanup_missing_files(self, db: Session, scanned_paths: set):
         """Remove tracks from database for files that no longer exist."""
         from app.database import LibraryTrack
-        
+
         tracks = db.query(LibraryTrack).all()
         removed_count = 0
-        
+
         for track in tracks:
-            if not Path(track.file_path).exists():
+            if str(track.file_path) not in scanned_paths:
                 LibraryManager.delete_track(db, track.id)
                 removed_count += 1
                 logger.debug(f"Removed missing file from index: {track.file_path}")
-        
+
         if removed_count > 0:
             logger.info(f"Removed {removed_count} missing files from index")
     
