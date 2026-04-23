@@ -48,7 +48,7 @@ class LibraryScanner:
         last_scan_at: Optional[datetime] = None,
     ) -> list:
         """
-        Walk root recursively, yielding audio files.
+        Walk root recursively, returning a list of audio file paths.
 
         Prunes subdirectories whose mtime is older than last_scan_at
         (if provided) — a directory that hasn't changed can be skipped
@@ -60,6 +60,9 @@ class LibraryScanner:
         audio_extensions_lower = {ext.lower() for ext in audio_extensions}
         audio_files = []
 
+        if not root.exists():
+            return audio_files
+
         def _walk(dir_path: Path):
             try:
                 entries = list(os.scandir(dir_path))
@@ -68,19 +71,23 @@ class LibraryScanner:
                 return
 
             for entry in entries:
-                if entry.is_dir(follow_symlinks=False):
-                    entry_path = Path(entry.path)
-                    if last_scan_at is not None:
-                        try:
-                            dir_mtime = datetime.fromtimestamp(entry.stat().st_mtime, tz=timezone.utc)
-                        except OSError:
-                            dir_mtime = None
-                        if dir_mtime is not None and dir_mtime < last_scan_at:
-                            continue
-                    _walk(entry_path)
-                elif entry.is_file(follow_symlinks=False):
-                    if Path(entry.name).suffix.lower() in audio_extensions_lower:
-                        audio_files.append(Path(entry.path))
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        entry_path = Path(entry.path)
+                        if last_scan_at is not None:
+                            try:
+                                dir_mtime = datetime.fromtimestamp(entry.stat().st_mtime, tz=timezone.utc)
+                            except OSError:
+                                dir_mtime = None
+                            if dir_mtime is not None and dir_mtime < last_scan_at:
+                                continue
+                        _walk(entry_path)
+                    elif entry.is_file(follow_symlinks=False):
+                        if Path(entry.name).suffix.lower() in audio_extensions_lower:
+                            audio_files.append(Path(entry.path))
+                except OSError:
+                    logger.warning(f"Unable to inspect entry: {entry.path}")
+                    continue
 
         _walk(root)
         return audio_files
@@ -196,62 +203,51 @@ class LibraryScanner:
             force: If True, re-index even if file hasn't changed
             last_scan_at: Timestamp of last successful scan, for fast-path skip
         """
-        try:
-            # Get file stats
+        # Get file stats
+        stat = file_path.stat()
+        file_modified = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+        file_size = stat.st_size
+
+        if not force:
+            existing = LibraryManager.get_track_by_path(db, str(file_path))
+            if existing:
+                if last_scan_at is not None and file_modified < last_scan_at:
+                    return
+                if existing.file_modified and existing.file_modified >= file_modified:
+                    return
+
+        # Read metadata (raw tags from file)
+        metadata = self._read_raw_metadata(file_path)
+
+        # Infer missing metadata (does not modify file yet)
+        inferred_metadata = self._infer_missing_metadata(metadata.copy(), file_path)
+
+        # Write back to file if changes were made (and ensure required fields exist)
+        if self._should_write_metadata(metadata, inferred_metadata):
+            logger.info(f"Writing inferred metadata to {file_path}")
+            self._write_metadata(file_path, inferred_metadata)
+            # Update file modified time in stats since we just modified it
             stat = file_path.stat()
             file_modified = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
             file_size = stat.st_size
+            metadata = inferred_metadata
+        else:
+            metadata = inferred_metadata
 
-            # Fast-path: if we have a last_scan_at timestamp and the file
-            # hasn't been modified since then, skip only if already in DB.
-            if not force and last_scan_at is not None:
-                if file_modified < last_scan_at:
-                    existing = LibraryManager.get_track_by_path(db, str(file_path))
-                    if existing:
-                        return
+        # Create or update track
+        file_stats = {
+            'size': file_size,
+            'modified': file_modified
+        }
 
-            # Check if file needs indexing
-            if not force:
-                existing = LibraryManager.get_track_by_path(db, str(file_path))
-                if existing and existing.file_modified and existing.file_modified >= file_modified:
-                    return
+        LibraryManager.create_or_update_track(
+            db,
+            str(file_path),
+            metadata,
+            file_stats
+        )
 
-            # Read metadata (raw tags from file)
-            metadata = self._read_raw_metadata(file_path)
-
-            # Infer missing metadata (does not modify file yet)
-            inferred_metadata = self._infer_missing_metadata(metadata.copy(), file_path)
-
-            # Write back to file if changes were made (and ensure required fields exist)
-            if self._should_write_metadata(metadata, inferred_metadata):
-                logger.info(f"Writing inferred metadata to {file_path}")
-                self._write_metadata(file_path, inferred_metadata)
-                # Update file modified time in stats since we just modified it
-                stat = file_path.stat()
-                file_modified = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
-                file_size = stat.st_size
-                metadata = inferred_metadata
-            else:
-                metadata = inferred_metadata
-
-            # Create or update track
-            file_stats = {
-                'size': file_size,
-                'modified': file_modified
-            }
-
-            LibraryManager.create_or_update_track(
-                db,
-                str(file_path),
-                metadata,
-                file_stats
-            )
-
-            logger.debug(f"Indexed: {file_path}")
-
-        except Exception as e:
-            logger.error(f"Failed to index {file_path}: {e}")
-            raise
+        logger.debug(f"Indexed: {file_path}")
     
     def _read_raw_metadata(self, file_path: Path) -> dict:
         """
@@ -502,14 +498,14 @@ class LibraryScanner:
         """Remove tracks from database for files that no longer exist."""
         from app.database import LibraryTrack
 
-        tracks = db.query(LibraryTrack).all()
+        rows = db.query(LibraryTrack.file_path, LibraryTrack.id).yield_per(500).all()
         removed_count = 0
 
-        for track in tracks:
-            if str(track.file_path) not in scanned_paths:
-                LibraryManager.delete_track(db, track.id)
+        for file_path, track_id in rows:
+            if str(file_path) not in scanned_paths:
+                LibraryManager.delete_track(db, track_id)
                 removed_count += 1
-                logger.debug(f"Removed missing file from index: {track.file_path}")
+                logger.debug(f"Removed missing file from index: {file_path}")
 
         if removed_count > 0:
             logger.info(f"Removed {removed_count} missing files from index")
