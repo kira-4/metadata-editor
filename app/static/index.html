@@ -254,25 +254,15 @@
                         <label><input type="checkbox" id="batchTitleKeep" checked> عدم التغيير</label>
                     </div>
                     <div class="form-group">
-                        <label>الفنان</label>
-                        <div id="libraryEditArtistCombobox" class="library-artist-combobox">
-                            <input
-                                type="text"
-                                id="batchArtist"
-                                class="field-input library-artist-input"
-                                autocomplete="off"
-                                role="combobox"
-                                aria-autocomplete="list"
-                                aria-expanded="false"
-                                aria-haspopup="listbox"
-                                aria-controls="libraryArtistSuggestions"
-                            >
-                            <button type="button" id="libraryArtistDropdownToggle" class="library-artist-dropdown-toggle" aria-label="اقتراحات الفنان">
-                                <span class="artist-dropdown-icon">▾</span>
-                            </button>
-                            <div class="artist-suggestions library-artist-suggestions" id="libraryArtistSuggestions" role="listbox"></div>
-                        </div>
+                        <label>الفنانون</label>
+                        <input type="text" id="batchArtist" class="field-input">
+                        <small class="field-hint">لإضافة فنانين متعددين، افصل بينهم بـ <code>;</code></small>
                         <label><input type="checkbox" id="batchArtistKeep" checked> عدم التغيير</label>
+                    </div>
+                    <div class="form-group">
+                        <label>فنان الألبوم</label>
+                        <input type="text" id="batchAlbumArtist" class="field-input">
+                        <label><input type="checkbox" id="batchAlbumArtistKeep" checked> عدم التغيير</label>
                     </div>
                     <div class="form-group">
                         <label>الألبوم</label>

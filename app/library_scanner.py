@@ -249,9 +249,7 @@ class LibraryScanner:
             if isinstance(audio, MP4):
                 mapping = {
                     'title': '\xa9nam',
-                    'artist': '\xa9ART',
                     'album': '\xa9alb',
-                    'album_artist': 'aART',
                     'genre': '\xa9gen'
                 }
 
@@ -260,6 +258,15 @@ class LibraryScanner:
                     if value and not audio.get(atom_key):
                         audio[atom_key] = [str(value)]
                         modified = True
+
+                # Handle artist fields with multi-value support
+                if metadata.get('artist') and not audio.get('\xa9ART'):
+                    artist_list = [a.strip() for a in metadata['artist'].split(';') if a.strip()]
+                    audio['\xa9ART'] = artist_list
+                    modified = True
+                if metadata.get('album_artist') and not audio.get('aART'):
+                    audio['aART'] = [str(metadata['album_artist'])]
+                    modified = True
 
                 if metadata.get("year") and not audio.get('\xa9day'):
                     audio['\xa9day'] = [str(metadata["year"])]
@@ -288,7 +295,8 @@ class LibraryScanner:
                         add_id3_tag('TIT2', TIT2, metadata['title'])
                         modified = True
                     if not self._get_tag_text(audio.tags.get('TPE1')) and metadata.get('artist'):
-                        add_id3_tag('TPE1', TPE1, metadata['artist'])
+                        artist_list = [a.strip() for a in metadata['artist'].split(';') if a.strip()]
+                        audio.tags.setall('TPE1', [TPE1(encoding=3, text=artist_list)])
                         modified = True
                     if not self._get_tag_text(audio.tags.get('TALB')) and metadata.get('album'):
                         add_id3_tag('TALB', TALB, metadata['album'])
@@ -304,13 +312,19 @@ class LibraryScanner:
             elif isinstance(audio, (FLAC, OggVorbis)) and isinstance(audio.tags, dict):
                 # For Vorbis/FLAC, keys are case-insensitive usually, but standard is lowercase
                 for key, val in [('title', metadata.get('title')), 
-                                 ('artist', metadata.get('artist')),
                                  ('album', metadata.get('album')),
-                                 ('albumartist', metadata.get('album_artist')),
                                  ('genre', metadata.get('genre'))]:
                     if val and not audio.tags.get(key):
                         audio.tags[key] = str(val)
                         modified = True
+                # Handle artist fields with multi-value support
+                if metadata.get('artist') and not audio.tags.get('artist'):
+                    artist_list = [a.strip() for a in metadata['artist'].split(';') if a.strip()]
+                    audio.tags['artist'] = artist_list
+                    modified = True
+                if metadata.get('album_artist') and not audio.tags.get('albumartist'):
+                    audio.tags['albumartist'] = str(metadata['album_artist'])
+                    modified = True
             
             if modified:
                 audio.save()

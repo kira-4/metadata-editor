@@ -46,14 +46,14 @@ client = GeminiClient()
 response_text = """title: اختبار
 artist: فنان"""
 
-title, artist = client._parse_response(response_text)
+title, artist, album_artist = client._parse_response(response_text)
 assert title == "اختبار", f"Expected 'اختبار', got '{title}'"
 assert artist == "فنان", f"Expected 'فنان', got '{artist}'"
 print(f"✓ Two-line format parsing: title={title}, artist={artist}")
 
 # Test 2b: JSON format
 json_response = '{"title": "عنوان", "artist": "مؤدي"}'
-title, artist = client._parse_response(json_response)
+title, artist, album_artist = client._parse_response(json_response)
 assert title == "عنوان", f"Expected 'عنوان', got '{title}'"
 assert artist == "مؤدي", f"Expected 'مؤدي', got '{artist}'"
 print(f"✓ JSON format parsing: title={title}, artist={artist}")
@@ -62,20 +62,20 @@ print(f"✓ JSON format parsing: title={title}, artist={artist}")
 fenced_json = '''```json
 {"title": "test title", "artist": "test artist"}
 ```'''
-title, artist = client._parse_response(fenced_json)
+title, artist, album_artist = client._parse_response(fenced_json)
 assert title == "test title", f"Expected 'test title', got '{title}'"
 assert artist == "test artist", f"Expected 'test artist', got '{artist}'"
 print(f"✓ Code-fenced JSON parsing: title={title}, artist={artist}")
 
 # Test 2d: Unparseable response (should return None, None)
 unparseable = "This is completely unparseable gibberish without any structure"
-title, artist = client._parse_response(unparseable)
+title, artist, album_artist = client._parse_response(unparseable)
 assert title is None and artist is None, "Unparseable response should return None, None"
 print(f"✓ Unparseable response returns (None, None) → triggers needs_manual")
 
 # Test 2e: Partial parsing (only title or only artist)
 partial = "title: only this field"
-title, artist = client._parse_response(partial)
+title, artist, album_artist = client._parse_response(partial)
 assert title == "only this field", f"Expected 'only this field', got '{title}'"
 assert artist is None, "Artist should be None"
 print(f"✓ Partial parsing: title='{title}', artist=None → triggers needs_manual")

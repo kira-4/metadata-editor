@@ -25,8 +25,9 @@ const ARTIST_CREATE_THRESHOLD = 72;
 const ARTIST_SUGGEST_LIMIT = 10;
 const LIBRARY_MOBILE_BREAKPOINT_PX = 768;
 const artistSuggestCache = new Map(); // `${query}|${limit}` -> {timestamp, data}
-const artistComboboxState = new Map(); // itemId -> combobox state
-const artistDraftValues = new Map(); // itemId -> in-progress input value
+const artistComboboxState = new Map(); // rowId -> combobox state
+const artistRowsMap = new Map(); // itemId -> array of artist strings
+const artistDraftValues = new Map(); // itemId -> in-progress input value (joined artists)
 const titleDraftValues = new Map(); // itemId -> in-progress title input value
 const libraryArtistComboboxState = {
     isOpen: false,
@@ -111,6 +112,11 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+function formatArtistDisplay(artist) {
+    if (!artist) return 'غير معروف';
+    return artist.split(';').map(a => a.trim()).filter(Boolean).join(' / ');
 }
 
 function normalizeArtistClient(value) {
@@ -525,54 +531,71 @@ function createItemCard(item) {
     const titleValue = item.current_title || item.inferred_title || '';
     const hasArtistDraft = artistDraftValues.has(item.id);
     const artistValue = hasArtistDraft ? artistDraftValues.get(item.id) : (item.current_artist || item.inferred_artist || '');
-    
+    const artistList = artistValue.split(';').map(a => a.trim());
+    if (artistList.length === 0 || artistList.every(a => a === '')) {
+        artistList.length = 0;
+        artistList.push('');
+    }
+    artistRowsMap.set(item.id, artistList);
+
+    const artistRowsHtml = artistList.map((artist, index) => `
+        <div class="artist-row" data-item-id="${item.id}" data-row-index="${index}">
+            <div class="artist-combobox ${index === 0 ? 'album-artist-row' : ''}" data-row-id="${item.id}_artist_${index}">
+                <input
+                    type="text"
+                    class="field-input artist-input ${index === 0 ? 'album-artist-input' : ''}"
+                    value="${escapeHtml(artist)}"
+                    data-row-id="${item.id}_artist_${index}"
+                    data-item-id="${item.id}"
+                    data-combobox-input="true"
+                    placeholder="الفنان (مطلوب)"
+                    autocomplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded="false"
+                    aria-haspopup="listbox"
+                    aria-controls="artist-suggestions-${item.id}-${index}"
+                >
+                <button type="button" class="artist-dropdown-toggle" data-row-id="${item.id}_artist_${index}" aria-label="اقتراحات الفنان">
+                    <span class="artist-dropdown-icon">▾</span>
+                </button>
+                <div class="artist-suggestions" id="artist-suggestions-${item.id}-${index}" role="listbox"></div>
+            </div>
+            ${artistList.length > 1 ? `<button type="button" class="btn-remove-artist" data-item-id="${item.id}" data-row-index="${index}" aria-label="إزالة فنان">×</button>` : ''}
+        </div>
+    `).join('');
+
     return `
         <div class="item-card" data-id="${item.id}">
             ${hasError ? `<div class="error-badge">⚠️ خطأ: ${escapeHtml(item.error_message || '')}</div>` : ''}
             ${isManual ? '<div class="warning-badge">⚠️ يحتاج مراجعة يدوية</div>' : ''}
-            
+
             <div class="item-header">
-                ${artworkUrl 
+                ${artworkUrl
                     ? `<img src="${artworkUrl}" alt="Artwork" class="artwork">`
                     : '<div class="artwork-placeholder">🎵</div>'
                 }
-                
+
                 <div class="item-info">
                     <div class="field-group">
                         <label class="field-label">العنوان</label>
-                        <input 
-                            type="text" 
-                            class="field-input title-input" 
+                        <input
+                            type="text"
+                            class="field-input title-input"
                             value="${escapeHtml(titleValue)}"
                             data-id="${item.id}"
                             placeholder="العنوان (مطلوب)"
                         >
                     </div>
-                    
+
                     <div class="field-group">
-                        <label class="field-label">الفنان</label>
-                        <div class="artist-combobox" data-id="${item.id}">
-                            <input 
-                                type="text" 
-                                class="field-input artist-input" 
-                                value="${escapeHtml(artistValue)}"
-                                data-id="${item.id}"
-                                data-combobox-input="true"
-                                placeholder="الفنان (مطلوب)"
-                                autocomplete="off"
-                                role="combobox"
-                                aria-autocomplete="list"
-                                aria-expanded="false"
-                                aria-haspopup="listbox"
-                                aria-controls="artist-suggestions-${item.id}"
-                            >
-                            <button type="button" class="artist-dropdown-toggle" data-id="${item.id}" aria-label="اقتراحات الفنان">
-                                <span class="artist-dropdown-icon">▾</span>
-                            </button>
-                            <div class="artist-suggestions" id="artist-suggestions-${item.id}" role="listbox"></div>
+                        <label class="field-label">الفنانون</label>
+                        <div class="multi-artist-list" data-id="${item.id}">
+                            ${artistRowsHtml}
                         </div>
+                        <button type="button" class="btn-add-artist" data-id="${item.id}">+ إضافة فنان</button>
                     </div>
-                    
+
                     <div class="source-text">
                         المصدر: ${escapeHtml(item.video_title)} • ${escapeHtml(item.channel)}
                     </div>
@@ -618,6 +641,95 @@ function createItemCard(item) {
             </div>
         </div>
     `;
+}
+
+function getItemIdFromRowId(rowId) {
+    // rowId format: itemId_artist_index
+    const parts = String(rowId).split('_artist_');
+    return parts[0];
+}
+
+function rebuildArtistValue(itemId) {
+    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    if (!card) return '';
+    const inputs = card.querySelectorAll('.artist-input');
+    const values = [];
+    inputs.forEach(input => {
+        const v = input.value.trim();
+        if (v) values.push(v);
+    });
+    const joined = values.join('; ');
+    const item = pendingItems.find(entry => entry.id === itemId);
+    if (item) {
+        item.current_artist = joined;
+    }
+    artistDraftValues.set(itemId, joined);
+    return joined;
+}
+
+function addArtistRow(itemId) {
+    // Sync from DOM to avoid stale values overwriting what the user typed
+    const existingCard = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    if (existingCard) {
+        const inputs = existingCard.querySelectorAll('.artist-input');
+        const currentRows = [];
+        inputs.forEach(input => currentRows.push(input.value));
+        if (currentRows.length > 0) {
+            artistRowsMap.set(itemId, currentRows);
+        }
+    }
+    const rows = artistRowsMap.get(itemId) || [''];
+    rows.push('');
+    artistRowsMap.set(itemId, rows);
+    const joined = rows.join('; ');
+    const item = pendingItems.find(p => p.id === itemId);
+    if (item) {
+        item.current_artist = joined;
+    }
+    artistDraftValues.set(itemId, joined);
+    // Re-render the card to add the new row
+    const container = document.getElementById('pendingItems');
+    if (existingCard && item) {
+        existingCard.outerHTML = createItemCard(item);
+        attachItemListeners(itemId);
+        // Focus the new artist input
+        const newCard = container.querySelector(`.item-card[data-id="${itemId}"]`);
+        const newInputs = newCard?.querySelectorAll('.artist-input');
+        if (newInputs && newInputs.length > 0) {
+            setTimeout(() => {
+                newInputs[newInputs.length - 1].focus();
+            }, 0);
+        }
+    }
+}
+
+function removeArtistRow(itemId, rowIndex) {
+    // Sync from DOM to avoid stale values
+    const existingCard = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    if (existingCard) {
+        const inputs = existingCard.querySelectorAll('.artist-input');
+        const currentRows = [];
+        inputs.forEach(input => currentRows.push(input.value));
+        if (currentRows.length > 0) {
+            artistRowsMap.set(itemId, currentRows);
+        }
+    }
+    const rows = artistRowsMap.get(itemId) || [''];
+    if (rows.length <= 1) return;
+    rows.splice(rowIndex, 1);
+    artistRowsMap.set(itemId, rows);
+    const joined = rows.join('; ');
+    const item = pendingItems.find(entry => entry.id === itemId);
+    if (item) {
+        item.current_artist = joined;
+    }
+    artistDraftValues.set(itemId, joined);
+    updateField(itemId, 'artist', joined);
+    // Re-render the card
+    if (existingCard && item) {
+        existingCard.outerHTML = createItemCard(item);
+        attachItemListeners(itemId);
+    }
 }
 
 async function fetchArtistSuggestions(query, limit = ARTIST_SUGGEST_LIMIT) {
@@ -669,17 +781,14 @@ function getArtistOptionList(itemId, currentInputValue) {
     return options;
 }
 
-function renderArtistSuggestions(itemId) {
-    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
-    if (!card) return;
-
-    const input = card.querySelector('.artist-input');
-    const suggestionsEl = card.querySelector('.artist-suggestions');
-    const toggleBtn = card.querySelector('.artist-dropdown-toggle');
+function renderArtistSuggestions(rowId) {
+    const input = document.querySelector(`.artist-input[data-row-id="${rowId}"]`);
+    const suggestionsEl = document.getElementById(`artist-suggestions-${rowId.replace('_artist_', '-')}`);
+    const toggleBtn = document.querySelector(`.artist-dropdown-toggle[data-row-id="${rowId}"]`);
     if (!input || !suggestionsEl || !toggleBtn) return;
 
-    const state = getArtistState(itemId);
-    const options = getArtistOptionList(itemId, input.value);
+    const state = getArtistState(rowId);
+    const options = getArtistOptionList(rowId, input.value);
 
     if (!state.isOpen) {
         suggestionsEl.classList.remove('show');
@@ -730,7 +839,7 @@ function renderArtistSuggestions(itemId) {
             const index = Number(optionEl.dataset.index);
             const selected = options[index];
             if (selected) {
-                selectArtistOption(itemId, selected);
+                selectArtistOption(rowId, selected);
             }
         });
     });
@@ -796,25 +905,23 @@ function queueArtistSuggestions(itemId, query) {
     }, ARTIST_SUGGEST_DEBOUNCE_MS);
 }
 
-function openArtistDropdown(itemId) {
-    const state = getArtistState(itemId);
-    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
-    const input = card?.querySelector('.artist-input');
-    if (!card || !input) return;
+function openArtistDropdown(rowId) {
+    const state = getArtistState(rowId);
+    const input = document.querySelector(`.artist-input[data-row-id="${rowId}"]`);
+    if (!input) return;
 
-    closeAllArtistDropdowns(itemId);
+    closeAllArtistDropdowns(rowId);
     state.isOpen = true;
-    renderArtistSuggestions(itemId);
-    queueArtistSuggestions(itemId, input.value);
+    renderArtistSuggestions(rowId);
+    queueArtistSuggestions(rowId, input.value);
 }
 
-function navigateArtistSuggestions(itemId, direction) {
-    const state = getArtistState(itemId);
-    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
-    const input = card?.querySelector('.artist-input');
-    if (!card || !input) return;
+function navigateArtistSuggestions(rowId, direction) {
+    const state = getArtistState(rowId);
+    const input = document.querySelector(`.artist-input[data-row-id="${rowId}"]`);
+    if (!input) return;
 
-    const options = getArtistOptionList(itemId, input.value);
+    const options = getArtistOptionList(rowId, input.value);
     if (options.length === 0) return;
 
     if (state.highlightedIndex < 0) {
@@ -823,17 +930,16 @@ function navigateArtistSuggestions(itemId, direction) {
         state.highlightedIndex = (state.highlightedIndex + direction + options.length) % options.length;
     }
 
-    renderArtistSuggestions(itemId);
+    renderArtistSuggestions(rowId);
 }
 
-function selectArtistOption(itemId, option) {
-    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
-    const input = card?.querySelector('.artist-input');
-    if (!card || !input || !option) return;
+function selectArtistOption(rowId, option) {
+    const input = document.querySelector(`.artist-input[data-row-id="${rowId}"]`);
+    if (!input || !option) return;
 
+    const itemId = getItemIdFromRowId(rowId);
     input.value = option.name;
-    artistDraftValues.set(itemId, option.name);
-    const state = getArtistState(itemId);
+    const state = getArtistState(rowId);
     if (option.type === 'existing') {
         state.createArtistOnSave = false;
         state.selectedExistingName = option.name;
@@ -844,43 +950,42 @@ function selectArtistOption(itemId, option) {
         setItemStatus(itemId, 'سيتم إنشاء فنان جديد عند الحفظ', 'info');
     }
 
+    const joined = rebuildArtistValue(itemId);
     const item = pendingItems.find(entry => entry.id === itemId);
     if (item) {
-        item.current_artist = option.name;
         item.create_artist_on_save = state.createArtistOnSave;
         item.selected_existing_artist = state.selectedExistingName;
     }
 
-    closeArtistDropdown(itemId);
+    closeArtistDropdown(rowId);
     updateConfirmButton(itemId);
-    updateField(itemId, 'artist', option.name);
+    updateField(itemId, 'artist', joined);
 }
 
-function handleArtistInputKeydown(itemId, event) {
-    const state = getArtistState(itemId);
-    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
-    const input = card?.querySelector('.artist-input');
-    if (!card || !input) return;
+function handleArtistInputKeydown(rowId, event) {
+    const state = getArtistState(rowId);
+    const input = document.querySelector(`.artist-input[data-row-id="${rowId}"]`);
+    if (!input) return;
 
-    const options = getArtistOptionList(itemId, input.value);
+    const options = getArtistOptionList(rowId, input.value);
 
     if (event.key === 'ArrowDown') {
         event.preventDefault();
         if (!state.isOpen) {
-            openArtistDropdown(itemId);
+            openArtistDropdown(rowId);
             return;
         }
-        navigateArtistSuggestions(itemId, 1);
+        navigateArtistSuggestions(rowId, 1);
         return;
     }
 
     if (event.key === 'ArrowUp') {
         event.preventDefault();
         if (!state.isOpen) {
-            openArtistDropdown(itemId);
+            openArtistDropdown(rowId);
             return;
         }
-        navigateArtistSuggestions(itemId, -1);
+        navigateArtistSuggestions(rowId, -1);
         return;
     }
 
@@ -889,53 +994,50 @@ function handleArtistInputKeydown(itemId, event) {
         const option = options[optionIndex];
         if (option) {
             event.preventDefault();
-            selectArtistOption(itemId, option);
+            selectArtistOption(rowId, option);
         }
         return;
     }
 
     if (event.key === 'Escape' && state.isOpen) {
         event.preventDefault();
-        closeArtistDropdown(itemId);
+        closeArtistDropdown(rowId);
     }
 }
 
-function setupArtistInput(itemId, artistInput, card) {
+function setupArtistInput(rowId, artistInput, card) {
     if (!artistInput || !card) return;
 
-    const toggleBtn = card.querySelector('.artist-dropdown-toggle');
-    const state = getArtistState(itemId);
+    const itemId = getItemIdFromRowId(rowId);
+    const toggleBtn = card.querySelector(`.artist-dropdown-toggle[data-row-id="${rowId}"]`);
+    const state = getArtistState(rowId);
 
     artistInput.addEventListener('focus', () => {
-        openArtistDropdown(itemId);
+        openArtistDropdown(rowId);
     });
 
     artistInput.addEventListener('click', () => {
-        openArtistDropdown(itemId);
+        openArtistDropdown(rowId);
     });
 
     artistInput.addEventListener('input', () => {
-        artistDraftValues.set(itemId, artistInput.value);
-        const item = pendingItems.find(entry => entry.id === itemId);
-        if (item) {
-            item.current_artist = artistInput.value;
-        }
+        rebuildArtistValue(itemId);
         state.selectedExistingName = null;
         state.createArtistOnSave = false;
         updateConfirmButton(itemId);
-        queueArtistSuggestions(itemId, artistInput.value);
+        queueArtistSuggestions(rowId, artistInput.value);
     });
 
     artistInput.addEventListener('keydown', (event) => {
-        handleArtistInputKeydown(itemId, event);
+        handleArtistInputKeydown(rowId, event);
     });
 
     artistInput.addEventListener('blur', () => {
-        const normalizedValue = artistInput.value.trim();
-        artistDraftValues.set(itemId, normalizedValue);
-        updateField(itemId, 'artist', normalizedValue);
+        rebuildArtistValue(itemId);
+        const joined = artistDraftValues.get(itemId) || '';
+        updateField(itemId, 'artist', joined);
         setTimeout(() => {
-            closeArtistDropdown(itemId);
+            closeArtistDropdown(rowId);
         }, 120);
     });
 
@@ -944,9 +1046,9 @@ function setupArtistInput(itemId, artistInput, card) {
             event.preventDefault();
             event.stopPropagation();
             if (state.isOpen) {
-                closeArtistDropdown(itemId);
+                closeArtistDropdown(rowId);
             } else {
-                openArtistDropdown(itemId);
+                openArtistDropdown(rowId);
             }
         });
     }
@@ -958,10 +1060,9 @@ function attachItemListeners(itemId) {
     if (!card) return;
     const item = pendingItems.find(p => p.id === itemId);
     
-    // Title/Artist input listeners
+    // Title input listener
     const titleInput = card.querySelector('.title-input');
-    const artistInput = card.querySelector('.artist-input');
-    
+
     if (titleInput) {
         titleInput.addEventListener('input', () => {
             titleDraftValues.set(itemId, titleInput.value);
@@ -973,11 +1074,29 @@ function attachItemListeners(itemId) {
         });
         titleInput.addEventListener('blur', () => updateField(itemId, 'title', titleInput.value));
     }
-    
-    if (artistInput) {
-        setupArtistInput(itemId, artistInput, card);
+
+    // Artist row input listeners
+    const artistInputs = card.querySelectorAll('.artist-input');
+    artistInputs.forEach(input => {
+        const rowId = input.dataset.rowId;
+        setupArtistInput(rowId, input, card);
+    });
+
+    // Add artist button
+    const addArtistBtn = card.querySelector('.btn-add-artist');
+    if (addArtistBtn) {
+        addArtistBtn.addEventListener('click', () => addArtistRow(itemId));
     }
-    
+
+    // Remove artist buttons
+    const removeArtistBtns = card.querySelectorAll('.btn-remove-artist');
+    removeArtistBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.rowIndex, 10);
+            removeArtistRow(itemId, idx);
+        });
+    });
+
     // Genre button listeners
     const genreButtons = card.querySelectorAll('.genre-btn');
     genreButtons.forEach(btn => {
@@ -1072,13 +1191,13 @@ function updateConfirmButton(itemId) {
 
     const confirmBtn = card.querySelector('.confirm-btn');
     const titleInput = card.querySelector('.title-input');
-    const artistInput = card.querySelector('.artist-input');
+    const artistInputs = card.querySelectorAll('.artist-input');
 
-    if (!confirmBtn || !titleInput || !artistInput) return;
+    if (!confirmBtn || !titleInput || artistInputs.length === 0) return;
 
     const hasGenre = selectedGenres[itemId] && selectedGenres[itemId].trim().length > 0;
     const hasTitle = titleInput.value.trim().length > 0;
-    const hasArtist = artistInput.value.trim().length > 0;
+    const hasArtist = Array.from(artistInputs).some(input => input.value.trim().length > 0);
 
     confirmBtn.disabled = !(hasGenre && hasTitle && hasArtist);
     updateConfirmAllButton();
@@ -2208,7 +2327,7 @@ function renderDesktopTrackList(tracks) {
             <div class="list-item-content">
                 <div class="list-item-title">${track.title || 'بدون عنوان'}</div>
                 <div class="list-item-meta">
-                    ${track.artist || 'غير معروف'} •
+                    ${formatArtistDisplay(track.artist)} •
                     ${track.album || 'غير معروف'}
                     ${track.year ? ' • ' + track.year : ''}
                 </div>
@@ -2234,7 +2353,7 @@ function renderMobileTrackCards(tracks) {
                     <div class="list-item-title">${track.title || 'بدون عنوان'}</div>
                     ${libraryState.multiSelectMode ? `<input type="checkbox" class="list-item-checkbox track-mobile-checkbox" data-track-id="${track.id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation()">` : ''}
                 </div>
-                <div class="track-mobile-secondary">${track.artist || 'غير معروف'}</div>
+                <div class="track-mobile-secondary">${formatArtistDisplay(track.artist)}</div>
                 <div class="track-mobile-secondary">${track.album || 'غير معروف'}</div>
                 <div class="track-mobile-tertiary">${tertiaryMeta}</div>
                 ${isExpanded ? `
@@ -2659,6 +2778,7 @@ function showEditModal(mode, trackData = null) {
         // Pre-fill fields
         document.getElementById('batchTitle').value = trackData.title || '';
         document.getElementById('batchArtist').value = trackData.artist || '';
+        document.getElementById('batchAlbumArtist').value = trackData.album_artist || '';
         document.getElementById('batchAlbum').value = trackData.album || '';
         document.getElementById('batchGenre').value = trackData.genre || '';
         document.getElementById('batchYear').value = trackData.year || '';
@@ -2677,6 +2797,7 @@ function showEditModal(mode, trackData = null) {
         const common = {
             Title: tracks[0]?.title,
             Artist: tracks[0]?.artist,
+            AlbumArtist: tracks[0]?.album_artist,
             Album: tracks[0]?.album,
             Genre: tracks[0]?.genre,
             Year: tracks[0]?.year
@@ -2684,20 +2805,21 @@ function showEditModal(mode, trackData = null) {
         
         // Check for consistency across all tracks
         // distinctNull means we found a conflict (different values)
-        const conflict = {Title: false, Artist: false, Album: false, Genre: false, Year: false};
+        const conflict = {Title: false, Artist: false, AlbumArtist: false, Album: false, Genre: false, Year: false};
         
         for (let i = 1; i < tracks.length; i++) {
             if (tracks[i].title !== common.Title) conflict.Title = true;
             if (tracks[i].artist !== common.Artist) conflict.Artist = true;
+            if (tracks[i].album_artist !== common.AlbumArtist) conflict.AlbumArtist = true;
             if (tracks[i].album !== common.Album) conflict.Album = true;
             if (tracks[i].genre !== common.Genre) conflict.Genre = true;
             if (tracks[i].year !== common.Year) conflict.Year = true;
         }
         
         // Apply to form
-        const applyField = (field) => {
-             const input = document.getElementById('batch' + field);
-             const keepCb = document.getElementById('batch' + field + 'Keep');
+        const applyField = (field, inputId) => {
+             const input = document.getElementById(inputId || ('batch' + field));
+             const keepCb = document.getElementById((inputId || ('batch' + field)) + 'Keep');
              const hasConflict = conflict[field];
              const val = common[field];
              
@@ -2705,11 +2827,6 @@ function showEditModal(mode, trackData = null) {
                  // All tracks have same value
                  input.value = val;
                  input.placeholder = '';
-                 // "Grayed out text" request usually implies disabled, but we want to allow editing.
-                 // "put the fields that are the same... in their respective fields" matches this.
-                 // We uncheck "Keep" so it's active for editing, or keep it checked if user wants?
-                 // Usually if it's filled, it's ready. If I want to change all artists, I type new one.
-                 // If I leave it as is, it updates all to the SAME value (no change).
                  keepCb.checked = false; 
              } else {
                  // Multiple values or all empty
@@ -2721,7 +2838,12 @@ function showEditModal(mode, trackData = null) {
              keepCb.parentElement.style.display = 'inline-block';
         };
 
-        ['Title', 'Artist', 'Album', 'Genre', 'Year'].forEach(f => applyField(f));
+        applyField('Title');
+        applyField('Artist');
+        applyField('AlbumArtist', 'batchAlbumArtist');
+        applyField('Album');
+        applyField('Genre');
+        applyField('Year');
     }
     
     modal.style.display = 'flex';
@@ -2774,6 +2896,7 @@ async function handleSingleEdit() {
     const payload = {
         title: document.getElementById('batchTitle').value,
         artist: document.getElementById('batchArtist').value,
+        album_artist: document.getElementById('batchAlbumArtist').value,
         album: document.getElementById('batchAlbum').value,
         genre: document.getElementById('batchGenre').value,
         year: parseInt(document.getElementById('batchYear').value) || null
@@ -2810,6 +2933,9 @@ async function handleBatchEdit() {
     }
     if (!document.getElementById('batchArtistKeep').checked) {
         payload.artist = document.getElementById('batchArtist').value;
+    }
+    if (!document.getElementById('batchAlbumArtistKeep').checked) {
+        payload.album_artist = document.getElementById('batchAlbumArtist').value;
     }
     if (!document.getElementById('batchAlbumKeep').checked) {
         payload.album = document.getElementById('batchAlbum').value;
