@@ -133,11 +133,12 @@ class LibraryMeta(Base):
     )
 
 
-class MetaManager:
+class LibraryMetaManager:
     """Manager for library metadata stored in the database."""
 
     @staticmethod
     def get_last_scan_at(db: Session) -> Optional[datetime]:
+        """Return the last library scan timestamp, or None if never scanned."""
         row = db.query(LibraryMeta).filter(LibraryMeta.id == 1).first()
         if row and row.last_scan_at:
             return row.last_scan_at
@@ -145,6 +146,7 @@ class MetaManager:
 
     @staticmethod
     def set_last_scan_at(db: Session, value: datetime) -> None:
+        """Persist the last library scan timestamp."""
         row = db.query(LibraryMeta).filter(LibraryMeta.id == 1).first()
         if row is None:
             row = LibraryMeta(id=1, last_scan_at=value)
@@ -152,6 +154,7 @@ class MetaManager:
         else:
             row.last_scan_at = value
         db.commit()
+        db.refresh(row)
 
 
 # Database setup
@@ -187,9 +190,6 @@ def init_db():
             conn.commit()
             import logging
             logging.getLogger(__name__).info("Added album_artist column to database")
-
-    # Ensure library_meta table exists
-    LibraryMeta.__table__.create(bind=engine, checkfirst=True)
 
 
 def get_db() -> Session:
