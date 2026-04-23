@@ -13,7 +13,7 @@ from mutagen.oggvorbis import OggVorbis
 from sqlalchemy.orm import Session
 
 from app.config import config
-from app.database import SessionLocal, LibraryManager, LibraryMetaManager
+from app.database import SessionLocal, LibraryManager
 from app.metadata_processor import metadata_processor
 
 logger = logging.getLogger(__name__)
@@ -42,17 +42,9 @@ class LibraryScanner:
         return True
     
     @staticmethod
-    def _collect_audio_files(
-        root: Path,
-        audio_extensions: set,
-        last_scan_at: Optional[datetime] = None,
-    ) -> list:
+    def _collect_audio_files(root: Path, audio_extensions: set) -> list:
         """
         Walk root recursively, returning a list of audio file paths.
-
-        Prunes subdirectories whose mtime is older than last_scan_at
-        (if provided) — a directory that hasn't changed can be skipped
-        entirely because none of its descendants changed either.
 
         Uses a single os.scandir-based walk instead of multiple rglob calls,
         and filters by suffix.lower() instead of running one rglob per extension.
@@ -60,12 +52,9 @@ class LibraryScanner:
         audio_extensions_lower = {ext.lower() for ext in audio_extensions}
         audio_files = []
 
-        if not root.exists():
-            return audio_files
-
         def _walk(dir_path: Path):
             try:
-                entries = list(os.scandir(dir_path))
+                entries = os.scandir(dir_path)
             except PermissionError:
                 logger.warning(f"Permission denied: {dir_path}")
                 return
@@ -73,21 +62,15 @@ class LibraryScanner:
             for entry in entries:
                 try:
                     if entry.is_dir(follow_symlinks=False):
-                        entry_path = Path(entry.path)
-                        if last_scan_at is not None:
-                            try:
-                                dir_mtime = datetime.fromtimestamp(entry.stat().st_mtime, tz=timezone.utc)
-                            except OSError:
-                                dir_mtime = None
-                            if dir_mtime is not None and dir_mtime < last_scan_at:
-                                continue
-                        _walk(entry_path)
+                        _walk(Path(entry.path))
                     elif entry.is_file(follow_symlinks=False):
-                        if Path(entry.name).suffix.lower() in audio_extensions_lower:
+                        if os.path.splitext(entry.name)[1].lower() in audio_extensions_lower:
                             audio_files.append(Path(entry.path))
                 except OSError:
                     logger.warning(f"Unable to inspect entry: {entry.path}")
-                    continue
+
+        if not root.exists():
+            return audio_files
 
         _walk(root)
         return audio_files
@@ -111,16 +94,9 @@ class LibraryScanner:
             db: Session = SessionLocal()
 
             try:
-                # Determine cutoff for directory-mtime pruning
-                last_scan_at = None
-                if not force_full:
-                    last_scan_at = LibraryMetaManager.get_last_scan_at(db)
-                    if last_scan_at:
-                        logger.info(f"Incremental scan: skipping dirs unchanged since {last_scan_at}")
-
-                # Single-pass walk with directory-mtime pruning
+                # Single-pass walk
                 audio_files = self._collect_audio_files(
-                    config.NAVIDROME_ROOT, config.AUDIO_EXTENSIONS, last_scan_at
+                    config.NAVIDROME_ROOT, config.AUDIO_EXTENSIONS
                 )
 
                 self.total_files = len(audio_files)
@@ -139,10 +115,10 @@ class LibraryScanner:
 
                 # Process each file
                 for audio_file in audio_files:
+                    scanned_paths.add(str(audio_file))
                     try:
-                        self._index_file(db, audio_file, force=force_full, last_scan_at=last_scan_at)
+                        self._index_file(db, audio_file, force=force_full)
                         self.processed_files += 1
-                        scanned_paths.add(str(audio_file))
 
                         # Report progress every 10 files
                         if self.processed_files % 10 == 0 and self.progress_callback:
@@ -161,9 +137,6 @@ class LibraryScanner:
                 # Cleanup: only when force_full=True (user explicitly requested)
                 if force_full:
                     self._cleanup_missing_files(db, scanned_paths)
-
-                # Record successful scan timestamp
-                LibraryMetaManager.set_last_scan_at(db, datetime.now(timezone.utc))
 
                 logger.info(f"Library scan complete. Processed {self.processed_files}/{self.total_files} files")
 
@@ -193,7 +166,7 @@ class LibraryScanner:
         finally:
             self.is_scanning = False
     
-    def _index_file(self, db: Session, file_path: Path, force: bool = False, last_scan_at: Optional[datetime] = None):
+    def _index_file(self, db: Session, file_path: Path, force: bool = False):
         """
         Index a single audio file.
 
@@ -201,7 +174,6 @@ class LibraryScanner:
             db: Database session
             file_path: Path to audio file
             force: If True, re-index even if file hasn't changed
-            last_scan_at: Timestamp of last successful scan, for fast-path skip
         """
         # Get file stats
         stat = file_path.stat()
@@ -211,9 +183,10 @@ class LibraryScanner:
         if not force:
             existing = LibraryManager.get_track_by_path(db, str(file_path))
             if existing:
-                if last_scan_at is not None and file_modified < last_scan_at:
-                    return
-                if existing.file_modified and existing.file_modified >= file_modified:
+                existing_modified = existing.file_modified
+                if existing_modified and existing_modified.tzinfo is None:
+                    existing_modified = existing_modified.replace(tzinfo=timezone.utc)
+                if existing_modified and existing_modified >= file_modified:
                     return
 
         # Read metadata (raw tags from file)
@@ -495,20 +468,27 @@ class LibraryScanner:
             return None
     
     def _cleanup_missing_files(self, db: Session, scanned_paths: set):
-        """Remove tracks from database for files that no longer exist."""
+        """
+        Remove tracks from database for files that no longer exist on disk.
+
+        Uses a single SQL DELETE with NOT IN instead of row-by-row deletions.
+        """
+        if not scanned_paths:
+            return
+
         from app.database import LibraryTrack
 
-        rows = db.query(LibraryTrack.file_path, LibraryTrack.id).yield_per(500).all()
-        removed_count = 0
+        existing_normalized = {str(p) for p in scanned_paths}
+        if not existing_normalized:
+            return
 
-        for file_path, track_id in rows:
-            if str(file_path) not in scanned_paths:
-                LibraryManager.delete_track(db, track_id)
-                removed_count += 1
-                logger.debug(f"Removed missing file from index: {file_path}")
+        count = db.query(LibraryTrack).filter(
+            ~LibraryTrack.file_path.in_(existing_normalized)
+        ).delete(synchronize_session=False)
+        db.commit()
 
-        if removed_count > 0:
-            logger.info(f"Removed {removed_count} missing files from index")
+        if count > 0:
+            logger.info(f"Removed {count} missing files from index")
     
     def get_status(self) -> dict:
         """Get current scan status."""
