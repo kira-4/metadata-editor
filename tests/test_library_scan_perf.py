@@ -4,7 +4,6 @@ import sys
 import tempfile
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -53,7 +52,6 @@ def test_collect_audio_files_prunes_old_directories():
         last_scan_at = datetime.now(timezone.utc) - timedelta(hours=1)
 
         result = LibraryScanner._collect_audio_files(root, {".mp3"}, last_scan_at)
-        paths = [str(p) for p in result]
 
         assert len(result) == 1
         assert "new_song.mp3" in str(result[0])
@@ -75,13 +73,28 @@ def test_collect_audio_files_no_pruning_when_no_timestamp():
 
 
 def test_cleanup_missing_files_set_based():
-    """_cleanup_missing_files accepts scanned_paths parameter."""
+    """Tracks not in the scanned set are removed from DB."""
     from app.library_scanner import LibraryScanner
+    from app.database import LibraryTrack, Base
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    Session = sessionmaker(bind=engine)
+    db = Session()
+
+    track1 = LibraryTrack(file_path="/music/artist1/album1/song1.mp3", title="Song 1")
+    track2 = LibraryTrack(file_path="/music/artist1/album1/song2.mp3", title="Song 2")
+    track3 = LibraryTrack(file_path="/music/artist2/album2/song3.mp3", title="Song 3")
+    db.add_all([track1, track2, track3])
+    db.commit()
 
     scanner = LibraryScanner()
-    # Verify method accepts scanned_paths parameter
-    assert callable(getattr(scanner, '_cleanup_missing_files', None))
-    import inspect
-    sig = inspect.signature(scanner._cleanup_missing_files)
-    params = list(sig.parameters.keys())
-    assert 'existing_paths' in params or 'scanned_paths' in params
+    scanner._cleanup_missing_files(db, {"/music/artist1/album1/song1.mp3", "/music/artist2/album2/song3.mp3"})
+
+    remaining = db.query(LibraryTrack).all()
+    paths = {t.file_path for t in remaining}
+    assert "/music/artist1/album1/song1.mp3" in paths
+    assert "/music/artist1/album1/song2.mp3" not in paths
+    assert "/music/artist2/album2/song3.mp3" in paths
