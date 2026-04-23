@@ -119,6 +119,44 @@ class TelegramSettings(Base):
     )
 
 
+class LibraryMeta(Base):
+    """Singleton row for library-wide metadata (e.g. last scan timestamp)."""
+
+    __tablename__ = "library_meta"
+
+    id = Column(Integer, primary_key=True)  # always 1
+    last_scan_at = Column(DateTime, nullable=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class LibraryMetaManager:
+    """Manager for library metadata stored in the database."""
+
+    @staticmethod
+    def get_last_scan_at(db: Session) -> Optional[datetime]:
+        """Return the last library scan timestamp, or None if never scanned."""
+        row = db.query(LibraryMeta).filter(LibraryMeta.id == 1).first()
+        if row and row.last_scan_at:
+            return row.last_scan_at
+        return None
+
+    @staticmethod
+    def set_last_scan_at(db: Session, value: datetime) -> None:
+        """Persist the last library scan timestamp."""
+        row = db.query(LibraryMeta).filter(LibraryMeta.id == 1).first()
+        if row is None:
+            row = LibraryMeta(id=1, last_scan_at=value)
+            db.add(row)
+        else:
+            row.last_scan_at = value
+        db.commit()
+        db.refresh(row)
+
+
 # Database setup
 engine = create_engine(f"sqlite:///{config.DB_PATH}", connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
