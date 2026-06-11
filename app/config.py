@@ -18,9 +18,14 @@ class Config:
     NAVIDROME_ROOT = Path(os.getenv("NAVIDROME_ROOT", "/music"))
     DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
     
-    # Gemini API
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
+    # OpenRouter API (OpenAI-compatible)
+    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+    OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-lite-001")
+    # Comma-separated list of backup models tried (in order) if the primary fails.
+    OPENROUTER_FALLBACK_MODELS = [
+        m.strip() for m in os.getenv("OPENROUTER_FALLBACK_MODELS", "").split(",") if m.strip()
+    ]
     
     # Scanner settings
     _scan_interval = os.getenv("SCAN_INTERVAL_SECONDS", "30")
