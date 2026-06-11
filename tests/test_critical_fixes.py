@@ -38,9 +38,9 @@ print(f"✓ File identifier test passed!\n")
 print("[Test 2] Gemini Client Parsing & Raw Response")
 print("-" * 70)
 
-from app.gemini_client import GeminiClient
+from app.openrouter_client import OpenRouterClient
 
-client = GeminiClient()
+client = OpenRouterClient()
 
 # Test 2a: Two-line format
 response_text = """title: اختبار

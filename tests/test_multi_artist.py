@@ -14,14 +14,14 @@ from mutagen.flac import FLAC
 from app.artist_matching import derive_album_artist
 from app.metadata_processor import metadata_processor
 from app.mover import FileMover
-from app.gemini_client import GeminiClient
+from app.openrouter_client import OpenRouterClient
 
 
 class TestGeminiMultiArtistParsing(unittest.TestCase):
     """Test Gemini response parsing for artists and album_artist."""
 
     def setUp(self):
-        self.client = GeminiClient()
+        self.client = OpenRouterClient()
 
     def test_parse_three_line_response(self):
         text = """
