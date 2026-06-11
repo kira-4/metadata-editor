@@ -1,28 +1,23 @@
-"""Gemini API client for metadata inference."""
+"""OpenRouter API client for metadata inference (OpenAI-compatible chat API)."""
 
 import re
 import json
 import logging
 from typing import Optional, Tuple
-import google.generativeai as genai
+
+import httpx
 
 from app.config import config
 
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# GEMINI SYSTEM INSTRUCTIONS PLACEHOLDER
+# SYSTEM INSTRUCTIONS
 # ============================================================================
-# PASTE YOUR CUSTOM SYSTEM INSTRUCTIONS HERE
-# The instructions will be used when creating the GenerativeModel below.
-#
-# Example format:
-# SYSTEM_INSTRUCTIONS = """
-# You are an AI that extracts Arabic audio metadata.
-# Given video_title and channel, return:
-# title: <Arabic title>
-# artist: <Arabic artist>
-# """
+# Sent as the chat `system` message. The video_title / channel are passed
+# separately as the `user` message (see infer_metadata) so untrusted values
+# are never spliced into the instructions — this preserves prompt-injection
+# isolation while letting us use OpenRouter's structured chat API.
 # ============================================================================
 
 SYSTEM_INSTRUCTIONS = """
@@ -93,35 +88,30 @@ title: يا حسين
 artists: باسم الكربلائي; حيدر البراك
 album_artist: باسم الكربلائي
 ```
-
-Now process:
-
-```
-video_title: <video_title>
-channel: <channel>
-```
-"""
+""".strip()
 
 # ============================================================================
 
 
-class GeminiClient:
-    """Client for Gemini API to infer metadata."""
+class OpenRouterClient:
+    """Client for OpenRouter to infer metadata, with ordered model fallback."""
 
     def __init__(self):
-        """Initialize Gemini client."""
-        if not config.GEMINI_API_KEY:
-            logger.warning("GEMINI_API_KEY not set. Gemini inference will fail.")
+        """Initialize OpenRouter client."""
+        if not config.OPENROUTER_API_KEY:
+            logger.warning("OPENROUTER_API_KEY not set. OpenRouter inference will fail.")
 
-        genai.configure(api_key=config.GEMINI_API_KEY)
-
-        # Note: system_instruction is available in newer versions
-        # For google-generativeai 0.3.2, we'll prepend system instructions to the prompt instead
-        self.model = genai.GenerativeModel(model_name=config.GEMINI_MODEL)
+        # Primary model first, then fallbacks (de-duplicated, order preserved).
+        # Sent as the `models` array so OpenRouter performs server-side ordered
+        # fallback if a model is unavailable or errors.
+        self.models = list(
+            dict.fromkeys([config.OPENROUTER_MODEL, *config.OPENROUTER_FALLBACK_MODELS])
+        )
+        self.endpoint = f"{config.OPENROUTER_BASE_URL.rstrip('/')}/chat/completions"
 
     def infer_metadata(
         self, video_title: str, channel: str
-    ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str], str]:
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], str]:
         """
         Infer title, artists, and album_artist from video_title and channel.
 
@@ -133,39 +123,54 @@ class GeminiClient:
             Tuple of (title, artists, album_artist, error_message, raw_response)
             - If successful, error_message is None
             - If failed, fields may be None or partial
-            - raw_response always contains the raw text from Gemini
+            - raw_response always contains the raw text from the model
         """
         try:
-            # Format the prompt with system instructions prepended
-            # (since older SDK version doesn't support system_instruction parameter)
-            # Replace each placeholder exactly once and in isolation so that a
-            # video_title containing the literal string "<channel>" cannot bleed
-            # into the channel slot (prompt injection).
-            prompt = SYSTEM_INSTRUCTIONS.replace("<video_title>", video_title, 1).replace(
-                "<channel>", channel, 1
-            )
+            # Untrusted values live in the structured user message, never in the
+            # system instructions.
+            user_message = f"video_title: {video_title}\nchannel: {channel}"
+
+            payload = {
+                "models": self.models,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_INSTRUCTIONS},
+                    {"role": "user", "content": user_message},
+                ],
+            }
+            headers = {
+                "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+                # Optional OpenRouter attribution headers.
+                "HTTP-Referer": "https://github.com/kira-4/metadata-editor",
+                "X-Title": "metadata-editor",
+            }
 
             logger.info(
-                f"Sending to Gemini - video_title: {video_title}, channel: {channel}"
+                f"Sending to OpenRouter - video_title: {video_title}, channel: {channel}"
             )
 
-            response = self.model.generate_content(prompt)
-            response_text = response.text.strip()
+            response = httpx.post(
+                self.endpoint, json=payload, headers=headers, timeout=60.0
+            )
+            response.raise_for_status()
+            data = response.json()
 
-            logger.info(f"Gemini response: {response_text}")
+            response_text = data["choices"][0]["message"]["content"].strip()
+            used_model = data.get("model", "unknown")
+            logger.info(f"OpenRouter response (model={used_model}): {response_text}")
 
             # Parse the response
             title, artists, album_artist = self._parse_response(response_text)
 
             if not title or not artists:
-                error_msg = "Failed to parse Gemini response"
+                error_msg = "Failed to parse OpenRouter response"
                 logger.error(f"{error_msg}: {response_text}")
                 return title, artists, album_artist, error_msg, response_text
 
             return title, artists, album_artist, None, response_text
 
         except Exception as e:
-            error_msg = f"Gemini API error: {str(e)}"
+            error_msg = f"OpenRouter API error: {str(e)}"
             logger.error(error_msg)
             return None, None, None, error_msg, ""
 
@@ -191,7 +196,7 @@ class GeminiClient:
            ```
 
         Args:
-            response_text: The raw response from Gemini
+            response_text: The raw response from the model
 
         Returns:
             Tuple of (title, artists, album_artist) or (None, None, None) if parsing fails
@@ -200,7 +205,7 @@ class GeminiClient:
         artists = None
         album_artist = None
 
-        # Try JSON parsing first (Gemini sometimes returns JSON despite instructions)
+        # Try JSON parsing first (models sometimes return JSON despite instructions)
         try:
             # Remove code fences if present
             cleaned = response_text.strip()
@@ -264,4 +269,4 @@ class GeminiClient:
 
 
 # Global instance
-gemini_client = GeminiClient()
+openrouter_client = OpenRouterClient()

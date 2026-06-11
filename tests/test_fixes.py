@@ -7,9 +7,9 @@ print("=== Testing Bug Fixes ===\n")
 
 # Test 1: Gemini JSON parsing
 print("Test 1: Gemini JSON Parsing")
-from app.gemini_client import GeminiClient
+from app.openrouter_client import OpenRouterClient
 
-client = GeminiClient()
+client = OpenRouterClient()
 
 # Test case 1: JSON format
 json_response = '{"title": "ذهب", "artist": "محمد الحجيرات"}'

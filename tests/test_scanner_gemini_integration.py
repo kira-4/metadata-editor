@@ -14,7 +14,7 @@ class TestScannerGeminiIntegration(unittest.TestCase):
     def setUp(self):
         self.scanner = FileScanner()
 
-    @patch("app.scanner.gemini_client.infer_metadata")
+    @patch("app.scanner.openrouter_client.infer_metadata")
     def test_prefers_gemini_when_available(self, mock_infer):
         mock_infer.return_value = ("AI Title", "AI Artist", "AI Album Artist", None, "raw")
 
@@ -33,7 +33,7 @@ class TestScannerGeminiIntegration(unittest.TestCase):
         self.assertEqual(raw, "raw")
         mock_infer.assert_called_once_with("Video", "Channel")
 
-    @patch("app.scanner.gemini_client.infer_metadata")
+    @patch("app.scanner.openrouter_client.infer_metadata")
     def test_uses_embedded_fallback_for_missing_gemini_fields(self, mock_infer):
         mock_infer.return_value = (None, "AI Artist", None, "Failed to parse Gemini response", "raw")
 
@@ -50,7 +50,7 @@ class TestScannerGeminiIntegration(unittest.TestCase):
         self.assertEqual(error, "Failed to parse Gemini response")
         self.assertEqual(raw, "raw")
 
-    @patch("app.scanner.gemini_client.infer_metadata")
+    @patch("app.scanner.openrouter_client.infer_metadata")
     def test_uses_embedded_metadata_when_gemini_fails(self, mock_infer):
         mock_infer.return_value = (None, None, None, "Gemini API error: bad key", "")
 
@@ -67,7 +67,7 @@ class TestScannerGeminiIntegration(unittest.TestCase):
         self.assertEqual(error, "Gemini API error: bad key")
         self.assertEqual(raw, "")
 
-    @patch("app.scanner.gemini_client.infer_metadata")
+    @patch("app.scanner.openrouter_client.infer_metadata")
     def test_returns_none_when_no_gemini_or_embedded_metadata(self, mock_infer):
         mock_infer.return_value = (None, None, None, "Gemini API error", "")
 

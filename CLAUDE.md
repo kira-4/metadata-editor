@@ -28,8 +28,8 @@ docker-compose logs -f metadata-editor
 
 This is a FastAPI + SQLite service that post-processes audio files downloaded by Pinchflat before they reach Navidrome. The core pipeline:
 
-1. **Scanner** (`app/scanner.py`) — background thread polls `/incoming` every 30s, parses filenames (`title###channel.ext`), copies files to `/data/staging/{uuid}/` (originals never modified), then calls Gemini AI to infer Arabic title/artist.
-2. **Gemini client** (`app/gemini_client.py`) — uses `gemini-2.0-flash-lite` with Arabic NLP system instructions. Returns title/artist inference; falls back to embedded metadata on failure.
+1. **Scanner** (`app/scanner.py`) — background thread polls `/incoming` every 30s, parses filenames (`title###channel.ext`), copies files to `/data/staging/{uuid}/` (originals never modified), then calls OpenRouter to infer Arabic title/artist.
+2. **OpenRouter client** (`app/openrouter_client.py`) — calls OpenRouter's OpenAI-compatible chat API with Arabic NLP system instructions. Sends a `models` array (primary + `OPENROUTER_FALLBACK_MODELS`) so OpenRouter performs ordered server-side fallback. Returns title/artist inference; falls back to embedded metadata on failure.
 3. **Database** (`app/database.py`) — two SQLAlchemy models: `PendingItem` (files awaiting review) and `LibraryTrack` (indexed /music library). SQLite at `/data/metadata_editor.db`.
 4. **Web UI** (`app/static/`) — vanilla JS + CSS, Arabic RTL layout. Connects to SSE endpoint (`/api/events`) for real-time updates. No framework.
 5. **Confirm flow** — user reviews/edits in UI, clicks confirm → `api.py` applies final metadata via `metadata_processor.py`, then `mover.py` moves file to `/music/{artist}/{title}/{title}.ext` and cleans up staging.
@@ -44,4 +44,4 @@ This is a FastAPI + SQLite service that post-processes audio files downloaded by
 
 ## Configuration
 
-Copy `.env.example` to `.env`. Required: `GEMINI_API_KEY`. Key optional vars: `INCOMING_ROOT`, `NAVIDROME_ROOT`, `DATA_DIR`, `SCAN_INTERVAL_SECONDS`, `PORT`.
+Copy `.env.example` to `.env`. Required: `OPENROUTER_API_KEY`. Inference vars: `OPENROUTER_MODEL` (primary model id), `OPENROUTER_FALLBACK_MODELS` (comma-separated backups), `OPENROUTER_BASE_URL`. Key optional vars: `INCOMING_ROOT`, `NAVIDROME_ROOT`, `DATA_DIR`, `SCAN_INTERVAL_SECONDS`, `PORT`.
