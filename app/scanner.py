@@ -11,7 +11,7 @@ import threading
 from app.artist_matching import derive_album_artist
 from app.config import config
 from app.database import DatabaseManager, SessionLocal
-from app.gemini_client import gemini_client
+from app.openrouter_client import openrouter_client
 from app.metadata_processor import metadata_processor
 from app.telegram_notifier import notify_actionable
 
@@ -98,33 +98,33 @@ class FileScanner:
         Returns:
             Tuple of (title, artists, album_artist, error_message, raw_response).
         """
-        logger.info(f"Attempting Gemini inference - video_title: {video_title}, channel: {channel}")
+        logger.info(f"Attempting OpenRouter inference - video_title: {video_title}, channel: {channel}")
 
-        gemini_title, gemini_artists, gemini_album_artist, error_msg, raw_response = gemini_client.infer_metadata(
+        ai_title, ai_artists, ai_album_artist, error_msg, raw_response = openrouter_client.infer_metadata(
             video_title,
             channel
         )
 
-        gemini_title = self._normalize_text(gemini_title)
-        gemini_artists = self._normalize_text(gemini_artists)
-        gemini_album_artist = self._normalize_text(gemini_album_artist)
+        ai_title = self._normalize_text(ai_title)
+        ai_artists = self._normalize_text(ai_artists)
+        ai_album_artist = self._normalize_text(ai_album_artist)
         existing_title = self._normalize_text(existing_title)
         existing_artist = self._normalize_text(existing_artist)
 
-        title = gemini_title or existing_title
-        artists = gemini_artists or existing_artist
+        title = ai_title or existing_title
+        artists = ai_artists or existing_artist
 
         # Derive album_artist: must be one of the artists, preferring channel match
         if artists:
             album_artist = derive_album_artist(artists, channel)
-        elif gemini_album_artist:
-            album_artist = gemini_album_artist
+        elif ai_album_artist:
+            album_artist = ai_album_artist
         else:
             album_artist = existing_artist or channel
 
-        if (not gemini_title or not gemini_artists) and (existing_title or existing_artist):
+        if (not ai_title or not ai_artists) and (existing_title or existing_artist):
             logger.info(
-                "Gemini returned incomplete metadata. Falling back to embedded tags "
+                "OpenRouter returned incomplete metadata. Falling back to embedded tags "
                 f"(title={bool(existing_title)}, artist={bool(existing_artist)})"
             )
 
