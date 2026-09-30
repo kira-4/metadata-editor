@@ -1,4 +1,5 @@
 """FastAPI main application."""
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -6,7 +7,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import config
-from app.database import init_db
+from app.database import init_db, SessionLocal, DatabaseManager
+from app.events import set_loop
 from app.scanner import file_scanner
 from app.api import router
 from app.library_api import library_router
@@ -33,6 +35,17 @@ async def lifespan(app: FastAPI):
     # Initialize database
     init_db()
     logger.info("Database initialized")
+
+    db = SessionLocal()
+    try:
+        interrupted = DatabaseManager.reset_interrupted_processing(db)
+        if interrupted:
+            logger.warning(f"Reset {interrupted} item(s) interrupted mid-move to error")
+    finally:
+        db.close()
+
+    # Let threads (routes, scanner) publish SSE events onto this loop
+    set_loop(asyncio.get_running_loop())
     
     # Start file scanner
     file_scanner.start()
