@@ -1404,6 +1404,7 @@ async function confirmItem(itemId) {
         renderItems();
         showAlert('تم حفظ البيانات ونقل الملف بنجاح.', 'success');
         logEvent('info', 'Item confirmed and moved', {itemId});
+        libraryState.stale = true;
         return true;
         
     } catch (error) {
@@ -1469,6 +1470,9 @@ function setupSSE() {
         const data = JSON.parse(event.data);
         logEvent('info', `SSE event: ${data.type}`, data);
 
+        if (data.type === 'item_confirmed') {
+            libraryState.stale = true;
+        }
         if (data.type === 'item_confirmed' || data.type === 'item_deleted') {
             // Card is gone — remove it directly, no API call needed
             removeItemCardFromDOM(data.id);
@@ -1852,6 +1856,11 @@ function initRouter() {
             // Initial load only if empty
             if (libraryState.totalItems === 0 && libraryState.currentData.tracks.length === 0) {
                 initLibrary();
+            } else if (libraryState.stale && !libraryState.detailContext) {
+                // Tracks were confirmed since the last visit: refresh counts and the list
+                libraryState.stale = false;
+                loadLibraryStats();
+                loadViewData();
             } else {
                 updateMobileFilterControls();
                 updateSelectionBar();
