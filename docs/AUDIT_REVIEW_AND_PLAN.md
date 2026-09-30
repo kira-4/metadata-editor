@@ -102,6 +102,7 @@ Tickets are small enough for one PR each. Every ticket ships with a regression t
 | S2-6 | Warn when the destination already exists (dry-run + card), with a "replace / keep both / skip" choice. | N3 |
 | S2-7 | Upsert the `LibraryTrack` row after a successful confirm, so no manual rescan is needed. | #21 (partial) |
 | S2-8 | Compact review card for phones: wrapping genre chips, 44px touch targets, delete made secondary. | #30 |
+| S2-9 | Artist variants: list likely duplicates (via existing normalization), preview affected tracks/folders, merge on explicit confirm. | feature #6 |
 
 ### Sprint 3 — deployment hygiene
 
@@ -139,7 +140,7 @@ The two worth keeping in mind are **audio preview** and **review filters**.
 | Typical queue size? | Unknown | #19 stays in "Later"; revisit if the queue feels slow |
 | Mostly reviewed on phone? | Yes | **S2-1 (mobile nav) runs first in Sprint 2**; #30 card density moves into Sprint 2 |
 | `/data` and `/music` on the same host filesystem? | Unknown | N1 fix handles both cases |
-| Library file owner UID/GID? | Unknown | Needed before S3-1; check with `ls -ln` on the NAS |
+| Library file owner UID/GID? | `1000:1000` (but an `audio/` dir is `0:0`, confirming N2) | S3-1 uses `user: "1000:1000"` |
 
 ## Progress
 
@@ -148,6 +149,18 @@ The two worth keeping in mind are **audio preview** and **review filters**.
 - [x] S0-3 scanner failure branch — #14
 - [x] S0-4 rescan read-only (`?repair=true` opt-in) — #15
 - [x] S0-5 atomic move into `/music` — #16
+- [x] S1-1 confirm sends the visible draft — #17
+- [x] S1-2 / S1-3 numeric ids, honest bulk results — #18
+- [x] S1-4 library metadata rendered as text — #19
+- [x] S1-5 / S1-6 / S1-7 threadpool routes, atomic confirm claim, live `new_item` — #20
+
+Smoke-tested Sprint 1 on a real server with Chrome (injection fixtures, apostrophe navigation, type-then-confirm).
+
+### Evidence from the real library (2026-09-30)
+
+`ls -ln` of the library shows artists split across spelling variants: الأكرف/الاكرف, مصطفى إسماعيل/مصطفي اسماعيل,
+بو جبارة/بوجبارة, السيد/سيد شرف الستراوي, (الحافظ) كرار ليث البرزنجي. That promotes the audit's feature idea #6
+(artist aliases + merge preview) into **Sprint 2 as S2-9**. `artist_matching.py` normalization already equates most of these.
 
 ## 5. Working rules
 
