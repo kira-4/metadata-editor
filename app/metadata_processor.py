@@ -566,9 +566,6 @@ class MetadataProcessor:
                             audio['discnumber'] = str(disc_number)
                 
                 audio.save()
-                
-                # Atomic replace
-                shutil.move(str(temp_path), str(audio_path))
 
                 expected = {
                     "title": title,
@@ -580,9 +577,13 @@ class MetadataProcessor:
                     "track_number": track_number,
                     "disc_number": disc_number
                 }
-                verified = MetadataProcessor._verify_written_metadata(audio_path, expected)
+                # Verify the temp copy BEFORE it replaces the original
+                verified = MetadataProcessor._verify_written_metadata(temp_path, expected)
                 if not verified:
                     return False
+
+                # Atomic replace (temp lives in the same directory)
+                os.replace(temp_path, audio_path)
 
                 logger.info(f"Updated metadata for {audio_path}")
                 return True
@@ -663,14 +664,15 @@ class MetadataProcessor:
                         audio.add_picture(picture)
                 
                 audio.save()
-                
-                # Atomic replace
-                shutil.move(str(temp_path), str(audio_path))
 
-                verification = MetadataProcessor.read_metadata(audio_path)
+                # Verify the temp copy BEFORE it replaces the original
+                verification = MetadataProcessor.read_metadata(temp_path)
                 if not verification.get("has_artwork"):
                     logger.error(f"Artwork verification failed for {audio_path}")
                     return False
+
+                # Atomic replace (temp lives in the same directory)
+                os.replace(temp_path, audio_path)
 
                 logger.info(f"Embedded artwork in {audio_path}")
                 return True
