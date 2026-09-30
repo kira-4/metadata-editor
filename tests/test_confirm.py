@@ -53,3 +53,18 @@ def test_confirm_rejects_invalid_draft_without_moving(client, staged_item):
 
     assert resp.status_code == 400
     assert not any(config.NAVIDROME_ROOT.rglob("*.mp3"))
+
+
+def test_confirmed_track_is_indexed_immediately(client, staged_item):
+    resp = client.post(
+        f"/api/pending/{staged_item.id}/confirm",
+        json={"title": "Indexed", "artist": "فنان", "genre": "قصيدة"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    body = client.get("/api/library/tracks", params={"search": "Indexed"}).json()
+
+    assert body["total"] == 1
+    track = body["tracks"][0]
+    assert track["file_path"] == resp.json()["new_path"]
+    assert track["genre"] == "قصيدة"
