@@ -586,6 +586,29 @@ body {
     color: var(--text-muted);
 }
 
+.destination-choice {
+    border: 1px solid var(--warning);
+    border-radius: var(--radius-sm);
+    padding: var(--spacing-sm);
+    color: var(--text-primary);
+}
+
+.destination-path {
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+    margin: 0.25rem 0 var(--spacing-sm);
+}
+
+.destination-choice-actions {
+    display: flex;
+    gap: var(--spacing-xs);
+}
+
+.destination-choice-actions .btn-secondary {
+    flex: 1;
+    min-height: 44px;
+}
+
 .item-status.success {
     color: var(--success);
 }
