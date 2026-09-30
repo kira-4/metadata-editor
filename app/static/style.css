@@ -116,6 +116,11 @@ body {
 }
 
 .global-alert {
+    position: sticky;
+    top: var(--spacing-sm);
+    z-index: 50;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
     border-radius: var(--radius-sm);
     border: 1px solid transparent;
     padding: var(--spacing-sm) var(--spacing-md);
@@ -124,25 +129,25 @@ body {
 }
 
 .global-alert.info {
-    background: rgba(74, 158, 255, 0.15);
+    background: #16243d;
     border-color: rgba(74, 158, 255, 0.4);
     color: var(--accent-hover);
 }
 
 .global-alert.success {
-    background: rgba(0, 212, 170, 0.15);
+    background: #0f2b2e;
     border-color: rgba(0, 212, 170, 0.4);
     color: var(--success);
 }
 
 .global-alert.warn {
-    background: rgba(255, 182, 39, 0.15);
+    background: #2e2716;
     border-color: rgba(255, 182, 39, 0.4);
     color: var(--warning);
 }
 
 .global-alert.error {
-    background: rgba(255, 87, 87, 0.15);
+    background: #33161f;
     border-color: rgba(255, 87, 87, 0.4);
     color: var(--error);
 }
@@ -617,6 +622,10 @@ body {
 
 .empty-state p {
     color: var(--text-muted);
+}
+
+.empty-state .btn-secondary {
+    margin-top: var(--spacing-md);
 }
 
 /* Animations */
