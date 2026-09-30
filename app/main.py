@@ -80,8 +80,18 @@ app.include_router(router)
 app.include_router(library_router)
 app.include_router(settings_router)
 
+class RevalidatingStaticFiles(StaticFiles):
+    """Static files that browsers must revalidate (cheap 304 via ETag), so a
+    redeploy reaches phones immediately instead of serving stale JS/CSS."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 # Serve static files
-app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
+app.mount("/", RevalidatingStaticFiles(directory="app/static", html=True), name="static")
 
 
 if __name__ == "__main__":
