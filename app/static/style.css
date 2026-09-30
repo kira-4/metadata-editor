@@ -1666,12 +1666,13 @@ body {
 
 .btn-remove-artist {
     background: var(--bg-tertiary);
-    color: var(--text-error);
+    color: var(--error);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     width: 32px;
     height: 32px;
     cursor: pointer;
+    font-family: var(--font-family);
     font-size: 1.1rem;
     display: flex;
     align-items: center;
@@ -1685,11 +1686,12 @@ body {
 
 .btn-add-artist {
     background: transparent;
-    color: var(--accent-color);
+    color: var(--accent-primary);
     border: 1px dashed var(--border-color);
     border-radius: var(--radius-sm);
     padding: var(--spacing-xs) var(--spacing-sm);
     cursor: pointer;
+    font-family: var(--font-family);
     font-size: 0.85rem;
     margin-top: var(--spacing-xs);
     width: 100%;
@@ -1698,7 +1700,7 @@ body {
 
 .btn-add-artist:hover {
     background: var(--bg-tertiary);
-    border-color: var(--accent-color);
+    border-color: var(--accent-primary);
 }
 
 .album-artist-input {
