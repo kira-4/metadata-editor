@@ -349,7 +349,14 @@ class DatabaseManager:
         return db.query(PendingItem).filter(
             PendingItem.original_path == file_path
         ).first() is not None
-    
+
+    @staticmethod
+    def item_exists_for_path(db: Session, current_path: str) -> bool:
+        """Check if any queue item references this current (staged) path."""
+        return db.query(PendingItem).filter(
+            PendingItem.current_path == current_path
+        ).first() is not None
+
     @staticmethod
     def get_item_by_identifier(db: Session, file_identifier: str) -> Optional[PendingItem]:
         """Get item by file identifier."""

@@ -308,24 +308,6 @@ class FileScanner:
                         file_identifier=file_identifier,
                         raw_gemini_response=raw_response
                     )
-                
-                if not success:
-                    # Create needs_manual entry instead of error
-                    item = DatabaseManager.create_pending_item(
-                        db=db,
-                        original_path=str(file_path),
-                        current_path=str(staged_path),
-                        video_title=video_title,
-                        channel=channel,
-                        extension=file_path.suffix,
-                        inferred_title=title,
-                        inferred_artist=artist,
-                        artwork_path=artwork_path,
-                        status="needs_manual",
-                        error_message="Failed to apply metadata tags - please check file",
-                        file_identifier=file_identifier,
-                        raw_gemini_response=raw_response
-                    )
                     logger.warning(f"Created manual edit entry for metadata failure: {file_path}")
                     try:
                         notify_actionable(item, "needs_manual")
@@ -380,8 +362,9 @@ class FileScanner:
                     logger.warning(f"Telegram notification failed: {notify_err}")
             except Exception as inner_e:
                 logger.error(f"Failed to create error entry: {inner_e}")
-            # Clean up staging on error
-            if staging_dir and staging_dir.exists():
+            # Clean up staging on error — unless a queue row still points at the staged file
+            staged_in_use = staged_path is not None and DatabaseManager.item_exists_for_path(db, str(staged_path))
+            if staging_dir and staging_dir.exists() and not staged_in_use:
                 try:
                     shutil.rmtree(staging_dir)
                 except Exception as cleanup_err:
