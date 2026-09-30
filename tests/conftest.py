@@ -24,6 +24,16 @@ config.NAVIDROME_ROOT.mkdir(parents=True, exist_ok=True)
 init_db()
 
 
+@pytest.fixture(autouse=True)
+def clean_dirs():
+    """Every test starts with empty incoming/staging/library dirs."""
+    import shutil
+
+    for d in (config.INCOMING_ROOT, config.STAGING_DIR, config.NAVIDROME_ROOT):
+        shutil.rmtree(d, ignore_errors=True)
+        d.mkdir(parents=True)
+
+
 @pytest.fixture
 def db():
     """Fresh database session with empty tables."""

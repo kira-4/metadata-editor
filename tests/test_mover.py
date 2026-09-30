@@ -3,8 +3,6 @@ import errno
 import os
 import shutil
 
-import pytest
-
 from app.config import config
 from app.mover import FileMover
 
@@ -24,12 +22,6 @@ def _source(tmp_path):
 
 def _library_files():
     return sorted(p.name for p in config.NAVIDROME_ROOT.rglob("*") if p.is_file())
-
-
-@pytest.fixture(autouse=True)
-def clean_library():
-    shutil.rmtree(config.NAVIDROME_ROOT, ignore_errors=True)
-    config.NAVIDROME_ROOT.mkdir(parents=True)
 
 
 def test_same_filesystem_move(tmp_path):
