@@ -30,14 +30,14 @@ class LibraryScanner:
         self.processed_files = 0
         self.errors = []
         
-    def start_scan(self, progress_callback: Optional[Callable] = None, force_full: bool = False):
+    def start_scan(self, progress_callback: Optional[Callable] = None, force_full: bool = False, repair: bool = False):
         """Start a library scan in the background."""
         if self.is_scanning:
             logger.warning("Library scan already in progress")
             return False
         
         self.progress_callback = progress_callback
-        self.scan_thread = threading.Thread(target=self._scan_library, args=(force_full,), daemon=True)
+        self.scan_thread = threading.Thread(target=self._scan_library, args=(force_full, repair), daemon=True)
         self.scan_thread.start()
         return True
     
@@ -75,13 +75,14 @@ class LibraryScanner:
         _walk(root)
         return audio_files
 
-    def _scan_library(self, force_full: bool = False):
+    def _scan_library(self, force_full: bool = False, repair: bool = False):
         """
         Scan library directory and index all audio files.
 
         Args:
             force_full: If True, re-scan all files and run cleanup for deleted files.
                         If False, only scan new/modified files (skips unchanged dirs).
+            repair: If True, write path-inferred tags into files that lack them.
         """
         self.is_scanning = True
         self.total_files = 0
@@ -117,7 +118,7 @@ class LibraryScanner:
                 for audio_file in audio_files:
                     scanned_paths.add(str(audio_file))
                     try:
-                        self._index_file(db, audio_file, force=force_full)
+                        self._index_file(db, audio_file, force=force_full, repair=repair)
                         self.processed_files += 1
 
                         # Report progress every 10 files
@@ -166,14 +167,15 @@ class LibraryScanner:
         finally:
             self.is_scanning = False
     
-    def _index_file(self, db: Session, file_path: Path, force: bool = False):
+    def _index_file(self, db: Session, file_path: Path, force: bool = False, repair: bool = False):
         """
-        Index a single audio file.
+        Index a single audio file. Read-only unless repair=True.
 
         Args:
             db: Database session
             file_path: Path to audio file
             force: If True, re-index even if file hasn't changed
+            repair: If True, write path-inferred tags into the file when missing
         """
         # Get file stats
         stat = file_path.stat()
@@ -192,20 +194,19 @@ class LibraryScanner:
         # Read metadata (raw tags from file)
         metadata = self._read_raw_metadata(file_path)
 
-        # Infer missing metadata (does not modify file yet)
+        # Infer missing metadata from the path (display fallback, like Navidrome's)
         inferred_metadata = self._infer_missing_metadata(metadata.copy(), file_path)
 
-        # Write back to file if changes were made (and ensure required fields exist)
-        if self._should_write_metadata(metadata, inferred_metadata):
+        # Explicit repair only: write inferred tags, then index what was actually saved
+        if repair and self._should_write_metadata(metadata, inferred_metadata):
             logger.info(f"Writing inferred metadata to {file_path}")
             self._write_metadata(file_path, inferred_metadata)
-            # Update file modified time in stats since we just modified it
             stat = file_path.stat()
             file_modified = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
             file_size = stat.st_size
-            metadata = inferred_metadata
-        else:
-            metadata = inferred_metadata
+            inferred_metadata = self._infer_missing_metadata(self._read_raw_metadata(file_path), file_path)
+
+        metadata = inferred_metadata
 
         # Create or update track
         file_stats = {
@@ -312,7 +313,7 @@ class LibraryScanner:
                     modified = True
 
             # MP3 (ID3)
-            elif hasattr(audio, 'tags') and (isinstance(audio.tags, ID3) or audio.tags is None):
+            elif not isinstance(audio, (FLAC, OggVorbis)) and (isinstance(audio.tags, ID3) or audio.tags is None):
                 if audio.tags is None:
                     try:
                         audio.add_tags()
@@ -342,7 +343,9 @@ class LibraryScanner:
                         modified = True
             
             # FLAC / OGG (Vorbis Comments) / Modern formats with Dict-like tags
-            elif isinstance(audio, (FLAC, OggVorbis)) and isinstance(audio.tags, dict):
+            elif isinstance(audio, (FLAC, OggVorbis)):
+                if audio.tags is None:
+                    audio.add_tags()
                 # For Vorbis/FLAC, keys are case-insensitive usually, but standard is lowercase
                 for key, val in [('title', metadata.get('title')), 
                                  ('album', metadata.get('album')),
