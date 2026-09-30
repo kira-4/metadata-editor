@@ -19,12 +19,14 @@ class FileMover:
     def build_destination_path(
         album_artist: str,
         title: str,
-        extension: str
+        extension: str,
+        dedupe: bool = True
     ) -> Path:
         """
         Build destination path without moving the file.
 
         Destination structure: {NAVIDROME_ROOT}/{album_artist}/{title}/{title}.{ext}
+        With dedupe=False, returns the natural path even if a file already exists there.
         """
         safe_album_artist = metadata_processor.sanitize_filename(album_artist)
         safe_title = metadata_processor.sanitize_filename(title)
@@ -34,6 +36,8 @@ class FileMover:
         album_dir = artist_dir / safe_album
         dest_filename = f"{safe_title}{extension}"
         dest_path = album_dir / dest_filename
+        if not dedupe:
+            return dest_path
 
         counter = 1
         while dest_path.exists():
@@ -102,7 +106,8 @@ class FileMover:
         source_path: Path,
         album_artist: str,
         title: str,
-        extension: str
+        extension: str,
+        replace_existing: bool = False
     ) -> Optional[Path]:
         """
         Move file to Navidrome library.
@@ -119,7 +124,10 @@ class FileMover:
             New path if successful, None otherwise
         """
         try:
-            dest_path = FileMover.build_destination_path(album_artist, title, extension)
+            # replace_existing: overwrite the natural path (atomically) instead of adding "(1)"
+            dest_path = FileMover.build_destination_path(
+                album_artist, title, extension, dedupe=not replace_existing
+            )
             dest_path.parent.mkdir(parents=True, exist_ok=True)
 
             FileMover._atomic_move(source_path, dest_path)
