@@ -12,6 +12,7 @@ from app.artist_matching import derive_album_artist, normalize_artist_name, rank
 from app.config import config
 from app.database import get_db, DatabaseManager, LibraryManager
 from app.events import event_stream, publish_event
+from app.library_scanner import library_scanner
 from app.metadata_processor import metadata_processor
 from app.mover import file_mover
 
@@ -356,6 +357,13 @@ def _run_confirm(db: Session, item_id: int, draft: dict) -> dict:
         
         # Mark as done
         DatabaseManager.mark_as_done(db, item_id, str(new_path))
+
+        # Index it right away so it appears in the library editor without a rescan.
+        # Best effort: the file is already safely in place; a later rescan catches up.
+        try:
+            library_scanner._index_file(db, new_path, force=True)
+        except Exception as e:
+            logger.warning(f"Could not index confirmed track {new_path}: {e}")
         
         # CRITICAL: Clean up original file from /incoming ONLY after successful move
         try:
