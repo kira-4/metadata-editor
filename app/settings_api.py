@@ -42,7 +42,7 @@ class TelegramTestResponse(BaseModel):
 
 
 @settings_router.get("/telegram", response_model=TelegramSettingsResponse)
-async def get_telegram_settings(db: Session = Depends(get_db)) -> TelegramSettingsResponse:
+def get_telegram_settings(db: Session = Depends(get_db)) -> TelegramSettingsResponse:
     """Return the current Telegram settings with the token masked."""
     settings = SettingsManager.get_telegram_settings(db)
     token = (settings.bot_token or "").strip()
@@ -55,7 +55,7 @@ async def get_telegram_settings(db: Session = Depends(get_db)) -> TelegramSettin
 
 
 @settings_router.put("/telegram", response_model=TelegramSettingsResponse)
-async def update_telegram_settings(
+def update_telegram_settings(
     request: TelegramSettingsUpdate,
     db: Session = Depends(get_db),
 ) -> TelegramSettingsResponse:
@@ -93,7 +93,7 @@ async def update_telegram_settings(
 
 
 @settings_router.post("/telegram/test", response_model=TelegramTestResponse)
-async def test_telegram_settings(
+def test_telegram_settings(
     request: TelegramTestRequest,
     db: Session = Depends(get_db),
 ) -> TelegramTestResponse:
