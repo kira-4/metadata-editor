@@ -457,13 +457,13 @@ async def get_track_artwork(track_id: int, db: Session = Depends(get_db)):
 
 # Library maintenance endpoints
 @library_router.post("/rescan")
-async def rescan_library(force: bool = False):
-    """Trigger library rescan. Set force=True to re-index all files."""
+async def rescan_library(force: bool = False, repair: bool = False):
+    """Trigger library rescan. force=True re-indexes all files; repair=True also writes missing tags."""
     try:
         if library_scanner.is_scanning:
             raise HTTPException(status_code=409, detail="Scan already in progress")
         
-        success = library_scanner.start_scan(force_full=force)
+        success = library_scanner.start_scan(force_full=force, repair=repair)
         
         if not success:
             raise HTTPException(status_code=500, detail="Failed to start scan")
