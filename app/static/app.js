@@ -2085,6 +2085,8 @@ async function loadLibraryStats() {
 
 // Load View Data
 async function loadViewData() {
+    // Only the newest request may render; a slow older response is discarded
+    const requestSeq = libraryState.loadSeq = (libraryState.loadSeq || 0) + 1;
     const view = libraryState.currentView;
     const [sortBy, sortOrder] = libraryState.currentSort.split('-');
     const search = libraryState.searchQuery;
@@ -2122,6 +2124,7 @@ async function loadViewData() {
         if (!response.ok) throw new Error('Failed to load data');
         
         const data = await response.json();
+        if (requestSeq !== libraryState.loadSeq) return;
         
         libraryState.totalItems = data.total;
         updatePaginationUI();
@@ -2164,10 +2167,11 @@ async function loadViewData() {
             renderTracks(data.tracks);
         }
     } catch (error) {
+        if (requestSeq !== libraryState.loadSeq) return;
         logEvent('error', 'Error loading library view data', {view, error: error.message});
         showAlert(`فشل تحميل بيانات المكتبة: ${error.message}`, 'error');
         const container = document.getElementById(`${view}List`) || document.getElementById('tracksList');
-        if (container) container.innerHTML = `<div class="error-message">حدث خطأ في تحميل البيانات: ${error.message}</div>`;
+        if (container) container.innerHTML = `<div class="error-message">حدث خطأ في تحميل البيانات: ${escapeHtml(error.message)}</div>`;
     }
 }
 
@@ -2253,7 +2257,11 @@ function updateSortOptions() {
     sortSelect.innerHTML = options[view].map(opt =>
         `<option value="${opt.value}">${opt.label}</option>`
     ).join('');
-    
+
+    // A sort from another tab (e.g. name-asc on tracks) isn't valid here: fall back to the first
+    if (!options[view].some(opt => opt.value === libraryState.currentSort)) {
+        libraryState.currentSort = options[view][0].value;
+    }
     sortSelect.value = libraryState.currentSort;
 }
 
@@ -2596,7 +2604,7 @@ async function viewAlbumTracks(albumName, pushToStack = true) {
     const name = decodeURIComponent(albumName);
 
     try {
-        const response = await fetch(`/api/library/tracks?album=${encodeURIComponent(name)}&limit=500`);
+        const response = await fetch(`/api/library/tracks?album=${encodeURIComponent(name)}&sort_by=track_number&limit=500`);
         if (!response.ok) throw new Error('Failed to load tracks');
 
         const data = await response.json();
