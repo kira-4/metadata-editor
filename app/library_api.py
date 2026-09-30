@@ -6,12 +6,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Literal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.config import config
 from app.database import get_db, LibraryManager, LibraryTrack
 from app.metadata_processor import metadata_processor
+from app import artist_merge
 from app.library_scanner import library_scanner
 
 logger = logging.getLogger(__name__)
@@ -335,6 +336,36 @@ def batch_update_tracks(
     except Exception as e:
         logger.error(f"Error in batch update: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class ArtistMergeRequest(BaseModel):
+    """Merge `sources` into `target`. apply=False only previews."""
+    sources: List[str] = Field(..., min_length=1, max_length=20)
+    target: str = Field(..., min_length=1, max_length=300)
+    apply: bool = False
+
+
+@library_router.get("/artist-variants")
+def get_artist_variants(db: Session = Depends(get_db)):
+    """Groups of artist names that are spelling variants of the same artist."""
+    return {"groups": artist_merge.find_variant_groups(db)}
+
+
+@library_router.post("/artist-merge")
+def merge_artists(request: ArtistMergeRequest, db: Session = Depends(get_db)):
+    """Preview (default) or apply merging artist spelling variants into one name."""
+    target = request.target.strip()
+    plan = artist_merge.plan_merge(db, request.sources, target)
+    response = {
+        "target": target,
+        "track_count": len(plan),
+        "move_count": sum(1 for c in plan if c["new_path"] and not c["blocked"]),
+        "blocked_count": sum(1 for c in plan if c["blocked"]),
+        "changes": plan,
+    }
+    if request.apply:
+        response["results"] = artist_merge.apply_merge(db, request.sources, target)
+    return response
 
 
 @library_router.post("/tracks/{track_id}/artwork")
