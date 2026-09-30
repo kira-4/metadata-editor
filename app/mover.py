@@ -1,4 +1,5 @@
 """File mover to Navidrome library."""
+import errno
 import logging
 import os
 from pathlib import Path
@@ -69,6 +70,34 @@ class FileMover:
         }
     
     @staticmethod
+    def _atomic_move(source_path: Path, dest_path: Path) -> None:
+        """
+        Move so the final name only ever points at a complete file.
+
+        Same filesystem: a single rename. Across filesystems (staging and /music are
+        separate mounts in Docker): copy to a hidden temp name in the destination
+        directory, fsync, then rename into place — Navidrome skips dotfiles, so it
+        never indexes a half-written track.
+        """
+        try:
+            os.rename(source_path, dest_path)
+            return
+        except OSError as e:
+            if e.errno != errno.EXDEV:
+                raise
+
+        temp_path = dest_path.parent / f".{dest_path.name}.partial"
+        try:
+            shutil.copy2(source_path, temp_path)
+            with open(temp_path, "rb") as f:
+                os.fsync(f.fileno())
+            os.replace(temp_path, dest_path)
+        except BaseException:
+            temp_path.unlink(missing_ok=True)
+            raise
+        source_path.unlink()
+
+    @staticmethod
     def move_to_navidrome(
         source_path: Path,
         album_artist: str,
@@ -92,10 +121,9 @@ class FileMover:
         try:
             dest_path = FileMover.build_destination_path(album_artist, title, extension)
             dest_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Move the file
-            shutil.move(str(source_path), str(dest_path))
-            
+
+            FileMover._atomic_move(source_path, dest_path)
+
             logger.info(f"Moved {source_path} -> {dest_path}")
             return dest_path
             
