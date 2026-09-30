@@ -310,6 +310,35 @@ class DatabaseManager:
         return item
     
     @staticmethod
+    def claim_for_processing(db: Session, item_id: int, from_statuses) -> bool:
+        """Atomically move an item to 'processing'. False if another request got it first."""
+        claimed = db.query(PendingItem).filter(
+            PendingItem.id == item_id,
+            PendingItem.status.in_(list(from_statuses)),
+        ).update({"status": "processing"}, synchronize_session=False)
+        db.commit()
+        return claimed == 1
+
+    @staticmethod
+    def release_claim(db: Session, item_id: int, status: str) -> None:
+        """Return a still-'processing' item to `status` (no-op once done/error was recorded)."""
+        db.query(PendingItem).filter(
+            PendingItem.id == item_id,
+            PendingItem.status == "processing",
+        ).update({"status": status}, synchronize_session=False)
+        db.commit()
+
+    @staticmethod
+    def reset_interrupted_processing(db: Session) -> int:
+        """At startup: items left 'processing' by a crash become retryable errors."""
+        count = db.query(PendingItem).filter(PendingItem.status == "processing").update(
+            {"status": "error", "error_message": "Interrupted while moving - please retry"},
+            synchronize_session=False,
+        )
+        db.commit()
+        return count
+
+    @staticmethod
     def update_item_error(
         db: Session,
         item_id: int,
