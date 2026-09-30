@@ -27,7 +27,9 @@
             </div>
         </nav>
 
-        <!-- Pending Page (existing) -->
+        <!-- Shared feedback: visible on every page, announced to screen readers -->
+        <div id="globalAlert" class="global-alert" role="status" aria-live="polite" style="display: none;"></div>
+
         <!-- Pending Page (existing) -->
         <div id="pendingPage" class="page-content">
             <main class="main-content">
@@ -47,7 +49,6 @@
                     <button id="downloadLogsBtn" class="btn-secondary" style="display: none;">تنزيل السجلات</button>
                 </div>
 
-                <div id="globalAlert" class="global-alert" style="display: none;"></div>
 
                 <div id="logPanel" class="log-panel" style="display: none;">
                     <div class="log-panel-header">
@@ -121,22 +122,18 @@
             <!-- View Content -->
             <div id="artistsView" class="view-content active">
                 <div id="artistsList" class="items-list"></div>
-                <div class="empty-state"><p>لا توجد فنانين</p></div>
             </div>
 
             <div id="albumsView" class="view-content">
                 <div id="albumsList" class="albums-grid"></div>
-                <div class="empty-state"><p>لا توجد ألبومات</p></div>
             </div>
 
             <div id="genresView" class="view-content">
                 <div id="genresList" class="items-list"></div>
-                <div class="empty-state"><p>لا توجد أنواع صوتية</p></div>
             </div>
 
             <div id="tracksView" class="view-content">
                 <div id="tracksList" class="items-list"></div>
-                <div class="empty-state"><p>لا توجد صوتيات</p></div>
             </div>
 
             <!-- Pagination Controls -->

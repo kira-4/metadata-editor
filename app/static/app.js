@@ -80,11 +80,15 @@ function downloadLogs() {
     URL.revokeObjectURL(url);
 }
 
-function showAlert(message, type = 'info', timeout = 5000) {
+function showAlert(message, type = 'info', timeout) {
     const alertEl = document.getElementById('globalAlert');
     if (!alertEl) return;
+    // Errors stay until dismissed; everything else fades after 5s
+    if (timeout === undefined) timeout = type === 'error' ? 0 : 5000;
     alertEl.textContent = message;
     alertEl.className = `global-alert ${type}`;
+    alertEl.title = 'اضغط للإغلاق';
+    alertEl.onclick = () => { alertEl.style.display = 'none'; };
     alertEl.style.display = 'block';
 
     if (timeout > 0) {
@@ -2253,12 +2257,38 @@ function updateSortOptions() {
     sortSelect.value = libraryState.currentSort;
 }
 
+function renderLibraryEmpty(container, emptyMessage) {
+    const query = libraryState.searchQuery;
+    container.innerHTML = query
+        ? `<div class="empty-state show">
+               <p>لا توجد نتائج مطابقة لـ «${escapeHtml(query)}». جرّب اسمًا آخر.</p>
+               <button type="button" class="btn-secondary" data-empty-action="clear-search">مسح البحث</button>
+           </div>`
+        : `<div class="empty-state show">
+               <p>${emptyMessage}</p>
+               <button type="button" class="btn-secondary" data-empty-action="rescan">فحص المكتبة</button>
+           </div>`;
+}
+
+document.addEventListener('click', event => {
+    const action = event.target.closest('[data-empty-action]')?.dataset.emptyAction;
+    if (action === 'clear-search') {
+        const searchInput = document.getElementById('librarySearch');
+        if (searchInput) searchInput.value = '';
+        libraryState.searchQuery = '';
+        libraryState.currentPage = 1;
+        loadViewData();
+    } else if (action === 'rescan') {
+        startRescan();
+    }
+});
+
 // Render Artists
 function renderArtists(artists) {
     const container = document.getElementById('artistsList');
     
     if (artists.length === 0) {
-        container.innerHTML = '';
+        renderLibraryEmpty(container, 'لا يوجد فنانون في المكتبة بعد.');
         return;
     }
     
@@ -2277,7 +2307,7 @@ function renderAlbums(albums) {
     const container = document.getElementById('albumsList');
     
     if (albums.length === 0) {
-        container.innerHTML = '';
+        renderLibraryEmpty(container, 'لا توجد ألبومات في المكتبة بعد.');
         return;
     }
     
@@ -2300,7 +2330,7 @@ function renderGenres(genres) {
     const container = document.getElementById('genresList');
     
     if (genres.length === 0) {
-        container.innerHTML = '';
+        renderLibraryEmpty(container, 'لا توجد أنواع في المكتبة بعد.');
         return;
     }
     
@@ -2390,7 +2420,11 @@ function renderTracks(tracks) {
     }
 
     if (tracks.length === 0) {
-        container.innerHTML = '<div class="empty-state show"><p>لا توجد صوتيات</p></div>';
+        if (libraryState.detailContext) {
+            container.innerHTML = '<div class="empty-state show"><p>لا توجد صوتيات هنا.</p></div>';
+        } else {
+            renderLibraryEmpty(container, 'لا توجد صوتيات في المكتبة بعد.');
+        }
         return;
     }
 
