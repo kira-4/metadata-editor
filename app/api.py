@@ -2,7 +2,7 @@
 import logging
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -34,7 +34,13 @@ class UpdateItemRequest(BaseModel):
 
 
 class ConfirmItemRequest(UpdateItemRequest):
-    """Request to confirm and move item, carrying the draft the user sees."""
+    """Request to confirm and move item, carrying the draft the user sees.
+
+    on_conflict decides what happens when the library already has a file at the
+    destination: "replace" it, or "keep_both" (adds " (1)"). Unset → 409 so the
+    user chooses.
+    """
+    on_conflict: Optional[Literal["replace", "keep_both"]] = None
 
 
 def _validated_updates(request: UpdateItemRequest, item) -> dict:
@@ -261,13 +267,13 @@ def confirm_item(
         raise HTTPException(status_code=409, detail="الملف قيد النقل حالياً")
 
     try:
-        return _run_confirm(db, item_id, draft)
+        return _run_confirm(db, item_id, draft, request.on_conflict if request else None)
     finally:
         # Failures that didn't record an error (e.g. validation) hand the item back
         DatabaseManager.release_claim(db, item_id, previous_status)
 
 
-def _run_confirm(db: Session, item_id: int, draft: dict) -> dict:
+def _run_confirm(db: Session, item_id: int, draft: dict, on_conflict: Optional[str] = None) -> dict:
     """Write tags and move a claimed item. Caller holds the 'processing' claim."""
     try:
         # Persist the draft the user is looking at, so confirm never uses stale values
@@ -301,6 +307,15 @@ def _run_confirm(db: Session, item_id: int, draft: dict) -> dict:
         
         if not current_path.exists():
             raise HTTPException(status_code=404, detail="File not found")
+
+        # Never silently add "title (1)" next to an existing track: ask first
+        existing = file_mover.build_destination_path(album_artist, title, item.extension, dedupe=False)
+        if existing.exists() and on_conflict is None:
+            raise HTTPException(status_code=409, detail={
+                "code": "destination_exists",
+                "message": "يوجد ملف بنفس الاسم في المكتبة",
+                "existing_path": str(existing),
+            })
         
         # Apply final metadata with genre
         # First, embed artwork if available
@@ -346,7 +361,8 @@ def _run_confirm(db: Session, item_id: int, draft: dict) -> dict:
             current_path,
             album_artist=album_artist,
             title=title,
-            extension=item.extension
+            extension=item.extension,
+            replace_existing=(on_conflict == "replace")
         )
         
         if not new_path:
