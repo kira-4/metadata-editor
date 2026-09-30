@@ -2064,8 +2064,16 @@ function setupLibraryListeners() {
                 logEvent('warn', `Main view #${libraryState.currentView}View not found`);
             }
             libraryState.detailContext = null;
+            if (libraryState.stale) {
+                libraryState.stale = false;
+                loadLibraryStats();
+                loadViewData();
+            }
         }
     });
+
+    const reviewVariantsBtn = document.getElementById('reviewVariantsBtn');
+    if (reviewVariantsBtn) reviewVariantsBtn.addEventListener('click', showArtistVariants);
 
     let libraryResizeTimer = null;
     window.addEventListener('resize', () => {
@@ -2120,8 +2128,125 @@ async function loadLibraryStats() {
             <span class="stat-item">${stats.total_artists} فنان</span>
             <span class="stat-item">${stats.total_albums} ألبوم</span>
         `;
+        loadArtistVariants();
     } catch (error) {
         logEvent('warn', 'Error loading library stats', {error: error.message});
+    }
+}
+
+// Arabic number agreement: forms = [one, two (dual), 3–10 (plural), 11–99 (acc. singular), hundreds (gen. singular)]
+function arabicCount(n, [one, two, few, many, hundred]) {
+    if (n === 1) return one;
+    if (n === 2) return two;
+    const mod100 = n % 100;
+    if (mod100 === 0) return `${n} ${hundred}`;
+    return `${n} ${mod100 >= 3 && mod100 <= 10 ? few : many}`;
+}
+
+// ---- Artist spelling variants (e.g. الأكرف / الاكرف) ----
+
+async function loadArtistVariants() {
+    try {
+        const response = await fetch('/api/library/artist-variants');
+        if (!response.ok) return;
+        const {groups} = await response.json();
+        libraryState.variantGroups = groups;
+        const notice = document.getElementById('artistVariantsNotice');
+        if (!notice) return;
+        notice.style.display = groups.length ? 'flex' : 'none';
+        document.getElementById('artistVariantsText').textContent =
+            `${arabicCount(groups.length, ['فنان واحد مكتوب', 'فنانان مكتوبان', 'فنانين مكتوبين', 'فنانًا مكتوبًا', 'فنان مكتوب'])} بأكثر من تهجئة`;
+    } catch (error) {
+        logEvent('warn', 'Error loading artist variants', {error: error.message});
+    }
+}
+
+function showArtistVariants() {
+    const groups = libraryState.variantGroups || [];
+    libraryState.navigationStack.push(null);
+    libraryState.detailContext = {type: 'variants'};
+
+    document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
+    document.getElementById('detailView').style.display = 'block';
+    document.getElementById('detailTitle').textContent = 'توحيد أسماء الفنانين';
+
+    const detailContent = document.getElementById('detailContent');
+    detailContent.className = 'variants-list';
+    if (!groups.length) {
+        detailContent.innerHTML = '<div class="empty-state show"><p>لا توجد أسماء مكررة.</p></div>';
+        return;
+    }
+    detailContent.innerHTML = groups.map((group, gi) => `
+        <div class="variant-group" data-group="${gi}">
+            <p class="variant-hint">اختر الاسم الصحيح، وستُنقل بقية الصوتيات إليه:</p>
+            ${group.variants.map(v => `
+                <label class="variant-option">
+                    <input type="radio" name="variant-${gi}" value="${escapeHtml(v.name)}" ${v.name === group.suggested ? 'checked' : ''}>
+                    <bdi>${escapeHtml(v.name)}</bdi>
+                    <span class="variant-count">${v.track_count} صوتية</span>
+                </label>
+            `).join('')}
+            <div class="variant-preview" aria-live="polite"></div>
+            <div class="variant-actions">
+                <button type="button" class="btn-secondary" data-variant-action="preview">معاينة الدمج</button>
+                <button type="button" class="btn-primary" data-variant-action="apply" disabled>دمج</button>
+            </div>
+        </div>
+    `).join('');
+
+    detailContent.querySelectorAll('.variant-group').forEach(groupEl => {
+        const group = groups[Number(groupEl.dataset.group)];
+        const applyBtn = groupEl.querySelector('[data-variant-action="apply"]');
+        // Changing the chosen name invalidates the preview
+        groupEl.querySelectorAll('input[type="radio"]').forEach(radio => radio.addEventListener('change', () => {
+            applyBtn.disabled = true;
+            groupEl.querySelector('.variant-preview').textContent = '';
+        }));
+        groupEl.querySelector('[data-variant-action="preview"]').addEventListener('click', () => runArtistMerge(groupEl, group, false));
+        applyBtn.addEventListener('click', () => runArtistMerge(groupEl, group, true));
+    });
+}
+
+async function runArtistMerge(groupEl, group, apply) {
+    const target = groupEl.querySelector('input[type="radio"]:checked')?.value;
+    const sources = group.variants.map(v => v.name).filter(name => name !== target);
+    const previewEl = groupEl.querySelector('.variant-preview');
+    const buttons = groupEl.querySelectorAll('button');
+    buttons.forEach(b => b.disabled = true);
+    previewEl.textContent = apply ? 'جارٍ الدمج…' : 'جارٍ الحساب…';
+
+    try {
+        const response = await fetch('/api/library/artist-merge', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({sources, target, apply})
+        });
+        if (!response.ok) throw new Error(await parseApiError(response, 'فشل الدمج'));
+        const body = await response.json();
+
+        if (!apply) {
+            const lines = [`سيُعدَّل ${arabicCount(body.track_count, ['مقطع واحد', 'مقطعان', 'مقاطع', 'مقطعًا', 'مقطع'])} ليصبح باسم «${target}».`];
+            if (body.move_count) lines.push(`سيُنقل ${arabicCount(body.move_count, ['ملف واحد', 'ملفان', 'ملفات', 'ملفًا', 'ملف'])} إلى مجلد «${target}».`);
+            if (body.blocked_count) lines.push(`${body.blocked_count} ملف له نسخة بنفس الاسم في المجلد، سيُعدَّل دون نقل.`);
+            previewEl.textContent = lines.join(' ');
+            buttons.forEach(b => b.disabled = false);
+            groupEl.querySelector('[data-variant-action="apply"]').disabled = body.track_count === 0;
+            return;
+        }
+
+        const r = body.results;
+        libraryState.stale = true;
+        if (r.failed) {
+            showAlert(`دُمج ${r.successful} صوتية، وتعذّر ${r.failed}: ${r.errors.map(e => e.error).join('، ')}`, 'warn', 0);
+        } else {
+            showAlert(`تم توحيد ${arabicCount(r.successful, ['مقطع واحد', 'مقطعين', 'مقاطع', 'مقطعًا', 'مقطع'])} باسم «${target}».`, 'success');
+        }
+        groupEl.remove();
+        libraryState.variantGroups = (libraryState.variantGroups || []).filter(g => g !== group);
+        loadArtistVariants();
+    } catch (error) {
+        previewEl.textContent = `تعذّر الدمج: ${error.message}`;
+        buttons.forEach(b => b.disabled = false);
     }
 }
 
