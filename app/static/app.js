@@ -1233,10 +1233,9 @@ async function confirmAllReady() {
         const stillExists = document.querySelector(`.confirm-btn[data-id="${itemId}"]:not(:disabled)`);
         if (!stillExists) continue;
 
-        try {
-            await confirmItem(itemId);
+        if (await confirmItem(itemId)) {
             successCount++;
-        } catch {
+        } else {
             failCount++;
         }
     }
@@ -1362,7 +1361,7 @@ async function previewItem(itemId) {
 async function confirmItem(itemId) {
     const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
     const confirmBtn = document.querySelector(`.confirm-btn[data-id="${itemId}"]`);
-    if (!card || !confirmBtn) return;
+    if (!card || !confirmBtn) return false;
     
     const title = (card.querySelector('.title-input')?.value || '').trim();
     const artist = rebuildArtistValue(itemId);  // all artist rows, joined
@@ -1371,7 +1370,7 @@ async function confirmItem(itemId) {
     if (!title || !artist || !genre) {
         showAlert('لا يمكن التأكيد: العنوان والفنان والنوع مطلوبة.', 'warn');
         setItemStatus(itemId, 'أكمل الحقول المطلوبة أولاً', 'warn');
-        return;
+        return false;
     }
     
     // Disable button
@@ -1401,6 +1400,7 @@ async function confirmItem(itemId) {
         renderItems();
         showAlert('تم حفظ البيانات ونقل الملف بنجاح.', 'success');
         logEvent('info', 'Item confirmed and moved', {itemId});
+        return true;
         
     } catch (error) {
         logEvent('error', 'Error confirming item', {itemId, error: error.message});
@@ -1409,6 +1409,7 @@ async function confirmItem(itemId) {
         confirmBtn.textContent = '✗ فشل - حاول مرة أخرى';
         confirmBtn.style.background = 'var(--error)';
         setItemStatus(itemId, `فشل التأكيد: ${error.message}`, 'error');
+        return false;
     }
 }
 
