@@ -568,25 +568,19 @@ class LibraryManager:
         album_sets: Dict[str, set] = defaultdict(set)
 
         for row in rows:
-            # Split artist field
-            if row.artist:
-                for name in LibraryManager._split_artists(row.artist):
-                    track_counts[name] += 1
-                    if row.album:
-                        album_sets[name].add(row.album)
-
-            # Split album_artist field
-            if row.album_artist:
-                for name in LibraryManager._split_artists(row.album_artist):
-                    track_counts[name] += 1
-                    if row.album:
-                        album_sets[name].add(row.album)
+            # A track counts once per artist, even when it is both artist and album artist
+            names = set(LibraryManager._split_artists(row.artist or ""))
+            names |= set(LibraryManager._split_artists(row.album_artist or ""))
+            for name in names:
+                track_counts[name] += 1
+                if row.album:
+                    album_sets[name].add((row.album, row.album_artist))
 
         # Build result list
         all_names = set(track_counts.keys())
         if search:
-            escaped = search.replace('%', r'\%').replace('_', r'\_')
-            all_names = {n for n in all_names if n.lower().find(escaped.lower()) >= 0}
+            needle = search.lower()
+            all_names = {n for n in all_names if needle in n.lower()}
 
         return [
             {
@@ -667,18 +661,20 @@ class LibraryManager:
         """Get all unique albums with metadata."""
         from sqlalchemy import func
         
+        from sqlalchemy import case
+
+        # Album identity is (album, album_artist); year is shown, not part of the key
         query = db.query(
             LibraryTrack.album,
             LibraryTrack.album_artist,
-            LibraryTrack.year,
+            func.max(LibraryTrack.year).label('year'),
             func.count(LibraryTrack.id).label('track_count'),
-            func.max(LibraryTrack.has_artwork).label('has_artwork'),
-            func.max(LibraryTrack.id).label('sample_id')
+            # Sample only tracks that really carry artwork
+            func.max(case((LibraryTrack.has_artwork == 1, LibraryTrack.id))).label('artwork_id')
         ).filter(LibraryTrack.album.isnot(None))
         
         if search:
-            escaped = search.replace('%', r'\%').replace('_', r'\_')
-            query = query.filter(LibraryTrack.album.like(f'%{escaped}%'))
+            query = query.filter(LibraryTrack.album.like(LibraryManager._like_pattern(search), escape="\\"))
         
         if artist:
             from sqlalchemy import or_
@@ -689,7 +685,7 @@ class LibraryManager:
                 )
             )
         
-        query = query.group_by(LibraryTrack.album, LibraryTrack.album_artist, LibraryTrack.year)
+        query = query.group_by(LibraryTrack.album, LibraryTrack.album_artist)
         
         results = query.all()
         return [
@@ -698,8 +694,8 @@ class LibraryManager:
                 'album_artist': r.album_artist,
                 'year': r.year,
                 'track_count': r.track_count,
-                'has_artwork': bool(r.has_artwork),
-                'artwork_id': r.sample_id if r.has_artwork else None
+                'has_artwork': r.artwork_id is not None,
+                'artwork_id': r.artwork_id
             }
             for r in results
         ]
@@ -715,8 +711,7 @@ class LibraryManager:
         ).filter(LibraryTrack.genre.isnot(None))
         
         if search:
-            escaped = search.replace('%', r'\%').replace('_', r'\_')
-            query = query.filter(LibraryTrack.genre.like(f'%{escaped}%'))
+            query = query.filter(LibraryTrack.genre.like(LibraryManager._like_pattern(search), escape="\\"))
         
         query = query.group_by(LibraryTrack.genre)
         
@@ -750,6 +745,7 @@ class LibraryManager:
         artist: Optional[str] = None,
         album: Optional[str] = None,
         genre: Optional[str] = None,
+        album_artist: Optional[str] = None,
     ):
         """One filtered query shared by listing and counting, so totals always match."""
         from sqlalchemy import or_
@@ -775,6 +771,12 @@ class LibraryManager:
         if album:
             query = query.filter(LibraryTrack.album == album)
 
+        if album_artist == "":
+            # Albums listed without an album artist (NULL or empty)
+            query = query.filter(or_(LibraryTrack.album_artist.is_(None), LibraryTrack.album_artist == ""))
+        elif album_artist is not None:
+            query = query.filter(LibraryTrack.album_artist == album_artist)
+
         if genre:
             query = query.filter(LibraryTrack.genre == genre)
 
@@ -787,6 +789,7 @@ class LibraryManager:
         artist: Optional[str] = None,
         album: Optional[str] = None,
         genre: Optional[str] = None,
+        album_artist: Optional[str] = None,
         sort_by: str = "artist",
         sort_order: str = "asc",
         limit: int = 100,
@@ -795,7 +798,7 @@ class LibraryManager:
         """Get tracks with optional filters, sorted in SQL *before* pagination."""
         from sqlalchemy import func
 
-        query = LibraryManager._filtered_tracks(db, search, artist, album, genre)
+        query = LibraryManager._filtered_tracks(db, search, artist, album, genre, album_artist)
 
         column = LibraryManager.TRACK_SORT_COLUMNS.get(sort_by, LibraryTrack.artist)
         if sort_by in ("year", "track_number"):
@@ -820,9 +823,10 @@ class LibraryManager:
         artist: Optional[str] = None,
         album: Optional[str] = None,
         genre: Optional[str] = None,
+        album_artist: Optional[str] = None,
     ) -> int:
         """Count tracks matching the same filters as get_tracks."""
-        return LibraryManager._filtered_tracks(db, search, artist, album, genre).count()
+        return LibraryManager._filtered_tracks(db, search, artist, album, genre, album_artist).count()
 
     @staticmethod
     def get_total_track_count(db: Session) -> int:
