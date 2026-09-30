@@ -729,6 +729,57 @@ class LibraryManager:
             for r in results
         ]
     
+    TRACK_SORT_COLUMNS = {
+        "title": LibraryTrack.title,
+        "artist": LibraryTrack.artist,
+        "album": LibraryTrack.album,
+        "year": LibraryTrack.year,
+        "track_number": LibraryTrack.track_number,
+    }
+
+    @staticmethod
+    def _like_pattern(value: str) -> str:
+        """Substring LIKE pattern with %, _ and \\ matched literally (use escape='\\')."""
+        escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return f"%{escaped}%"
+
+    @staticmethod
+    def _filtered_tracks(
+        db: Session,
+        search: Optional[str] = None,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+        genre: Optional[str] = None,
+    ):
+        """One filtered query shared by listing and counting, so totals always match."""
+        from sqlalchemy import or_
+
+        query = db.query(LibraryTrack)
+
+        if search:
+            pattern = LibraryManager._like_pattern(search)
+            query = query.filter(or_(
+                LibraryTrack.title.like(pattern, escape="\\"),
+                LibraryTrack.artist.like(pattern, escape="\\"),
+                LibraryTrack.album.like(pattern, escape="\\"),
+            ))
+
+        if artist:
+            query = query.filter(
+                or_(
+                    LibraryManager._artist_match_filter(LibraryTrack.artist, artist),
+                    LibraryManager._artist_match_filter(LibraryTrack.album_artist, artist),
+                )
+            )
+
+        if album:
+            query = query.filter(LibraryTrack.album == album)
+
+        if genre:
+            query = query.filter(LibraryTrack.genre == genre)
+
+        return query
+
     @staticmethod
     def get_tracks(
         db: Session,
@@ -736,40 +787,43 @@ class LibraryManager:
         artist: Optional[str] = None,
         album: Optional[str] = None,
         genre: Optional[str] = None,
+        sort_by: str = "artist",
+        sort_order: str = "asc",
         limit: int = 100,
         offset: int = 0
     ) -> List[LibraryTrack]:
-        """Get tracks with optional filters."""
-        query = db.query(LibraryTrack)
-        
-        if search:
-            escaped = search.replace('%', r'\%').replace('_', r'\_')
-            query = query.filter(
-                (LibraryTrack.title.like(f'%{escaped}%')) |
-                (LibraryTrack.artist.like(f'%{escaped}%')) |
-                (LibraryTrack.album.like(f'%{escaped}%'))
-            )
-        
-        if artist:
-            from sqlalchemy import or_
-            query = query.filter(
-                or_(
-                    LibraryManager._artist_match_filter(LibraryTrack.artist, artist),
-                    LibraryManager._artist_match_filter(LibraryTrack.album_artist, artist),
-                )
-            )
-        
-        if album:
-            query = query.filter(LibraryTrack.album == album)
-        
-        if genre:
-            query = query.filter(LibraryTrack.genre == genre)
-        
-        query = query.order_by(LibraryTrack.artist, LibraryTrack.album, LibraryTrack.track_number)
-        query = query.limit(limit).offset(offset)
-        
-        return query.all()
-    
+        """Get tracks with optional filters, sorted in SQL *before* pagination."""
+        from sqlalchemy import func
+
+        query = LibraryManager._filtered_tracks(db, search, artist, album, genre)
+
+        column = LibraryManager.TRACK_SORT_COLUMNS.get(sort_by, LibraryTrack.artist)
+        if sort_by in ("year", "track_number"):
+            key = func.coalesce(column, 0)
+        else:
+            key = func.lower(func.coalesce(column, ""))
+        key = key.desc() if sort_order == "desc" else key.asc()
+
+        # Stable secondary order, then id as a unique tiebreaker so pages never overlap
+        query = query.order_by(
+            key,
+            func.lower(func.coalesce(LibraryTrack.album, "")),
+            func.coalesce(LibraryTrack.track_number, 0),
+            LibraryTrack.id,
+        )
+        return query.limit(limit).offset(offset).all()
+
+    @staticmethod
+    def count_tracks(
+        db: Session,
+        search: Optional[str] = None,
+        artist: Optional[str] = None,
+        album: Optional[str] = None,
+        genre: Optional[str] = None,
+    ) -> int:
+        """Count tracks matching the same filters as get_tracks."""
+        return LibraryManager._filtered_tracks(db, search, artist, album, genre).count()
+
     @staticmethod
     def get_total_track_count(db: Session) -> int:
         """Get total number of tracks in library."""
