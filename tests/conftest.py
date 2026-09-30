@@ -44,3 +44,29 @@ def client(db):
     from app.main import app
 
     return TestClient(app)
+
+
+_CODECS = {".mp3": ["libmp3lame", "-b:a", "128k"], ".flac": ["flac"], ".m4a": ["aac", "-b:a", "128k"]}
+
+
+@pytest.fixture
+def make_audio(tmp_path):
+    """Factory: make_audio(".mp3", dir=None) -> Path to a 1s generated audio file."""
+    import shutil
+    import subprocess
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        pytest.skip("ffmpeg not available")
+
+    def _make(ext=".mp3", dir=None, name="track"):
+        target_dir = Path(dir) if dir else tmp_path
+        target_dir.mkdir(parents=True, exist_ok=True)
+        path = target_dir / f"{name}{ext}"
+        subprocess.run(
+            [ffmpeg, "-y", "-f", "lavfi", "-i", "sine=frequency=1000:duration=1", "-c:a", *_CODECS[ext], str(path)],
+            check=True, capture_output=True,
+        )
+        return path
+
+    return _make
