@@ -146,6 +146,7 @@ def get_tracks(
     artist: Optional[str] = None,
     album: Optional[str] = None,
     genre: Optional[str] = None,
+    album_artist: Optional[str] = None,
     sort_by: Literal["title", "artist", "album", "year", "track_number"] = "artist",
     sort_order: Literal["asc", "desc"] = "asc",
     limit: int = Query(100, ge=1, le=500),
@@ -154,7 +155,7 @@ def get_tracks(
 ):
     """Get tracks with optional filters. Sorting and totals use the same SQL filters."""
     try:
-        filters = dict(search=search, artist=artist, album=album, genre=genre)
+        filters = dict(search=search, artist=artist, album=album, genre=genre, album_artist=album_artist)
         tracks = LibraryManager.get_tracks(
             db, **filters, sort_by=sort_by, sort_order=sort_order, limit=limit, offset=offset
         )

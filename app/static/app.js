@@ -2320,7 +2320,7 @@ function renderAlbums(albums) {
     }
     
     container.innerHTML = albums.map(album => `
-        <div class="album-card" role="button" tabindex="0" data-nav="album" data-name="${escapeHtml(album.name)}">
+        <div class="album-card" role="button" tabindex="0" data-nav="album" data-name="${escapeHtml(album.name)}" data-album-artist="${escapeHtml(album.album_artist)}">
             <div class="album-artwork">
                 ${album.artwork_id 
                     ? `<img src="/api/library/tracks/${album.artwork_id}/artwork?t=${Date.now()}" alt="Cover">` 
@@ -2518,7 +2518,7 @@ function handleTrackClick(event, element) {
 // Library navigation cards: one delegated handler, names travel as data, never as code
 const LIBRARY_NAV_HANDLERS = {
     artist: name => viewArtistAlbums(encodeURIComponent(name)),
-    album: name => viewAlbumTracks(encodeURIComponent(name)),
+    album: (name, target) => viewAlbumTracks(encodeURIComponent(name), true, target.dataset.albumArtist),
     genre: name => viewGenreTracks(encodeURIComponent(name)),
 };
 
@@ -2529,7 +2529,7 @@ function handleLibraryNav(event) {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
     }
-    LIBRARY_NAV_HANDLERS[target.dataset.nav]?.(target.dataset.name || '');
+    LIBRARY_NAV_HANDLERS[target.dataset.nav]?.(target.dataset.name || '', target);
 }
 
 document.addEventListener('click', handleLibraryNav);
@@ -2559,7 +2559,7 @@ async function viewArtistAlbums(artistName, pushToStack = true) {
         // Use album-card layout with artwork (same as main Albums view)
         detailContent.className = 'albums-grid';
         detailContent.innerHTML = data.albums.map(album => `
-            <div class="album-card" role="button" tabindex="0" data-nav="album" data-name="${escapeHtml(album.name)}">
+            <div class="album-card" role="button" tabindex="0" data-nav="album" data-name="${escapeHtml(album.name)}" data-album-artist="${escapeHtml(album.album_artist)}">
                 <div class="album-artwork">
                     ${album.artwork_id 
                         ? `<img src="/api/library/tracks/${album.artwork_id}/artwork?t=${Date.now()}" alt="Cover">` 
@@ -2600,11 +2600,14 @@ function injectSelectAlbumButton(tracks) {
 }
 
 // View Album Tracks
-async function viewAlbumTracks(albumName, pushToStack = true) {
+async function viewAlbumTracks(albumName, pushToStack = true, albumArtist) {
     const name = decodeURIComponent(albumName);
 
     try {
-        const response = await fetch(`/api/library/tracks?album=${encodeURIComponent(name)}&sort_by=track_number&limit=500`);
+        // Album identity = name + album artist, so same-named albums don't mix
+        const params = new URLSearchParams({album: name, sort_by: 'track_number', limit: '500'});
+        if (albumArtist !== undefined) params.set('album_artist', albumArtist);
+        const response = await fetch(`/api/library/tracks?${params}`);
         if (!response.ok) throw new Error('Failed to load tracks');
 
         const data = await response.json();
