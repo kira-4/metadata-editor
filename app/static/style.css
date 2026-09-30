@@ -1718,3 +1718,115 @@ body {
 .artist-combobox.album-artist-row .artist-input:focus {
     border-color: rgba(212, 160, 23, 0.6);
 }
+
+/* Phones: compact review card — full-width fields, small artwork beside the
+   source line, genres in rows of three, 44px touch targets, quieter delete. */
+@media (max-width: 600px) {
+    .pending-toolbar {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: var(--spacing-xs);
+    }
+
+    .pending-toolbar > button {
+        flex: 1 1 0;
+        min-height: 44px;
+        padding: var(--spacing-xs) var(--spacing-sm);
+        font-size: 0.85rem;
+    }
+
+    .item-card {
+        padding: var(--spacing-md);
+    }
+
+    /* Artwork + source share the first row; fields span the full width below */
+    .item-header {
+        display: grid;
+        grid-template-columns: 56px minmax(0, 1fr);
+        column-gap: var(--spacing-sm);
+        row-gap: 0;
+        margin-bottom: var(--spacing-sm);
+    }
+
+    .item-info {
+        display: contents;
+    }
+
+    .item-header .artwork,
+    .item-header .artwork-placeholder {
+        grid-row: 1;
+        grid-column: 1;
+        width: 56px;
+        height: 56px;
+        font-size: 1.5rem;
+    }
+
+    .item-header .source-text {
+        grid-row: 1;
+        grid-column: 2;
+        align-self: center;
+        margin: 0 0 var(--spacing-sm);
+        font-size: 0.8rem;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .item-header .field-group {
+        grid-column: 1 / -1;
+    }
+
+    .genre-label {
+        margin-bottom: var(--spacing-xs);
+    }
+
+    .genre-buttons {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--spacing-xs);
+    }
+
+    .genre-btn {
+        min-height: 44px;
+        padding: var(--spacing-xs);
+        font-size: 0.85rem;
+        line-height: 1.2;
+    }
+
+    /* The toggle sits inside the input: grow both its hit area and the input's inset */
+    .artist-dropdown-toggle {
+        inset-inline-start: 0;
+        width: 44px;
+        height: 44px;
+    }
+
+    .artist-combobox .artist-input {
+        padding-inline-start: 44px;
+        min-height: 44px;
+    }
+
+    .btn-remove-artist {
+        width: 44px;
+        height: 44px;
+    }
+
+    .btn-add-artist {
+        min-height: 44px;
+    }
+
+    .confirm-btn {
+        min-height: 48px;
+    }
+
+    /* Destructive action stays reachable but no longer competes with confirm */
+    .btn-secondary.delete-btn {
+        width: auto;
+        align-self: center;
+        min-height: 44px;
+        margin-top: 0;
+        padding: var(--spacing-xs) var(--spacing-lg);
+        border-color: transparent;
+        background: transparent;
+        font-size: 0.85rem;
+    }
+}
