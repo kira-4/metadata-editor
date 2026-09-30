@@ -1362,7 +1362,7 @@ async function previewItem(itemId) {
 }
 
 // Confirm item
-async function confirmItem(itemId) {
+async function confirmItem(itemId, onConflict) {
     const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
     const confirmBtn = document.querySelector(`.confirm-btn[data-id="${itemId}"]`);
     if (!card || !confirmBtn) return false;
@@ -1387,8 +1387,19 @@ async function confirmItem(itemId) {
         const response = await fetch(`${API_BASE}/pending/${itemId}/confirm`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, artist, genre })
+            body: JSON.stringify({ title, artist, genre, ...(onConflict ? { on_conflict: onConflict } : {}) })
         });
+
+        if (response.status === 409) {
+            const body = await response.json().catch(() => ({}));
+            if (body.detail?.code === 'destination_exists') {
+                showDestinationChoice(itemId, body.detail.existing_path);
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = '✓ تأكيد ونقل إلى المكتبة';
+                return false;
+            }
+            throw new Error(typeof body.detail === 'string' ? body.detail : 'فشل التأكيد');
+        }
         
         if (!response.ok) {
             const detail = await parseApiError(response, 'فشل التأكيد');
@@ -1416,6 +1427,28 @@ async function confirmItem(itemId) {
         setItemStatus(itemId, `فشل التأكيد: ${error.message}`, 'error');
         return false;
     }
+}
+
+// The library already has this title for this artist: let the user decide
+function showDestinationChoice(itemId, existingPath) {
+    const statusEl = document.getElementById(`itemStatus-${itemId}`);
+    if (!statusEl) return;
+    // Artist / album / file — each segment isolated so Arabic and ".mp3" keep their order
+    const segments = String(existingPath || '').split('/').slice(-3)
+        .map(part => `<bdi>${escapeHtml(part)}</bdi>`).join(' / ');
+    statusEl.className = 'item-status warn';
+    statusEl.innerHTML = `
+        <div class="destination-choice" role="group" aria-label="ملف مكرر">
+            <p>يوجد ملف بنفس الاسم في المكتبة:</p>
+            <p class="destination-path">${segments}</p>
+            <div class="destination-choice-actions">
+                <button type="button" class="btn-secondary" data-conflict="replace">استبدال الموجود</button>
+                <button type="button" class="btn-secondary" data-conflict="keep_both">الاحتفاظ بالاثنين</button>
+            </div>
+        </div>`;
+    statusEl.querySelectorAll('[data-conflict]').forEach(btn => {
+        btn.addEventListener('click', () => confirmItem(itemId, btn.dataset.conflict));
+    });
 }
 
 // Delete item
