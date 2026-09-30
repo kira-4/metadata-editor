@@ -1,6 +1,5 @@
 """Test API bug fixes."""
 import sys
-import asyncio
 sys.path.insert(0, '/Users/akbaralhashim/Documents/Coding/metadata-editor')
 
 print("=== Testing Bug Fixes ===\n")
@@ -37,18 +36,6 @@ print(f"✓ Two-line format: title={title}, artist={artist}")
 
 print("\n✓ Gemini parsing tests passed!\n")
 
-# Test 2: Async API endpoints
-print("Test 2: Async API Endpoints")
-import inspect
-from app.api import confirm_item, update_item, get_pending_items
-
-assert asyncio.iscoroutinefunction(confirm_item), "confirm_item should be async"
-assert asyncio.iscoroutinefunction(update_item), "update_item should be async"
-assert asyncio.iscoroutinefunction(get_pending_items), "get_pending_items should be async"
-print("✓ All API endpoints are async functions")
-
-print("\n✓ Async endpoint tests passed!\n")
-
 # Test 3: Database error handling
 print("Test 3: Database Error Handling")
 from app.database import DatabaseManager
@@ -58,6 +45,5 @@ print("✓ Error handling augmented in database\n")
 
 print("=== All Tests Passed! ===\n")
 print("Summary of fixes:")
-print("1. ✓ Converted API endpoints to async - no more 'no running event loop' errors")
 print("2. ✓ Gemini parser handles JSON and two-line formats")
 print("3. ✓ Failed files create pending items in UI for manual correction")

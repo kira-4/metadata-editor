@@ -53,7 +53,7 @@ class BatchUpdateResult(BaseModel):
 
 # Browse endpoints
 @library_router.get("/artists")
-async def get_artists(
+def get_artists(
     search: Optional[str] = None,
     sort_by: str = "name",  # name, track_count, album_count
     sort_order: str = "asc",  # asc, desc
@@ -82,7 +82,7 @@ async def get_artists(
 
 
 @library_router.get("/albums")
-async def get_albums(
+def get_albums(
     search: Optional[str] = None,
     artist: Optional[str] = None,
     sort_by: str = "name",  # name, year, track_count,artist
@@ -114,7 +114,7 @@ async def get_albums(
 
 
 @library_router.get("/genres")
-async def get_genres(
+def get_genres(
     search: Optional[str] = None,
     sort_by: str = "name",  # name, track_count
     sort_order: str = "asc",
@@ -141,7 +141,7 @@ async def get_genres(
 
 
 @library_router.get("/tracks")
-async def get_tracks(
+def get_tracks(
     search: Optional[str] = None,
     artist: Optional[str] = None,
     album: Optional[str] = None,
@@ -193,7 +193,7 @@ async def get_tracks(
 
 
 @library_router.get("/tracks/{track_id}")
-async def get_track(track_id: int, db: Session = Depends(get_db)):
+def get_track(track_id: int, db: Session = Depends(get_db)):
     """Get single track details."""
     try:
         track = LibraryManager.get_track_by_id(db, track_id)
@@ -210,7 +210,7 @@ async def get_track(track_id: int, db: Session = Depends(get_db)):
 
 # Metadata update endpoints
 @library_router.post("/tracks/{track_id}/update")
-async def update_track(
+def update_track(
     track_id: int,
     request: UpdateTrackRequest,
     db: Session = Depends(get_db)
@@ -269,7 +269,7 @@ async def update_track(
 
 
 @library_router.post("/tracks/batch-update")
-async def batch_update_tracks(
+def batch_update_tracks(
     request: BatchUpdateRequest,
     db: Session = Depends(get_db)
 ):
@@ -359,7 +359,7 @@ async def batch_update_tracks(
 
 
 @library_router.post("/tracks/{track_id}/artwork")
-async def upload_artwork(
+def upload_artwork(
     track_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
@@ -376,7 +376,7 @@ async def upload_artwork(
         
         # Read image data first so we can validate via magic bytes rather than
         # trusting the client-supplied Content-Type header, which can be spoofed.
-        image_data = await file.read()
+        image_data = file.file.read()
 
         if image_data[:2] == b'\xff\xd8':
             mime_type = 'image/jpeg'
@@ -413,7 +413,7 @@ async def upload_artwork(
 
 
 @library_router.get("/tracks/{track_id}/artwork")
-async def get_track_artwork(track_id: int, db: Session = Depends(get_db)):
+def get_track_artwork(track_id: int, db: Session = Depends(get_db)):
     """Get cover art for a track."""
     try:
         from fastapi.responses import Response
@@ -457,7 +457,7 @@ async def get_track_artwork(track_id: int, db: Session = Depends(get_db)):
 
 # Library maintenance endpoints
 @library_router.post("/rescan")
-async def rescan_library(force: bool = False, repair: bool = False):
+def rescan_library(force: bool = False, repair: bool = False):
     """Trigger library rescan. force=True re-indexes all files; repair=True also writes missing tags."""
     try:
         if library_scanner.is_scanning:
@@ -481,7 +481,7 @@ async def rescan_library(force: bool = False, repair: bool = False):
 
 
 @library_router.get("/rescan/status")
-async def get_rescan_status():
+def get_rescan_status():
     """Get library rescan status."""
     try:
         return library_scanner.get_status()
@@ -491,7 +491,7 @@ async def get_rescan_status():
 
 
 @library_router.get("/stats")
-async def get_library_stats(db: Session = Depends(get_db)):
+def get_library_stats(db: Session = Depends(get_db)):
     """Get library statistics."""
     try:
         total_tracks = LibraryManager.get_total_track_count(db)

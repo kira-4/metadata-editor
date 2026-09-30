@@ -7,12 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-import asyncio
-import json
 
 from app.artist_matching import derive_album_artist, normalize_artist_name, rank_artist_candidates
 from app.config import config
 from app.database import get_db, DatabaseManager, LibraryManager
+from app.events import event_stream, publish_event
 from app.metadata_processor import metadata_processor
 from app.mover import file_mover
 
@@ -24,8 +23,6 @@ ARTIST_SUGGEST_DEFAULT_LIMIT = 10
 ARTIST_SUGGEST_MAX_LIMIT = 12
 ARTIST_CREATE_THRESHOLD = 72.0
 
-# SSE clients
-sse_clients = []
 
 
 class UpdateItemRequest(BaseModel):
@@ -69,7 +66,7 @@ def _validated_updates(request: UpdateItemRequest, item) -> dict:
 
 
 @router.get("/artists/suggest")
-async def suggest_artists(
+def suggest_artists(
     q: str = Query(default="", max_length=300),
     limit: int = Query(default=ARTIST_SUGGEST_DEFAULT_LIMIT, ge=1, le=ARTIST_SUGGEST_MAX_LIMIT),
     db: Session = Depends(get_db),
@@ -125,7 +122,7 @@ async def suggest_artists(
 
 
 @router.get("/pending/{item_id}/dry-run")
-async def dry_run_item(item_id: int, db: Session = Depends(get_db)):
+def dry_run_item(item_id: int, db: Session = Depends(get_db)):
     """Preview metadata write and destination path without modifying files."""
     try:
         item = DatabaseManager.get_item_by_id(db, item_id)
@@ -197,7 +194,7 @@ async def dry_run_item(item_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/pending")
-async def get_pending_items(db: Session = Depends(get_db)):
+def get_pending_items(db: Session = Depends(get_db)):
     """Get all pending items."""
     try:
         items = DatabaseManager.get_pending_items(db)
@@ -208,7 +205,7 @@ async def get_pending_items(db: Session = Depends(get_db)):
 
 
 @router.post("/pending/{item_id}/update")
-async def update_item(
+def update_item(
     item_id: int,
     request: UpdateItemRequest,
     db: Session = Depends(get_db)
@@ -225,7 +222,7 @@ async def update_item(
             raise HTTPException(status_code=404, detail="Item not found")
         
         # Notify SSE clients about the update
-        await notify_sse_clients({"type": "item_updated", "id": item_id})
+        publish_event({"type": "item_updated", "id": item_id})
         
         return item.to_dict()
     except HTTPException:
@@ -235,26 +232,45 @@ async def update_item(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+CONFIRMABLE_STATUSES = ("pending", "error", "needs_manual")
+
+
 @router.post("/pending/{item_id}/confirm")
-async def confirm_item(
+def confirm_item(
     item_id: int,
     request: Optional[ConfirmItemRequest] = None,
     db: Session = Depends(get_db)
 ):
     """Confirm item: save the submitted draft, apply final metadata and move to Navidrome."""
-    try:
-        item = DatabaseManager.get_item_by_id(db, item_id)
-        
-        if not item:
-            raise HTTPException(status_code=404, detail="Item not found")
-        
-        # Allow pending or error/needs_manual status for retry
-        if item.status not in ["pending", "error", "needs_manual"]:
-            raise HTTPException(status_code=400, detail=f"Item cannot be confirmed (status: {item.status})")
+    item = DatabaseManager.get_item_by_id(db, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
 
+    if item.status == "processing":
+        raise HTTPException(status_code=409, detail="الملف قيد النقل حالياً")
+    # Allow pending or error/needs_manual status for retry
+    if item.status not in CONFIRMABLE_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Item cannot be confirmed (status: {item.status})")
+
+    draft = _validated_updates(request, item) if request is not None else {}
+    previous_status = item.status
+
+    # Atomic compare-and-set: exactly one concurrent confirm wins the item
+    if not DatabaseManager.claim_for_processing(db, item_id, CONFIRMABLE_STATUSES):
+        raise HTTPException(status_code=409, detail="الملف قيد النقل حالياً")
+
+    try:
+        return _run_confirm(db, item_id, draft)
+    finally:
+        # Failures that didn't record an error (e.g. validation) hand the item back
+        DatabaseManager.release_claim(db, item_id, previous_status)
+
+
+def _run_confirm(db: Session, item_id: int, draft: dict) -> dict:
+    """Write tags and move a claimed item. Caller holds the 'processing' claim."""
+    try:
         # Persist the draft the user is looking at, so confirm never uses stale values
-        if request is not None:
-            item = DatabaseManager.update_item(db, item_id, **_validated_updates(request, item))
+        item = DatabaseManager.update_item(db, item_id, **draft) if draft else DatabaseManager.get_item_by_id(db, item_id)
         
         # Validate required fields with trimming
         if not item.current_title or not item.current_title.strip():
@@ -321,7 +337,7 @@ async def confirm_item(
         if not success:
             # Update item with error
             DatabaseManager.update_item_error(db, item_id, "Failed to apply metadata")
-            await notify_sse_clients({"type": "item_error", "id": item_id})
+            publish_event({"type": "item_error", "id": item_id})
             raise HTTPException(status_code=500, detail="Failed to apply metadata")
         
         # Move to Navidrome
@@ -335,7 +351,7 @@ async def confirm_item(
         if not new_path:
             # Update item with error
             DatabaseManager.update_item_error(db, item_id, "Failed to move file")
-            await notify_sse_clients({"type": "item_error", "id": item_id})
+            publish_event({"type": "item_error", "id": item_id})
             raise HTTPException(status_code=500, detail="Failed to move file")
         
         # Mark as done
@@ -360,7 +376,7 @@ async def confirm_item(
             logger.warning(f"Failed to cleanup staging directory: {e}")
         
         # Notify SSE clients
-        await notify_sse_clients({"type": "item_confirmed", "id": item_id})
+        publish_event({"type": "item_confirmed", "id": item_id})
         
         return {"success": True, "new_path": str(new_path)}
         
@@ -371,14 +387,14 @@ async def confirm_item(
         # Try to update item with error
         try:
             DatabaseManager.update_item_error(db, item_id, str(e))
-            await notify_sse_clients({"type": "item_error", "id": item_id})
+            publish_event({"type": "item_error", "id": item_id})
         except Exception as notify_err:
             logger.warning(f"Failed to record error state for item {item_id}: {notify_err}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/artwork/{item_id}")
-async def get_artwork(item_id: int, db: Session = Depends(get_db)):
+def get_artwork(item_id: int, db: Session = Depends(get_db)):
     """Get artwork for an item."""
     try:
         item = DatabaseManager.get_item_by_id(db, item_id)
@@ -401,7 +417,7 @@ async def get_artwork(item_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/pending/{item_id}")
-async def delete_item(item_id: int, db: Session = Depends(get_db)):
+def delete_item(item_id: int, db: Session = Depends(get_db)):
     """Delete a pending item and its files."""
     try:
         item = DatabaseManager.get_item_by_id(db, item_id)
@@ -411,6 +427,8 @@ async def delete_item(item_id: int, db: Session = Depends(get_db)):
         # A done item's current_path is its final library file — never delete it here
         if item.status == "done":
             raise HTTPException(status_code=409, detail="لا يمكن حذف ملف تم نقله إلى المكتبة")
+        if item.status == "processing":
+            raise HTTPException(status_code=409, detail="الملف قيد النقل حالياً")
 
         # Paths
         current_path = Path(item.current_path)
@@ -448,7 +466,7 @@ async def delete_item(item_id: int, db: Session = Depends(get_db)):
         db.delete(item)
         db.commit()
         
-        await notify_sse_clients({"type": "item_deleted", "id": item_id})
+        publish_event({"type": "item_deleted", "id": item_id})
 
         return {"success": True}
 
@@ -459,42 +477,14 @@ async def delete_item(item_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def event_generator():
-    """SSE event generator."""
-    queue = asyncio.Queue()
-    sse_clients.append(queue)
-
-    try:
-        while True:
-            data = await queue.get()
-            yield f"data: {json.dumps(data)}\n\n"
-    except asyncio.CancelledError:
-        pass
-    finally:
-        # Always remove the queue so disconnected clients don't accumulate
-        try:
-            sse_clients.remove(queue)
-        except ValueError:
-            pass  # Already removed (shouldn't happen, but safe)
-
-
 @router.get("/events")
 async def sse_endpoint():
     """Server-Sent Events endpoint for real-time updates."""
     return StreamingResponse(
-        event_generator(),
+        event_stream(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
         }
     )
-
-
-async def notify_sse_clients(data: dict):
-    """Notify all SSE clients with data."""
-    for queue in sse_clients:
-        try:
-            await queue.put(data)
-        except Exception as e:
-            logger.error(f"Error notifying SSE client: {e}")

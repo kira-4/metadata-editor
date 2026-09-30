@@ -13,9 +13,16 @@ from app.config import config
 from app.database import DatabaseManager, SessionLocal
 from app.openrouter_client import openrouter_client
 from app.metadata_processor import metadata_processor
+from app.events import publish_event
 from app.telegram_notifier import notify_actionable
 
 logger = logging.getLogger(__name__)
+
+
+def _announce(item, status: str) -> None:
+    """Tell open browsers about a new queue item right away, then notify Telegram."""
+    publish_event({"type": "new_item", "id": item.id})
+    notify_actionable(item, status)
 
 
 class FileScanner:
@@ -235,7 +242,7 @@ class FileScanner:
                 )
                 logger.warning(f"Created manual edit entry for unparsed file: {file_path}")
                 try:
-                    notify_actionable(item, "needs_manual")
+                    _announce(item, "needs_manual")
                 except Exception as notify_err:
                     logger.warning(f"Telegram notification failed: {notify_err}")
                 return
@@ -271,7 +278,7 @@ class FileScanner:
                 )
                 logger.warning(f"Created needs_manual entry for Gemini failure: {file_path}")
                 try:
-                    notify_actionable(item, "needs_manual")
+                    _announce(item, "needs_manual")
                 except Exception as notify_err:
                     logger.warning(f"Telegram notification failed: {notify_err}")
                 return
@@ -310,7 +317,7 @@ class FileScanner:
                     )
                     logger.warning(f"Created manual edit entry for metadata failure: {file_path}")
                     try:
-                        notify_actionable(item, "needs_manual")
+                        _announce(item, "needs_manual")
                     except Exception as notify_err:
                         logger.warning(f"Telegram notification failed: {notify_err}")
                     return
@@ -334,7 +341,7 @@ class FileScanner:
             
             logger.info(f"Successfully processed: {file_path} -> staged (item_id={item.id})")
             try:
-                notify_actionable(item, "pending")
+                _announce(item, "pending")
             except Exception as notify_err:
                 logger.warning(f"Telegram notification failed: {notify_err}")
 
@@ -357,7 +364,7 @@ class FileScanner:
                     file_identifier=file_identifier
                 )
                 try:
-                    notify_actionable(error_item, "error")
+                    _announce(error_item, "error")
                 except Exception as notify_err:
                     logger.warning(f"Telegram notification failed: {notify_err}")
             except Exception as inner_e:
