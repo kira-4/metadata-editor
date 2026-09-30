@@ -70,3 +70,52 @@ def test_search_wildcards_are_literal(client, library, term, expected):
 @pytest.mark.parametrize("params", [{"limit": -1}, {"limit": 0}, {"offset": -1}, {"sort_by": "name"}, {"sort_order": "up"}])
 def test_invalid_params_rejected(client, library, params):
     assert client.get("/api/library/tracks", params=params).status_code == 422
+
+
+def test_track_counts_once_when_artist_is_also_album_artist(client, db):
+    add(db, 1, "One", artist="Solo", album_artist="Solo")
+    add(db, 2, "Two", artist="Solo; Guest", album_artist="Solo")
+
+    artists = {a["name"]: a for a in client.get("/api/library/artists").json()["artists"]}
+
+    assert artists["Solo"]["track_count"] == 2
+    assert artists["Guest"]["track_count"] == 1
+
+
+def test_same_named_albums_stay_distinct(client, db):
+    add(db, 1, "a1", artist="P", album="Shared", album_artist="P")
+    add(db, 2, "q1", artist="Q", album="Shared", album_artist="Q", year=2001)
+    add(db, 3, "q2", artist="Q", album="Shared", album_artist="Q", year=2003)
+
+    albums = client.get("/api/library/albums").json()["albums"]
+    shared = sorted((a["album_artist"], a["track_count"], a["year"]) for a in albums if a["name"] == "Shared")
+    assert shared == [("P", 1, None), ("Q", 2, 2003)]  # different years don't split an album
+
+    body = client.get("/api/library/tracks", params={"album": "Shared", "album_artist": "Q"}).json()
+    assert sorted(t["title"] for t in body["tracks"]) == ["q1", "q2"]
+    assert body["total"] == 2
+
+
+def test_album_without_album_artist_is_reachable(client, db):
+    add(db, 1, "lonely", album="Solo")
+    from app.database import LibraryTrack
+    db.query(LibraryTrack).update({"album_artist": None})
+    db.commit()
+    assert client.get("/api/library/albums").json()["albums"][0]["album_artist"] is None
+
+    body = client.get("/api/library/tracks", params={"album": "Solo", "album_artist": ""}).json()
+
+    assert [t["title"] for t in body["tracks"]] == ["lonely"]
+
+
+def test_album_artwork_sample_has_artwork(client, db):
+    add(db, 1, "with cover", album="Mixed", album_artist="M")
+    add(db, 2, "no cover", album="Mixed", album_artist="M")
+    from app.database import LibraryTrack
+    db.query(LibraryTrack).filter(LibraryTrack.title == "with cover").update({"has_artwork": 1})
+    db.commit()
+    cover_id = db.query(LibraryTrack).filter(LibraryTrack.title == "with cover").one().id
+
+    album = client.get("/api/library/albums").json()["albums"][0]
+
+    assert album["artwork_id"] == cover_id
