@@ -103,7 +103,7 @@ body {
 }
 
 .workflow-step.active {
-    color: #fff;
+    color: var(--bg-primary);
     background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));
     border-color: var(--accent-primary);
 }
@@ -443,7 +443,7 @@ body {
 .genre-btn.selected {
     background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));
     border-color: var(--accent-primary);
-    color: white;
+    color: var(--bg-primary);
 }
 
 .custom-genre-wrapper {
@@ -478,7 +478,7 @@ body {
     border: none;
     border-radius: var(--radius-md);
     padding: var(--spacing-md);
-    color: white;
+    color: var(--bg-primary);
     font-family: var(--font-family);
     font-size: 1rem;
     font-weight: 700;
@@ -510,7 +510,7 @@ body {
     border: none;
     border-radius: var(--radius-sm);
     padding: var(--spacing-sm) var(--spacing-lg);
-    color: white;
+    color: var(--bg-primary);
     font-family: var(--font-family);
     font-size: 0.9rem;
     font-weight: 700;
@@ -534,7 +534,7 @@ body {
 
 .error-badge {
     background: var(--error);
-    color: white;
+    color: var(--bg-primary);
     padding: var(--spacing-xs) var(--spacing-sm);
     border-radius: var(--radius-sm);
     font-size: 0.85rem;
@@ -1160,7 +1160,7 @@ body {
 
 .btn-primary {
     background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));
-    color: white;
+    color: var(--bg-primary);
 }
 
 .btn-primary:hover {
@@ -1266,7 +1266,7 @@ body {
     align-items: center;
     justify-content: center;
     background: var(--error);
-    color: white;
+    color: var(--bg-primary);
     font-size: 0.65rem;
     font-weight: bold;
     min-width: 18px;
@@ -1294,7 +1294,7 @@ body {
 
 .btn-secondary.active {
     background: var(--accent-primary);
-    color: white;
+    color: var(--bg-primary);
     border-color: var(--accent-primary);
 }
 
@@ -1666,12 +1666,13 @@ body {
 
 .btn-remove-artist {
     background: var(--bg-tertiary);
-    color: var(--text-error);
+    color: var(--error);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     width: 32px;
     height: 32px;
     cursor: pointer;
+    font-family: var(--font-family);
     font-size: 1.1rem;
     display: flex;
     align-items: center;
@@ -1685,11 +1686,12 @@ body {
 
 .btn-add-artist {
     background: transparent;
-    color: var(--accent-color);
+    color: var(--accent-primary);
     border: 1px dashed var(--border-color);
     border-radius: var(--radius-sm);
     padding: var(--spacing-xs) var(--spacing-sm);
     cursor: pointer;
+    font-family: var(--font-family);
     font-size: 0.85rem;
     margin-top: var(--spacing-xs);
     width: 100%;
@@ -1698,7 +1700,7 @@ body {
 
 .btn-add-artist:hover {
     background: var(--bg-tertiary);
-    border-color: var(--accent-color);
+    border-color: var(--accent-primary);
 }
 
 .album-artist-input {
@@ -1715,4 +1717,116 @@ body {
 
 .artist-combobox.album-artist-row .artist-input:focus {
     border-color: rgba(212, 160, 23, 0.6);
+}
+
+/* Phones: compact review card — full-width fields, small artwork beside the
+   source line, genres in rows of three, 44px touch targets, quieter delete. */
+@media (max-width: 600px) {
+    .pending-toolbar {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: var(--spacing-xs);
+    }
+
+    .pending-toolbar > button {
+        flex: 1 1 0;
+        min-height: 44px;
+        padding: var(--spacing-xs) var(--spacing-sm);
+        font-size: 0.85rem;
+    }
+
+    .item-card {
+        padding: var(--spacing-md);
+    }
+
+    /* Artwork + source share the first row; fields span the full width below */
+    .item-header {
+        display: grid;
+        grid-template-columns: 56px minmax(0, 1fr);
+        column-gap: var(--spacing-sm);
+        row-gap: 0;
+        margin-bottom: var(--spacing-sm);
+    }
+
+    .item-info {
+        display: contents;
+    }
+
+    .item-header .artwork,
+    .item-header .artwork-placeholder {
+        grid-row: 1;
+        grid-column: 1;
+        width: 56px;
+        height: 56px;
+        font-size: 1.5rem;
+    }
+
+    .item-header .source-text {
+        grid-row: 1;
+        grid-column: 2;
+        align-self: center;
+        margin: 0 0 var(--spacing-sm);
+        font-size: 0.8rem;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .item-header .field-group {
+        grid-column: 1 / -1;
+    }
+
+    .genre-label {
+        margin-bottom: var(--spacing-xs);
+    }
+
+    .genre-buttons {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--spacing-xs);
+    }
+
+    .genre-btn {
+        min-height: 44px;
+        padding: var(--spacing-xs);
+        font-size: 0.85rem;
+        line-height: 1.2;
+    }
+
+    /* The toggle sits inside the input: grow both its hit area and the input's inset */
+    .artist-dropdown-toggle {
+        inset-inline-start: 0;
+        width: 44px;
+        height: 44px;
+    }
+
+    .artist-combobox .artist-input {
+        padding-inline-start: 44px;
+        min-height: 44px;
+    }
+
+    .btn-remove-artist {
+        width: 44px;
+        height: 44px;
+    }
+
+    .btn-add-artist {
+        min-height: 44px;
+    }
+
+    .confirm-btn {
+        min-height: 48px;
+    }
+
+    /* Destructive action stays reachable but no longer competes with confirm */
+    .btn-secondary.delete-btn {
+        width: auto;
+        align-self: center;
+        min-height: 44px;
+        margin-top: 0;
+        padding: var(--spacing-xs) var(--spacing-lg);
+        border-color: transparent;
+        background: transparent;
+        font-size: 0.85rem;
+    }
 }
