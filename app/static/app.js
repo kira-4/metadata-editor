@@ -195,7 +195,7 @@ function captureFocusSnapshot() {
     if (activeElement.classList.contains('artist-input')) {
         return {
             type: 'artist',
-            itemId: Number(activeElement.dataset.id),
+            rowId: activeElement.dataset.rowId,
             selectionStart: activeElement.selectionStart,
             selectionEnd: activeElement.selectionEnd
         };
@@ -232,7 +232,7 @@ function restoreFocusSnapshot(snapshot) {
         return;
     }
 
-    const artistInput = document.querySelector(`.artist-input[data-id="${snapshot.itemId}"]`);
+    const artistInput = document.querySelector(`.artist-input[data-row-id="${snapshot.rowId}"]`);
     if (!artistInput) {
         return;
     }
@@ -646,7 +646,7 @@ function createItemCard(item) {
 function getItemIdFromRowId(rowId) {
     // rowId format: itemId_artist_index
     const parts = String(rowId).split('_artist_');
-    return parts[0];
+    return Number(parts[0]);
 }
 
 function rebuildArtistValue(itemId) {
@@ -1222,7 +1222,7 @@ async function confirmAllReady() {
 
     // Collect IDs of ready items at the moment the button is clicked
     const readyIds = Array.from(document.querySelectorAll('.confirm-btn:not(:disabled)'))
-        .map(el => el.dataset.id)
+        .map(el => Number(el.dataset.id))
         .filter(Boolean);
 
     let successCount = 0;
