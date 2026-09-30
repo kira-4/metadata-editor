@@ -155,6 +155,22 @@ The two worth keeping in mind are **audio preview** and **review filters**.
 - [x] S1-5 / S1-6 / S1-7 threadpool routes, atomic confirm claim, live `new_item` — #20
 
 Smoke-tested Sprint 1 on a real server with Chrome (injection fixtures, apostrophe navigation, type-then-confirm).
+- [x] S2-1 mobile navigation (491px → no overflow at 320/390) — #21
+- [x] S2-8 compact phone card (1036 → 690px) + contrast + tokens — #22
+- [x] S2-2 shared sticky alert, real empty states — #23
+- [x] (new) static files revalidate so redeploys reach phones — #24
+- [x] S2-3 SQL sort/count before paging, literal search — #25
+- [x] S2-4 / S2-5 album identity, once-per-artist counts, real cover sample — #26
+- [x] S2-7 confirmed tracks indexed immediately — #27
+- [x] S2-6 ask before duplicate tracks (replace / keep both) — #28
+- [x] S2-9 artist variant merge (exact honorific-free key) — #29
+
+### Found during Sprint 2 (not yet scheduled)
+
+- **SSE blocks graceful shutdown.** An open `/api/events` stream keeps uvicorn in "Waiting for connections to close";
+  in Docker, `docker stop` will wait for the 10s kill. Fix: end streams on shutdown (lifespan event) or `--timeout-graceful-shutdown`.
+- **Empty `OPENROUTER_API_KEY` still sends a request** that fails with an illegal header (audit #20): skip inference and go straight to manual review.
+- Remaining variant pairs in the real library are handled by S2-9 once deployed; run it from the library page.
 
 ### Evidence from the real library (2026-09-30)
 
