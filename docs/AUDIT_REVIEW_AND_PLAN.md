@@ -101,6 +101,7 @@ Tickets are small enough for one PR each. Every ticket ships with a regression t
 | S2-5 | Dedup the artist-count increment. Pick the artwork sample from tracks with `has_artwork=1`. | #25 |
 | S2-6 | Warn when the destination already exists (dry-run + card), with a "replace / keep both / skip" choice. | N3 |
 | S2-7 | Upsert the `LibraryTrack` row after a successful confirm, so no manual rescan is needed. | #21 (partial) |
+| S2-8 | Compact review card for phones: wrapping genre chips, 44px touch targets, delete made secondary. | #30 |
 
 ### Sprint 3 — deployment hygiene
 
@@ -130,15 +131,23 @@ The two worth keeping in mind are **audio preview** and **review filters**.
 
 ---
 
-## 4. Questions that change priorities
+## 4. Decisions (answered 2026-09-30)
 
-1. **Is port 8090 exposed beyond your LAN** (reverse proxy, Tailscale Funnel, port-forward)? If yes,
-   #15 auth becomes Sprint 0.
-2. **Typical pending queue size?** If it's under ~50, #19 is dropped entirely.
-3. **Do you mainly review on the phone?** If yes, S2-1 and #30 (card density) move up.
-4. **Is `/data` on the same filesystem as `/music` on the NAS?** Even so, separate bind mounts make
-   `rename` fail with `EXDEV`, so N1 still applies inside Docker.
-5. **Who owns files in the Navidrome library on the host (UID/GID)?** Needed for S3-1.
+| Question | Answer | Effect |
+|---|---|---|
+| Is 8090 reachable beyond the LAN? | No, only via Tailscale | #15 auth stays in "Later" |
+| Typical queue size? | Unknown | #19 stays in "Later"; revisit if the queue feels slow |
+| Mostly reviewed on phone? | Yes | **S2-1 (mobile nav) runs first in Sprint 2**; #30 card density moves into Sprint 2 |
+| `/data` and `/music` on the same host filesystem? | Unknown | N1 fix handles both cases |
+| Library file owner UID/GID? | Unknown | Needed before S3-1; check with `ls -ln` on the NAS |
+
+## Progress
+
+- [x] S0-1 block deleting completed items — #12
+- [x] S0-2 verify before replace — #13
+- [x] S0-3 scanner failure branch — #14
+- [x] S0-4 rescan read-only (`?repair=true` opt-in) — #15
+- [x] S0-5 atomic move into `/music` — #16
 
 ## 5. Working rules
 
