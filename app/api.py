@@ -35,9 +35,37 @@ class UpdateItemRequest(BaseModel):
     genre: Optional[str] = None
 
 
-class ConfirmItemRequest(BaseModel):
-    """Request to confirm and move item."""
-    pass
+class ConfirmItemRequest(UpdateItemRequest):
+    """Request to confirm and move item, carrying the draft the user sees."""
+
+
+def _validated_updates(request: UpdateItemRequest, item) -> dict:
+    """Validate an update/confirm payload into DatabaseManager.update_item kwargs."""
+    updates = {}
+
+    if request.title is not None:
+        title = request.title.strip()
+        if len(title) > 300:
+            raise HTTPException(status_code=400, detail="العنوان طويل جداً (max 300 chars)")
+        updates["title"] = title
+
+    if request.artist is not None:
+        artist = request.artist.strip()
+        if len(artist) > 300:
+            raise HTTPException(status_code=400, detail="اسم الفنان طويل جداً (max 300 chars)")
+        updates["artist"] = artist
+        # Auto-derive album_artist from the updated artist list
+        updates["album_artist"] = derive_album_artist(artist, item.channel)
+
+    if request.genre is not None:
+        genre = request.genre.strip()
+        if genre == "أخرى…":
+            raise HTTPException(status_code=400, detail="يرجى إدخال نوع موسيقي محدد")
+        if len(genre) > 200:
+            raise HTTPException(status_code=400, detail="النوع الموسيقي طويل جداً (max 200 chars)")
+        updates["genre"] = genre
+
+    return updates
 
 
 @router.get("/artists/suggest")
@@ -191,38 +219,7 @@ async def update_item(
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
 
-        update_kwargs = {}
-
-        if request.title is not None:
-            title = request.title.strip()
-            if len(title) > 300:
-                raise HTTPException(status_code=400, detail="العنوان طويل جداً (max 300 chars)")
-            update_kwargs["title"] = title
-
-        if request.artist is not None:
-            artist = request.artist.strip()
-            if len(artist) > 300:
-                raise HTTPException(status_code=400, detail="اسم الفنان طويل جداً (max 300 chars)")
-            update_kwargs["artist"] = artist
-            # Auto-derive album_artist from the updated artist list
-            update_kwargs["album_artist"] = derive_album_artist(artist, item.channel)
-
-        if request.genre is not None:
-            genre = request.genre.strip()
-            if genre == "أخرى…":
-                raise HTTPException(status_code=400, detail="يرجى إدخال نوع موسيقي محدد")
-            if len(genre) > 200:
-                raise HTTPException(status_code=400, detail="النوع الموسيقي طويل جداً (max 200 chars)")
-            update_kwargs["genre"] = genre
-
-        item = DatabaseManager.update_item(
-            db,
-            item_id,
-            title=update_kwargs.get("title"),
-            artist=update_kwargs.get("artist"),
-            album_artist=update_kwargs.get("album_artist"),
-            genre=update_kwargs.get("genre")
-        )
+        item = DatabaseManager.update_item(db, item_id, **_validated_updates(request, item))
         
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
@@ -241,9 +238,10 @@ async def update_item(
 @router.post("/pending/{item_id}/confirm")
 async def confirm_item(
     item_id: int,
+    request: Optional[ConfirmItemRequest] = None,
     db: Session = Depends(get_db)
 ):
-    """Confirm item: apply final metadata and move to Navidrome."""
+    """Confirm item: save the submitted draft, apply final metadata and move to Navidrome."""
     try:
         item = DatabaseManager.get_item_by_id(db, item_id)
         
@@ -253,6 +251,10 @@ async def confirm_item(
         # Allow pending or error/needs_manual status for retry
         if item.status not in ["pending", "error", "needs_manual"]:
             raise HTTPException(status_code=400, detail=f"Item cannot be confirmed (status: {item.status})")
+
+        # Persist the draft the user is looking at, so confirm never uses stale values
+        if request is not None:
+            item = DatabaseManager.update_item(db, item_id, **_validated_updates(request, item))
         
         # Validate required fields with trimming
         if not item.current_title or not item.current_title.strip():

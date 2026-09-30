@@ -1365,7 +1365,7 @@ async function confirmItem(itemId) {
     if (!card || !confirmBtn) return;
     
     const title = (card.querySelector('.title-input')?.value || '').trim();
-    const artist = (card.querySelector('.artist-input')?.value || '').trim();
+    const artist = rebuildArtistValue(itemId);  // all artist rows, joined
     const genre = (selectedGenres[itemId] || '').trim();
 
     if (!title || !artist || !genre) {
@@ -1377,18 +1377,14 @@ async function confirmItem(itemId) {
     // Disable button
     confirmBtn.disabled = true;
     confirmBtn.textContent = 'جاري النقل...';
-    setItemStatus(itemId, 'التحقق من المعاينة...', 'info');
-    
-    try {
-        const dryRun = await fetchDryRun(itemId);
-        if (!dryRun.can_confirm) {
-            throw new Error(`المعاينة فشلت: ${dryRun.missing_fields.join(', ') || 'صلاحيات/مسار غير صالح'}`);
-        }
+    setItemStatus(itemId, 'جاري كتابة البيانات الوصفية...', 'info');
 
-        setItemStatus(itemId, 'جاري كتابة البيانات الوصفية...', 'info');
+    try {
+        // Send exactly what the user sees; the server saves it and confirms in one step
         const response = await fetch(`${API_BASE}/pending/${itemId}/confirm`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, artist, genre })
         });
         
         if (!response.ok) {
