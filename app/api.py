@@ -405,14 +405,18 @@ async def delete_item(item_id: int, db: Session = Depends(get_db)):
         item = DatabaseManager.get_item_by_id(db, item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
-        
+
+        # A done item's current_path is its final library file — never delete it here
+        if item.status == "done":
+            raise HTTPException(status_code=409, detail="لا يمكن حذف ملف تم نقله إلى المكتبة")
+
         # Paths
         current_path = Path(item.current_path)
         original_path = Path(item.original_path)
         artwork_path = Path(item.artwork_path) if item.artwork_path else None
-        
-        # 1. Delete staged file (current_path)
-        if current_path.exists():
+
+        # 1. Delete staged file (current_path) — only if it really lives in staging
+        if current_path.exists() and current_path.resolve().is_relative_to(config.STAGING_DIR.resolve()):
             try:
                 current_path.unlink()
                 
@@ -443,9 +447,11 @@ async def delete_item(item_id: int, db: Session = Depends(get_db)):
         db.commit()
         
         await notify_sse_clients({"type": "item_deleted", "id": item_id})
-        
+
         return {"success": True}
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error deleting item {item_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
