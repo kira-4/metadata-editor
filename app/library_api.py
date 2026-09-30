@@ -4,7 +4,7 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Literal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -146,44 +146,22 @@ def get_tracks(
     artist: Optional[str] = None,
     album: Optional[str] = None,
     genre: Optional[str] = None,
-    sort_by: str = "artist",  # title, artist, album, year, track_number
-    sort_order: str = "asc",
-    limit: int = Query(100, le=500),
-    offset: int = 0,
+    sort_by: Literal["title", "artist", "album", "year", "track_number"] = "artist",
+    sort_order: Literal["asc", "desc"] = "asc",
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     db: Session = Depends(get_db)
 ):
-    """Get tracks with optional filters."""
+    """Get tracks with optional filters. Sorting and totals use the same SQL filters."""
     try:
+        filters = dict(search=search, artist=artist, album=album, genre=genre)
         tracks = LibraryManager.get_tracks(
-            db,
-            search=search,
-            artist=artist,
-            album=album,
-            genre=genre,
-            limit=limit,
-            offset=offset
+            db, **filters, sort_by=sort_by, sort_order=sort_order, limit=limit, offset=offset
         )
-        
-        # Custom sorting if needed
-        track_dicts = [t.to_dict() for t in tracks]
-        reverse = (sort_order == "desc")
-        
-        if sort_by == "title":
-            track_dicts.sort(key=lambda x: (x['title'] or '').lower(), reverse=reverse)
-        elif sort_by == "artist":
-            track_dicts.sort(key=lambda x: (x['artist'] or '').lower(), reverse=reverse)
-        elif sort_by == "album":
-            track_dicts.sort(key=lambda x: (x['album'] or '').lower(), reverse=reverse)
-        elif sort_by == "year":
-            track_dicts.sort(key=lambda x: x['year'] or 0, reverse=reverse)
-        elif sort_by == "track_number":
-            track_dicts.sort(key=lambda x: x['track_number'] or 0, reverse=reverse)
-        
-        total_count = LibraryManager.get_total_track_count(db)
-        
+
         return {
-            "tracks": track_dicts,
-            "total": total_count,
+            "tracks": [t.to_dict() for t in tracks],
+            "total": LibraryManager.count_tracks(db, **filters),
             "limit": limit,
             "offset": offset
         }
