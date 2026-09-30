@@ -635,7 +635,7 @@ function createItemCard(item) {
                     ✓ تأكيد ونقل إلى المكتبة
                 </button>
                 <div class="item-status" id="itemStatus-${item.id}"></div>
-                <button class="btn-secondary delete-btn" onclick="deleteItem('${item.id}')">
+                <button class="btn-secondary delete-btn" onclick="deleteItem(${Number(item.id)})">
                     حذف الملف
                 </button>
             </div>
@@ -2263,9 +2263,9 @@ function renderArtists(artists) {
     }
     
     container.innerHTML = artists.map(artist => `
-        <div class="list-item" onclick="viewArtistAlbums('${encodeURIComponent(artist.name)}')">
+        <div class="list-item" role="button" tabindex="0" data-nav="artist" data-name="${escapeHtml(artist.name)}">
             <div class="list-item-content">
-                <div class="list-item-title">${artist.name}</div>
+                <div class="list-item-title">${escapeHtml(artist.name)}</div>
                 <div class="list-item-meta">${artist.track_count} صوتية • ${artist.album_count} ألبوم</div>
             </div>
         </div>
@@ -2282,14 +2282,14 @@ function renderAlbums(albums) {
     }
     
     container.innerHTML = albums.map(album => `
-        <div class="album-card" onclick="viewAlbumTracks('${encodeURIComponent(album.name)}')">
+        <div class="album-card" role="button" tabindex="0" data-nav="album" data-name="${escapeHtml(album.name)}">
             <div class="album-artwork">
                 ${album.artwork_id 
                     ? `<img src="/api/library/tracks/${album.artwork_id}/artwork?t=${Date.now()}" alt="Cover">` 
                     : '🎵'}
             </div>
-            <div class="album-name">${album.name || 'بدون اسم'}</div>
-            <div class="album-artist">${album.album_artist || 'غير معروف'}</div>
+            <div class="album-name">${escapeHtml(album.name) || 'بدون اسم'}</div>
+            <div class="album-artist">${escapeHtml(album.album_artist) || 'غير معروف'}</div>
             <div class="list-item-meta">${album.track_count} صوتية${album.year ? ' • ' + album.year : ''}</div>
         </div>
     `).join('');
@@ -2305,9 +2305,9 @@ function renderGenres(genres) {
     }
     
     container.innerHTML = genres.map(genre => `
-        <div class="list-item" onclick="viewGenreTracks('${encodeURIComponent(genre.name)}')">
+        <div class="list-item" role="button" tabindex="0" data-nav="genre" data-name="${escapeHtml(genre.name)}">
             <div class="list-item-content">
-                <div class="list-item-title">${genre.name}</div>
+                <div class="list-item-title">${escapeHtml(genre.name)}</div>
                 <div class="list-item-meta">${genre.track_count} صوتية</div>
             </div>
         </div>
@@ -2316,16 +2316,15 @@ function renderGenres(genres) {
 
 function renderDesktopTrackList(tracks) {
     return tracks.map(track => {
-        const trackJson = JSON.stringify(track).replace(/'/g, "&#39;");
         const isSelected = libraryState.selectedTracks.has(track.id);
         return `
-        <div class="list-item ${isSelected ? 'selected' : ''}" data-track-id="${track.id}" data-track-json='${trackJson}' onclick="handleTrackClick(event, this)">
+        <div class="list-item ${isSelected ? 'selected' : ''}" data-track-id="${track.id}" onclick="handleTrackClick(event, this)">
             ${libraryState.multiSelectMode ? `<input type="checkbox" class="list-item-checkbox" data-track-id="${track.id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation()">` : ''}
             <div class="list-item-content">
-                <div class="list-item-title">${track.title || 'بدون عنوان'}</div>
+                <div class="list-item-title">${escapeHtml(track.title) || 'بدون عنوان'}</div>
                 <div class="list-item-meta">
-                    ${formatArtistDisplay(track.artist)} •
-                    ${track.album || 'غير معروف'}
+                    ${escapeHtml(formatArtistDisplay(track.artist))} •
+                    ${escapeHtml(track.album) || 'غير معروف'}
                     ${track.year ? ' • ' + track.year : ''}
                 </div>
             </div>
@@ -2337,25 +2336,24 @@ function renderDesktopTrackList(tracks) {
 
 function renderMobileTrackCards(tracks) {
     return tracks.map(track => {
-        const trackJson = JSON.stringify(track).replace(/'/g, "&#39;");
         const isSelected = libraryState.selectedTracks.has(track.id);
         const isExpanded = libraryState.expandedTrackCards.has(track.id);
         const tertiaryMeta = formatTrackTertiaryMeta(track) || 'بدون بيانات إضافية';
         const fileName = String(track.file_path || '').split('/').pop() || '';
 
         return `
-        <div class="list-item track-mobile-card ${isSelected ? 'selected' : ''}" data-track-id="${track.id}" data-track-json='${trackJson}' onclick="handleTrackClick(event, this)">
+        <div class="list-item track-mobile-card ${isSelected ? 'selected' : ''}" data-track-id="${track.id}" onclick="handleTrackClick(event, this)">
             <div class="track-mobile-main">
                 <div class="track-mobile-title-row">
-                    <div class="list-item-title">${track.title || 'بدون عنوان'}</div>
+                    <div class="list-item-title">${escapeHtml(track.title) || 'بدون عنوان'}</div>
                     ${libraryState.multiSelectMode ? `<input type="checkbox" class="list-item-checkbox track-mobile-checkbox" data-track-id="${track.id}" ${isSelected ? 'checked' : ''} onclick="event.stopPropagation()">` : ''}
                 </div>
-                <div class="track-mobile-secondary">${formatArtistDisplay(track.artist)}</div>
-                <div class="track-mobile-secondary">${track.album || 'غير معروف'}</div>
+                <div class="track-mobile-secondary">${escapeHtml(formatArtistDisplay(track.artist))}</div>
+                <div class="track-mobile-secondary">${escapeHtml(track.album) || 'غير معروف'}</div>
                 <div class="track-mobile-tertiary">${tertiaryMeta}</div>
                 ${isExpanded ? `
                 <div class="track-mobile-details">
-                    <div>${track.genre || 'بدون نوع'}</div>
+                    <div>${escapeHtml(track.genre) || 'بدون نوع'}</div>
                     <div>${escapeHtml(fileName)}</div>
                 </div>
                 ` : ''}
@@ -2462,7 +2460,8 @@ function handleTrackClick(event, element) {
     if (event.target.classList.contains('list-item-checkbox')) return;
     
     const trackId = parseInt(element.dataset.trackId);
-    const trackData = JSON.parse(element.dataset.trackJson || '{}');
+    const trackData = getTrackDataById(trackId);
+    if (!trackData) return;
     
     if (libraryState.multiSelectMode) {
         toggleTrackSelection(trackId);
@@ -2473,6 +2472,26 @@ function handleTrackClick(event, element) {
         showEditModal('single', trackData);
     }
 }
+
+// Library navigation cards: one delegated handler, names travel as data, never as code
+const LIBRARY_NAV_HANDLERS = {
+    artist: name => viewArtistAlbums(encodeURIComponent(name)),
+    album: name => viewAlbumTracks(encodeURIComponent(name)),
+    genre: name => viewGenreTracks(encodeURIComponent(name)),
+};
+
+function handleLibraryNav(event) {
+    const target = event.target.closest('[data-nav]');
+    if (!target) return;
+    if (event.type === 'keydown') {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+    }
+    LIBRARY_NAV_HANDLERS[target.dataset.nav]?.(target.dataset.name || '');
+}
+
+document.addEventListener('click', handleLibraryNav);
+document.addEventListener('keydown', handleLibraryNav);
 
 // View Artist Albums
 async function viewArtistAlbums(artistName, pushToStack = true) {
@@ -2498,13 +2517,13 @@ async function viewArtistAlbums(artistName, pushToStack = true) {
         // Use album-card layout with artwork (same as main Albums view)
         detailContent.className = 'albums-grid';
         detailContent.innerHTML = data.albums.map(album => `
-            <div class="album-card" onclick="viewAlbumTracks('${encodeURIComponent(album.name)}')">
+            <div class="album-card" role="button" tabindex="0" data-nav="album" data-name="${escapeHtml(album.name)}">
                 <div class="album-artwork">
                     ${album.artwork_id 
                         ? `<img src="/api/library/tracks/${album.artwork_id}/artwork?t=${Date.now()}" alt="Cover">` 
                         : '🎵'}
                 </div>
-                <div class="album-name">${album.name || 'بدون اسم'}</div>
+                <div class="album-name">${escapeHtml(album.name) || 'بدون اسم'}</div>
                 <div class="list-item-meta">${album.track_count} صوتية</div>
             </div>
         `).join('');
