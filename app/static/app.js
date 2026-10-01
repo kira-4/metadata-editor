@@ -103,7 +103,11 @@ function showAlert(message, type = 'info', timeout) {
 async function parseApiError(response, fallbackMessage) {
     try {
         const body = await response.json();
-        return body.detail || fallbackMessage;
+        // FastAPI validation errors (422) arrive as a list of {loc, msg}
+        if (Array.isArray(body.detail)) {
+            return body.detail.map(e => `${(e.loc || []).slice(-1)[0] || ''}: ${e.msg}`).join(' · ') || fallbackMessage;
+        }
+        return (typeof body.detail === 'string' && body.detail) || fallbackMessage;
     } catch {
         return fallbackMessage;
     }
@@ -3298,15 +3302,20 @@ async function handleSingleEdit() {
         }
     }
     
-    // 2. Update Metadata
+    // 2. Update Metadata: the form shows every field, so an emptied field is cleared (sent as null)
+    const text = id => document.getElementById(id).value.trim() || null;
     const payload = {
-        title: document.getElementById('batchTitle').value,
-        artist: document.getElementById('batchArtist').value,
-        album_artist: document.getElementById('batchAlbumArtist').value,
-        album: document.getElementById('batchAlbum').value,
-        genre: document.getElementById('batchGenre').value,
-        year: parseInt(document.getElementById('batchYear').value) || null
+        title: text('batchTitle'),
+        artist: text('batchArtist'),
+        album_artist: text('batchAlbumArtist'),
+        album: text('batchAlbum'),
+        genre: text('batchGenre'),
+        year: parseInt(document.getElementById('batchYear').value, 10) || null
     };
+    if (!payload.title || !payload.artist) {
+        showAlert('العنوان والفنان مطلوبان', 'warn');
+        return;
+    }
     
     try {
         const response = await fetch(`/api/library/tracks/${trackId}/update`, {
@@ -3315,14 +3324,14 @@ async function handleSingleEdit() {
             body: JSON.stringify(payload)
         });
         
-        if (!response.ok) throw new Error('Update failed');
+        if (!response.ok) throw new Error(await parseApiError(response, `HTTP ${response.status}`));
         
         closeEditModal();
         refreshLibraryContext();
         
     } catch (error) {
         logEvent('error', 'Error updating track', {trackId, error: error.message});
-        showAlert('خطأ في تحديث الملف', 'error');
+        showAlert(`خطأ في تحديث الملف: ${error.message}`, 'error');
     }
 }
 
