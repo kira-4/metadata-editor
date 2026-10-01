@@ -165,6 +165,15 @@ Smoke-tested Sprint 1 on a real server with Chrome (injection fixtures, apostrop
 - [x] S2-6 ask before duplicate tracks (replace / keep both) — #28
 - [x] S2-9 artist variant merge (exact honorific-free key) — #29
 
+- [x] S3-1 container runs as `PUID:PGID` (default 1000:1000) — #30
+- [x] S3-2 `/api/health` + python healthcheck (old curl check could never pass), model env forwarded — #31
+- [x] S3-3 README rewritten for OpenRouter and current behavior — #32
+- [x] S3-4 GitHub Actions: pytest on Python 3.11 with ffmpeg (no skipped audio tests) + `node --check` — #33
+- [x] S3-5 delete = dismiss: original to `data/trash/{id}/`, restore by moving it back, 30-day purge — #34
+
+Smoke-tested Sprint 3 in the built image as uid 1000: `healthy`, and delete → trash → restore → re-import.
+**Upgrade on the NAS:** `docker compose down && sudo chown -R 1000:1000 ./data <music dir>` before the first `up`.
+
 ### Found during Sprint 2 (not yet scheduled)
 
 - **SSE blocks graceful shutdown.** An open `/api/events` stream keeps uvicorn in "Waiting for connections to close";
