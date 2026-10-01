@@ -3457,6 +3457,77 @@ function showSettingsAlert(message, type = 'info', timeout = 5000) {
     }
 }
 
+// Last saved settings, so the on/off switch can re-save without the form's unsaved edits
+let telegramSaved = null;
+let disconnectArmTimer = null;
+
+function renderTelegramStatus() {
+    const box = document.getElementById('telegramStatus');
+    const text = document.getElementById('telegramStatusText');
+    const toggle = document.getElementById('telegramEnabled');
+    const disconnectBtn = document.getElementById('telegramDisconnectBtn');
+    const connected = Boolean(telegramSaved?.bot_token_set && telegramSaved?.chat_id);
+
+    box.style.display = connected ? '' : 'none';
+    disconnectBtn.style.display = telegramSaved?.bot_token_set || telegramSaved?.chat_id ? '' : 'none';
+    if (!connected) return;
+    toggle.checked = telegramSaved.enabled;
+    text.textContent = telegramSaved.enabled ? 'متصل · الإشعارات تعمل' : 'متصل · الإشعارات موقوفة';
+    box.classList.toggle('paused', !telegramSaved.enabled);
+}
+
+async function setTelegramEnabled(enabled) {
+    const toggle = document.getElementById('telegramEnabled');
+    toggle.disabled = true;
+    try {
+        const response = await fetch(`${API_BASE}/settings/telegram`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                chat_id: telegramSaved.chat_id,
+                message_thread_id: telegramSaved.message_thread_id,
+                enabled
+            })
+        });
+        if (!response.ok) throw new Error(await parseApiError(response, 'تعذر حفظ الإعدادات'));
+        telegramSaved = await response.json();
+        showSettingsAlert(enabled ? 'تم تشغيل الإشعارات' : 'تم إيقاف الإشعارات', 'success');
+    } catch (error) {
+        showSettingsAlert(error.message, 'error');
+    } finally {
+        toggle.disabled = false;
+        renderTelegramStatus();
+    }
+}
+
+// Two taps: the first arms the button, the second within 4s disconnects
+async function disconnectTelegram() {
+    const btn = document.getElementById('telegramDisconnectBtn');
+    if (!btn.classList.contains('armed')) {
+        btn.classList.add('armed');
+        btn.textContent = 'اضغط مجددًا لحذف الرمز والمحادثة';
+        disconnectArmTimer = setTimeout(() => {
+            btn.classList.remove('armed');
+            btn.textContent = 'قطع الاتصال';
+        }, 4000);
+        return;
+    }
+    clearTimeout(disconnectArmTimer);
+    btn.classList.remove('armed');
+    btn.textContent = 'قطع الاتصال';
+    btn.disabled = true;
+    try {
+        const response = await fetch(`${API_BASE}/settings/telegram`, {method: 'DELETE'});
+        if (!response.ok) throw new Error(await parseApiError(response, 'تعذر قطع الاتصال'));
+        showSettingsAlert('تم قطع الاتصال وحذف بيانات البوت', 'success');
+        await loadTelegramSettings();
+    } catch (error) {
+        showSettingsAlert(error.message, 'error');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
 function updateTelegramTestButtonState() {
     const chatInput = document.getElementById('telegramChatId');
     const testBtn = document.getElementById('telegramTestBtn');
@@ -3488,6 +3559,8 @@ async function loadTelegramSettings() {
         chatInput.value = data.chat_id || '';
         threadInput.value = data.message_thread_id ?? '';
 
+        telegramSaved = data;
+        renderTelegramStatus();
         updateTelegramTestButtonState();
     } catch (error) {
         logEvent('error', 'Failed to load Telegram settings', {error: error.message});
@@ -3606,6 +3679,9 @@ function initSettingsPage() {
         if (testBtn) testBtn.addEventListener('click', sendTelegramTestMessage);
         if (toggleBtn) toggleBtn.addEventListener('click', toggleTelegramTokenVisibility);
         if (chatInput) chatInput.addEventListener('input', updateTelegramTestButtonState);
+        document.getElementById('telegramEnabled')
+            .addEventListener('change', event => setTelegramEnabled(event.target.checked));
+        document.getElementById('telegramDisconnectBtn').addEventListener('click', disconnectTelegram);
 
         settingsListenersAttached = true;
     }
