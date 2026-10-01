@@ -174,12 +174,12 @@ Smoke-tested Sprint 1 on a real server with Chrome (injection fixtures, apostrop
 Smoke-tested Sprint 3 in the built image as uid 1000: `healthy`, and delete → trash → restore → re-import.
 **Upgrade on the NAS:** `docker compose down && sudo chown -R 1000:1000 ./data <music dir>` before the first `up`.
 
-### Found during Sprint 2 (not yet scheduled)
+### Found during Sprint 2 (done after Sprint 3)
 
-- **SSE blocks graceful shutdown.** An open `/api/events` stream keeps uvicorn in "Waiting for connections to close";
-  in Docker, `docker stop` will wait for the 10s kill. Fix: end streams on shutdown (lifespan event) or `--timeout-graceful-shutdown`.
-- **Empty `OPENROUTER_API_KEY` still sends a request** that fails with an illegal header (audit #20): skip inference and go straight to manual review.
-- Remaining variant pairs in the real library are handled by S2-9 once deployed; run it from the library page.
+- [x] **SSE blocked graceful shutdown** (never exited, not just 10s). `EventSourceResponse` closes streams on SIGTERM;
+  scanner sleep is interruptible. SIGTERM with an open tab now exits in ~1s — #36
+- [x] **Empty `OPENROUTER_API_KEY` sent a request** (audit #20): skipped, straight to fallback — #35
+- [ ] Remaining variant pairs in the real library: run S2-9's merge from the library page once deployed.
 
 ### Evidence from the real library (2026-09-30)
 
