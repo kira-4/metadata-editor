@@ -10,6 +10,12 @@ const GENRE_PRESETS = [
     'أدعية'
 ];
 
+// Arabic names for the fields a pending card saves
+const FIELD_LABELS = {title: 'العنوان', artist: 'الفنان', genre: 'النوع'};
+// What each missing field asks of the operator, in the order the card shows them
+const MISSING_FIELD_ACTIONS = {title: 'أضف العنوان', artist: 'أضف فنانًا', genre: 'اختر النوع'};
+const CONFIRM_LABEL = '✓ تأكيد ونقل إلى المكتبة';
+
 // State
 let pendingItems = [];
 let selectedGenres = {}; // itemId -> genre
@@ -80,37 +86,118 @@ function downloadLogs() {
     URL.revokeObjectURL(url);
 }
 
-function showAlert(message, type = 'info', timeout) {
+// Fills an alert box: a human line, plus the technical text folded away when there is one
+function fillAlert(alertEl, message, type, technical) {
+    alertEl.className = `global-alert ${type}`;
+    alertEl.replaceChildren(document.createTextNode(message));
+    if (technical && technical !== message) {
+        const details = document.createElement('details');
+        details.className = 'alert-technical';
+        const summary = document.createElement('summary');
+        summary.textContent = 'التفاصيل التقنية';
+        const code = document.createElement('code');
+        code.dir = 'ltr';
+        code.textContent = technical;
+        details.append(summary, code);
+        alertEl.append(details);
+    }
+    alertEl.style.display = 'block';
+}
+
+function showAlert(message, type = 'info', timeout, technical = '') {
     const alertEl = document.getElementById('globalAlert');
     if (!alertEl) return;
     // Errors stay until dismissed; everything else fades after 5s
     if (timeout === undefined) timeout = type === 'error' ? 0 : 5000;
-    alertEl.textContent = message;
-    alertEl.className = `global-alert ${type}`;
+    fillAlert(alertEl, message, type, technical);
     alertEl.title = 'اضغط للإغلاق';
-    alertEl.onclick = () => { alertEl.style.display = 'none'; };
-    alertEl.style.display = 'block';
+    alertEl.onclick = event => {
+        if (event.target.closest('details')) return;  // opening the details must not dismiss
+        alertEl.style.display = 'none';
+    };
 
     if (timeout > 0) {
         setTimeout(() => {
-            if (alertEl.textContent === message) {
+            if (alertEl.firstChild?.textContent === message) {
                 alertEl.style.display = 'none';
             }
         }, timeout);
     }
 }
 
-async function parseApiError(response, fallbackMessage) {
+// An error with a human Arabic message and the server's raw text kept for the details fold
+class ApiError extends Error {
+    constructor(message, technical = '') {
+        super(message);
+        this.technical = technical;
+    }
+}
+
+// Server details that are still English, in the words the operator would use
+const SERVER_ERROR_TEXT = {
+    'Item not found': 'هذا الملف لم يعد في قائمة الانتظار. حدّث القائمة.',
+    'File not found': 'الملف غير موجود في مجلد التجهيز. ربما نُقل أو حُذف.',
+    'Failed to apply metadata': 'تعذّرت كتابة البيانات الوصفية في الملف.',
+    'Failed to move file': 'تعذّر نقل الملف إلى المكتبة. تحقق من صلاحيات الكتابة في مجلد المكتبة.',
+    'Artwork not found': 'لا توجد صورة غلاف لهذا الملف.',
+    'Artwork file not found': 'صورة الغلاف غير موجودة على القرص.',
+    'Track not found': 'هذه الصوتية لم تعد في المكتبة. حدّث الصفحة.',
+    'Track file not found': 'ملف هذه الصوتية غير موجود على القرص. أعد مسح المكتبة.',
+    'Nothing to change': 'لا يوجد تغيير لحفظه.',
+    'Failed to update file metadata': 'تعذّرت كتابة البيانات الوصفية في ملف الصوتية.',
+    'File must be a valid JPEG or PNG image': 'صورة الغلاف يجب أن تكون بصيغة JPEG أو PNG.',
+    'Failed to embed artwork': 'تعذّر حفظ صورة الغلاف داخل الملف.',
+    'No artwork in file': 'لا توجد صورة غلاف داخل الملف.',
+    'Scan already in progress': 'المسح يعمل بالفعل.',
+    'chat_id is required when a bot token is set': 'أدخل معرّف المحادثة مع رمز البوت.',
+};
+const ARABIC_LETTERS = /[؀-ۿ]/;
+
+// Raw server text -> {message, technical}. Arabic details are kept (minus any English gloss);
+// known English ones are translated; anything else gets the caller's fallback.
+function humanizeServerDetail(raw, fallbackMessage) {
+    const text = String(raw || '').trim();
+    if (!text) return {message: fallbackMessage, technical: ''};
+    if (SERVER_ERROR_TEXT[text]) return {message: SERVER_ERROR_TEXT[text], technical: text};
+    if (text.startsWith('Item cannot be confirmed')) {
+        return {message: 'لا يمكن تأكيد هذا الملف في حالته الحالية. حدّث القائمة.', technical: text};
+    }
+    if (ARABIC_LETTERS.test(text)) {
+        const message = text.replace(/\s*\([A-Za-z][^)]*\)\s*$/, '');
+        return {message, technical: message === text ? '' : text};
+    }
+    return {message: fallbackMessage, technical: text};
+}
+
+async function apiError(response, fallbackMessage) {
+    let raw = '';
     try {
         const body = await response.json();
         // FastAPI validation errors (422) arrive as a list of {loc, msg}
-        if (Array.isArray(body.detail)) {
-            return body.detail.map(e => `${(e.loc || []).slice(-1)[0] || ''}: ${e.msg}`).join(' · ') || fallbackMessage;
-        }
-        return (typeof body.detail === 'string' && body.detail) || fallbackMessage;
+        raw = Array.isArray(body.detail)
+            ? body.detail.map(e => `${(e.loc || []).slice(-1)[0] || ''}: ${e.msg}`).join(' · ')
+            : (typeof body.detail === 'string' ? body.detail : '');
     } catch {
-        return fallbackMessage;
+        // Not JSON (proxy error page, empty body): only the status is known
     }
+    const {message, technical} = humanizeServerDetail(raw, fallbackMessage);
+    return new ApiError(message, technical || `HTTP ${response.status}`);
+}
+
+// Any thrown error -> what to show. fetch() rejects with a TypeError when the server is unreachable.
+function describeError(error) {
+    if (error instanceof ApiError) return {message: error.message, technical: error.technical};
+    if (error instanceof TypeError) {
+        return {message: 'تعذّر الاتصال بالخادم. تحقق من الشبكة ثم حاول مجددًا.', technical: error.message};
+    }
+    const {message, technical} = humanizeServerDetail(error?.message, 'حدث خطأ غير متوقع.');
+    return {message, technical};
+}
+
+// "<what failed>: <why>" with the technical text folded underneath
+function showError(what, error) {
+    const {message, technical} = describeError(error);
+    showAlert(`${what}: ${message}`, 'error', 0, technical);
 }
 
 function escapeHtml(value) {
@@ -363,8 +450,7 @@ async function loadPendingItems(options = {}) {
 
         const response = await fetch(`${API_BASE}/pending`);
         if (!response.ok) {
-            const detail = await parseApiError(response, 'فشل تحميل قائمة الانتظار');
-            throw new Error(detail);
+            throw await apiError(response, 'الخادم لم يُرجع القائمة.');
         }
 
         const freshItems = await response.json();
@@ -394,7 +480,7 @@ async function loadPendingItems(options = {}) {
         }
     } catch (error) {
         logEvent('error', 'فشل تحميل قائمة الانتظار', {error: error.message});
-        showAlert(`فشل تحميل قائمة الانتظار: ${error.message}`, 'error');
+        showError('تعذّر تحميل قائمة الانتظار', error);
     }
 }
 
@@ -573,14 +659,26 @@ function createItemCard(item) {
         </div>
     `).join('');
 
+    const problem = (hasError || isManual) ? describeItemProblem(item) : null;
+
     return `
-        <div class="item-card" data-id="${item.id}">
-            ${hasError ? `<div class="error-badge">⚠️ خطأ: ${escapeHtml(item.error_message || '')}</div>` : ''}
-            ${isManual ? '<div class="warning-badge">⚠️ يحتاج مراجعة يدوية</div>' : ''}
+        <div class="item-card ${isManual ? 'needs-review' : ''} ${hasError ? 'has-error' : ''}" data-id="${item.id}">
+            ${problem ? `
+            <div class="item-problem ${hasError ? 'error' : 'warn'}" role="note">
+                <strong>${hasError ? 'تعذّرت معالجة هذا الملف' : 'يحتاج مراجعة'}</strong>
+                <p>${escapeHtml(problem.text)}</p>
+                ${isManual ? `
+                <ul class="review-checklist" aria-label="المطلوب قبل التأكيد">
+                    <li data-check="title">العنوان</li>
+                    <li data-check="artist">فنان واحد على الأقل</li>
+                    <li data-check="genre">النوع</li>
+                </ul>` : ''}
+                ${item.error_message ? `<details class="alert-technical"><summary>التفاصيل التقنية</summary><code dir="ltr">${escapeHtml(item.error_message)}</code></details>` : ''}
+            </div>` : ''}
 
             <div class="item-header">
                 ${artworkUrl
-                    ? `<img src="${artworkUrl}" alt="Artwork" class="artwork">`
+                    ? `<img src="${artworkUrl}" alt="" class="artwork">`
                     : '<div class="artwork-placeholder">🎵</div>'
                 }
 
@@ -606,9 +704,7 @@ function createItemCard(item) {
 
                     <div class="destination-preview" id="destination-${item.id}" aria-live="polite"></div>
 
-                    <div class="source-text">
-                        المصدر: ${escapeHtml(item.video_title)} • ${escapeHtml(item.channel)}
-                    </div>
+                    <div class="source-text">${formatItemSource(item)}</div>
                 </div>
             </div>
             
@@ -651,6 +747,29 @@ function createItemCard(item) {
             </div>
         </div>
     `;
+}
+
+// Why a card needs review, from the scanner's error_message (English, internal)
+const ITEM_PROBLEMS = [
+    ['Failed to parse filename', 'اسم الملف لا يحمل اسم القناة، فلم يُقترح فنان. العنوان مأخوذ من اسم الملف.'],
+    ['Metadata detection failed', 'لم يكتمل الاقتراح الآلي، فالعنوان والفنان مأخوذان من عنوان الفيديو واسم القناة. راجعهما.'],
+    ['Failed to apply metadata tags', 'تعذّرت كتابة الوسوم في النسخة المؤقتة. راجع الحقول ثم أكّد؛ وإن تكرر الخطأ فالملف نفسه قد يكون تالفًا.'],
+    ['Interrupted while moving', 'انقطع النقل قبل اكتماله. أكّد مجددًا لإعادة المحاولة.'],
+    ['Processing error', 'حدث خطأ أثناء تجهيز الملف. يمكنك إكمال الحقول وتأكيده، أو حذفه.'],
+];
+
+function describeItemProblem(item) {
+    const raw = String(item.error_message || '');
+    const match = ITEM_PROBLEMS.find(([prefix]) => raw.startsWith(prefix));
+    return {text: match ? match[1] : 'أكمل الحقول الناقصة قبل التأكيد.'};
+}
+
+// "Unknown" is the scanner's placeholder when the filename had no "###channel" part
+function formatItemSource(item) {
+    if (!item.channel || item.channel === 'Unknown') {
+        return `المصدر: اسم الملف <bdi>${escapeHtml(item.video_title)}</bdi> · القناة غير معروفة`;
+    }
+    return `المصدر: <bdi>${escapeHtml(item.video_title)}</bdi> · <bdi>${escapeHtml(item.channel)}</bdi>`;
 }
 
 function getItemIdFromRowId(rowId) {
@@ -756,8 +875,7 @@ async function fetchArtistSuggestions(query, limit = ARTIST_SUGGEST_LIMIT) {
     params.set('limit', String(limit));
     const response = await fetch(`${API_BASE}/artists/suggest?${params.toString()}`);
     if (!response.ok) {
-        const detail = await parseApiError(response, 'فشل جلب اقتراحات الفنان');
-        throw new Error(detail);
+        throw await apiError(response, 'تعذّر جلب اقتراحات الفنان.');
     }
 
     const data = await response.json();
@@ -1360,8 +1478,7 @@ async function updateField(itemId, field, value) {
         });
         
         if (!response.ok) {
-            const detail = await parseApiError(response, `فشل تحديث ${field}`);
-            throw new Error(detail);
+            throw await apiError(response, 'الخادم رفض التعديل.');
         }
         
         // Update local state
@@ -1383,9 +1500,10 @@ async function updateField(itemId, field, value) {
         setItemStatus(itemId, 'تم حفظ التعديل', 'success');
         
     } catch (error) {
-        logEvent('error', `فشل تحديث ${field}`, {itemId, error: error.message});
-        showAlert(`فشل تحديث ${field}: ${error.message}`, 'error');
-        setItemStatus(itemId, `فشل تحديث ${field}`, 'error');
+        const label = FIELD_LABELS[field] || field;
+        logEvent('error', `Update ${field} failed`, {itemId, error: error.message});
+        showError(`لم يُحفظ ${label}`, error);
+        setItemStatus(itemId, `لم يُحفظ ${label}. عدّله مجددًا أو أكّد مباشرة.`, 'error');
     }
 }
 
@@ -1399,8 +1517,7 @@ function setItemStatus(itemId, message, type = 'info') {
 async function fetchDryRun(itemId) {
     const response = await fetch(`${API_BASE}/pending/${itemId}/dry-run`);
     if (!response.ok) {
-        const detail = await parseApiError(response, 'فشل إنشاء المعاينة');
-        throw new Error(detail);
+        throw await apiError(response, 'تعذّر إنشاء المعاينة.');
     }
     return response.json();
 }
@@ -1443,7 +1560,7 @@ async function previewItem(itemId) {
         setItemStatus(itemId, dryRun.can_confirm ? 'المعاينة جاهزة للتأكيد' : 'المعاينة: هناك مشاكل', dryRun.can_confirm ? 'success' : 'warn');
     } catch (error) {
         logEvent('error', 'Dry-run preview failed', {itemId, error: error.message});
-        showAlert(`فشل إنشاء المعاينة: ${error.message}`, 'error');
+        showError('تعذّر إنشاء المعاينة', error);
         setItemStatus(itemId, 'فشل إنشاء المعاينة', 'error');
     } finally {
         if (btn) {
@@ -1492,16 +1609,17 @@ async function confirmItem(itemId, onConflict) {
             const body = await response.json().catch(() => ({}));
             if (body.detail?.code === 'destination_exists') {
                 showDestinationChoice(itemId, body.detail.existing_path);
+                delete confirmBtn.dataset.busy;
                 confirmBtn.disabled = false;
-                confirmBtn.textContent = '✓ تأكيد ونقل إلى المكتبة';
+                confirmBtn.textContent = CONFIRM_LABEL;
                 return false;
             }
-            throw new Error(typeof body.detail === 'string' ? body.detail : 'فشل التأكيد');
+            const {message, technical} = humanizeServerDetail(body.detail, 'الملف مشغول حاليًا.');
+            throw new ApiError(message, technical);
         }
         
         if (!response.ok) {
-            const detail = await parseApiError(response, 'فشل التأكيد');
-            throw new Error(detail);
+            throw await apiError(response, 'الخادم لم يُكمل التأكيد.');
         }
         
         // Remove item from list
@@ -1513,18 +1631,19 @@ async function confirmItem(itemId, onConflict) {
         
         // Re-render
         renderItems();
-        showAlert('تم حفظ البيانات ونقل الملف بنجاح.', 'success');
+        showAlert(`نُقل «${title}» إلى المكتبة.`, 'success');
         logEvent('info', 'Item confirmed and moved', {itemId});
         libraryState.stale = true;
         return true;
         
     } catch (error) {
         logEvent('error', 'Error confirming item', {itemId, error: error.message});
-        showAlert(`فشل التأكيد: ${error.message}`, 'error');
+        showError('لم يُنقل الملف', error);
+        delete confirmBtn.dataset.busy;
         confirmBtn.disabled = false;
-        confirmBtn.textContent = '✗ فشل - حاول مرة أخرى';
+        confirmBtn.textContent = 'أعد محاولة النقل';
         confirmBtn.style.background = 'var(--error)';
-        setItemStatus(itemId, `فشل التأكيد: ${error.message}`, 'error');
+        setItemStatus(itemId, `لم يُنقل: ${describeError(error).message}`, 'error');
         return false;
     }
 }
@@ -1567,8 +1686,7 @@ async function deleteItem(itemId) {
         });
         
         if (!response.ok) {
-            const detail = await parseApiError(response, 'فشل حذف الملف');
-            throw new Error(detail);
+            throw await apiError(response, 'الخادم لم يحذف الملف.');
         }
         
         // Remove item from list (optimistic update)
@@ -1579,7 +1697,7 @@ async function deleteItem(itemId) {
         
     } catch (error) {
         logEvent('error', 'Delete item failed', {itemId, error: error.message});
-        showAlert(`فشل حذف الملف: ${error.message}`, 'error');
+        showError('لم يُحذف الملف', error);
         if (deleteBtn) {
             deleteBtn.disabled = false;
             deleteBtn.textContent = 'فشل الحذف - حاول مرة أخرى';
@@ -2325,12 +2443,12 @@ async function runArtistMerge(groupEl, group, apply) {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({sources, target, apply})
         });
-        if (!response.ok) throw new Error(await parseApiError(response, 'فشل الدمج'));
+        if (!response.ok) throw await apiError(response, 'الخادم لم يُكمل الدمج.');
         const body = await response.json();
 
         if (!apply) {
             const lines = [`ستُعدَّل ${arabicCount(body.track_count, TRACK_FORMS)} لتصبح باسم «${target}».`];
-            if (body.move_count) lines.push(`سيُنقل ${arabicCount(body.move_count, ['ملف واحد', 'ملفان', 'ملفات', 'ملفًا', 'ملف'])} إلى مجلد «${target}».`);
+            if (body.move_count) lines.push(`سيُنقل ${arabicCount(body.move_count, FILE_FORMS)} إلى مجلد «${target}».`);
             if (body.blocked_count) lines.push(`${body.blocked_count} ملف له نسخة بنفس الاسم في المجلد، سيُعدَّل دون نقل.`);
             previewEl.textContent = lines.join(' ');
             buttons.forEach(b => b.disabled = false);
@@ -2349,7 +2467,7 @@ async function runArtistMerge(groupEl, group, apply) {
         libraryState.variantGroups = (libraryState.variantGroups || []).filter(g => g !== group);
         loadArtistVariants();
     } catch (error) {
-        previewEl.textContent = `تعذّر الدمج: ${error.message}`;
+        previewEl.textContent = `تعذّر الدمج: ${describeError(error).message}`;
         buttons.forEach(b => b.disabled = false);
     }
 }
@@ -2392,7 +2510,7 @@ async function loadViewData() {
         }
         
         const response = await fetch(`${endpoint}?${params}`);
-        if (!response.ok) throw new Error('Failed to load data');
+        if (!response.ok) throw await apiError(response, 'الخادم لم يُرجع البيانات.');
         
         const data = await response.json();
         if (requestSeq !== libraryState.loadSeq) return;
@@ -2440,9 +2558,9 @@ async function loadViewData() {
     } catch (error) {
         if (requestSeq !== libraryState.loadSeq) return;
         logEvent('error', 'Error loading library view data', {view, error: error.message});
-        showAlert(`فشل تحميل بيانات المكتبة: ${error.message}`, 'error');
+        showError('تعذّر تحميل المكتبة', error);
         const container = document.getElementById(`${view}List`) || document.getElementById('tracksList');
-        if (container) container.innerHTML = `<div class="error-message">حدث خطأ في تحميل البيانات: ${escapeHtml(error.message)}</div>`;
+        if (container) container.innerHTML = `<div class="error-message">تعذّر تحميل هذه القائمة: ${escapeHtml(describeError(error).message)}</div>`;
     }
 }
 
@@ -2839,7 +2957,7 @@ async function viewArtistAlbums(artistName, pushToStack = true) {
 
     try {
         const response = await fetch(`/api/library/albums?artist=${encodeURIComponent(name)}`);
-        if (!response.ok) throw new Error('Failed to load albums');
+        if (!response.ok) throw await apiError(response, 'الخادم لم يُرجع الألبومات.');
 
         const data = await response.json();
         if (requestSeq !== libraryState.loadSeq) return;  // a newer view was requested
@@ -2870,7 +2988,7 @@ async function viewArtistAlbums(artistName, pushToStack = true) {
         `).join('');
     } catch (error) {
         logEvent('error', 'Error loading artist albums', {artist: name, error: error.message});
-        showAlert(`فشل تحميل ألبومات الفنان: ${error.message}`, 'error');
+        showError('تعذّر تحميل ألبومات الفنان', error);
     }
 }
 
@@ -2908,7 +3026,7 @@ async function viewAlbumTracks(albumName, pushToStack = true, albumArtist) {
         const params = new URLSearchParams({album: name, sort_by: 'track_number', limit: '500'});
         if (albumArtist !== undefined) params.set('album_artist', albumArtist);
         const response = await fetch(`/api/library/tracks?${params}`);
-        if (!response.ok) throw new Error('Failed to load tracks');
+        if (!response.ok) throw await apiError(response, 'الخادم لم يُرجع الصوتيات.');
 
         const data = await response.json();
         if (requestSeq !== libraryState.loadSeq) return;
@@ -2937,7 +3055,7 @@ async function viewAlbumTracks(albumName, pushToStack = true, albumArtist) {
         injectSelectAlbumButton(data.tracks);
     } catch (error) {
         logEvent('error', 'Error loading album tracks', {album: name, error: error.message});
-        showAlert(`فشل تحميل صوتيات الألبوم: ${error.message}`, 'error');
+        showError('تعذّر تحميل صوتيات الألبوم', error);
     }
 }
 
@@ -2969,7 +3087,7 @@ async function viewGenreTracks(genreName, pushToStack = true) {
 
     try {
         const response = await fetch(`/api/library/tracks?genre=${encodeURIComponent(name)}&limit=500`);
-        if (!response.ok) throw new Error('Failed to load tracks');
+        if (!response.ok) throw await apiError(response, 'الخادم لم يُرجع الصوتيات.');
 
         const data = await response.json();
         if (requestSeq !== libraryState.loadSeq) return;
@@ -2989,7 +3107,7 @@ async function viewGenreTracks(genreName, pushToStack = true) {
         renderTracks(data.tracks);
     } catch (error) {
         logEvent('error', 'Error loading genre tracks', {genre: name, error: error.message});
-        showAlert(`فشل تحميل صوتيات النوع: ${error.message}`, 'error');
+        showError('تعذّر تحميل صوتيات النوع', error);
     }
 }
 
@@ -3078,6 +3196,7 @@ const BATCH_FIELDS = [
 const batchEdit = {states: {}, failures: [], saving: false};
 // Queue items are ملفات (files waiting to move); library items are صوتيات (tracks)
 const TRACK_FORMS = ['صوتية واحدة', 'صوتيتان', 'صوتيات', 'صوتيةً', 'صوتية'];
+const FILE_FORMS = ['ملف واحد', 'ملفان', 'ملفات', 'ملفًا', 'ملف'];
 
 function setupBatchFieldControls() {
     if (window.batchFieldControlsAttached) return;
@@ -3133,7 +3252,7 @@ function renderBatchSummary() {
     let html = '';
     if (batchEdit.failures.length > 0) {
         html += `<div class="batch-failures"><strong>تعذّر تعديل ${arabicCount(batchEdit.failures.length, TRACK_FORMS)}، وما زالت محددة لإعادة المحاولة:</strong><ul>`
-            + batchEdit.failures.map(e => `<li>${escapeHtml(e.title || `#${e.track_id}`)} — ${escapeHtml(e.error)}</li>`).join('')
+            + batchEdit.failures.map(e => `<li>${escapeHtml(e.title || `#${e.track_id}`)}: ${escapeHtml(humanizeServerDetail(e.error, 'تعذّرت الكتابة في الملف.').message)}</li>`).join('')
             + '</ul></div>';
     }
     if (changed.length === 0) {
@@ -3295,10 +3414,10 @@ async function handleSingleEdit() {
                 body: formData
             });
             
-            if (!response.ok) throw new Error('Artwork upload failed');
+            if (!response.ok) throw await apiError(response, 'الخادم لم يقبل الصورة.');
         } catch (error) {
             logEvent('error', 'Error uploading artwork', {trackId, error: error.message});
-            showAlert('فشل رفع صورة الغلاف', 'error');
+            showError('لم تُحفظ صورة الغلاف', error);
             // Don't return, try to save other metadata
         }
     }
@@ -3325,14 +3444,14 @@ async function handleSingleEdit() {
             body: JSON.stringify(payload)
         });
         
-        if (!response.ok) throw new Error(await parseApiError(response, `HTTP ${response.status}`));
+        if (!response.ok) throw await apiError(response, 'الخادم لم يحفظ التعديل.');
         
         closeEditModal();
         refreshLibraryContext();
         
     } catch (error) {
         logEvent('error', 'Error updating track', {trackId, error: error.message});
-        showAlert(`تعذّر حفظ الصوتية: ${error.message}`, 'error');
+        showError('تعذّر حفظ الصوتية', error);
     }
 }
 
@@ -3364,8 +3483,7 @@ async function handleBatchEdit() {
         });
         
         if (!response.ok) {
-            const body = await response.json().catch(() => ({}));
-            throw new Error(typeof body.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+            throw await apiError(response, 'الخادم لم يحفظ التعديل.');
         }
         
         const result = await response.json();
@@ -3388,7 +3506,7 @@ async function handleBatchEdit() {
         
     } catch (error) {
         logEvent('error', 'Error in batch update', {error: error.message});
-        showAlert(`تعذّر تعديل الصوتيات: ${error.message}`, 'error');
+        showError('تعذّر تعديل الصوتيات', error);
     } finally {
         batchEdit.saving = false;
         if (libraryState.editMode === 'batch') renderBatchSummary();
@@ -3434,7 +3552,7 @@ async function pollRescanStatus(watching = true) {
     clearTimeout(rescanPollTimer);
     try {
         const response = await fetch('/api/library/rescan/status');
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) throw await apiError(response, 'الخادم لم يُرجع حالة المسح.');
         const status = await response.json();
 
         if (status.is_scanning) {
@@ -3456,7 +3574,7 @@ async function pollRescanStatus(watching = true) {
     } catch (error) {
         logEvent('error', 'Error polling rescan status', {error: error.message});
         setRescanBusy(false);
-        renderRescanStatus(null, {failed: error.message});
+        renderRescanStatus(null, {failed: describeError(error).message});
     }
 }
 
@@ -3467,12 +3585,12 @@ async function startRescan() {
     try {
         const response = await fetch('/api/library/rescan', {method: 'POST'});
         // 409 means a scan is already running: just follow it
-        if (!response.ok && response.status !== 409) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok && response.status !== 409) throw await apiError(response, 'الخادم لم يبدأ المسح.');
         pollRescanStatus(true);
     } catch (error) {
         logEvent('error', 'Error starting library rescan', {error: error.message});
         setRescanBusy(false);
-        renderRescanStatus(null, {failed: error.message});
+        renderRescanStatus(null, {failed: describeError(error).message});
     }
 }
 
@@ -3483,20 +3601,23 @@ async function startRescan() {
 let settingsListenersAttached = false;
 const TELEGRAM_TOKEN_PLACEHOLDER = '••••••••';
 
-function showSettingsAlert(message, type = 'info', timeout = 5000) {
+function showSettingsAlert(message, type = 'info', timeout = 5000, technical = '') {
     const alertEl = document.getElementById('settingsAlert');
     if (!alertEl) return;
-    alertEl.textContent = message;
-    alertEl.className = `global-alert ${type}`;
-    alertEl.style.display = 'block';
+    fillAlert(alertEl, message, type, technical);
 
     if (timeout > 0) {
         setTimeout(() => {
-            if (alertEl.textContent === message) {
+            if (alertEl.firstChild?.textContent === message) {
                 alertEl.style.display = 'none';
             }
         }, timeout);
     }
+}
+
+function showSettingsError(what, error) {
+    const {message, technical} = describeError(error);
+    showSettingsAlert(`${what}: ${message}`, 'error', 0, technical);
 }
 
 // Last saved settings, so the on/off switch can re-save without the form's unsaved edits
@@ -3531,11 +3652,11 @@ async function setTelegramEnabled(enabled) {
                 enabled
             })
         });
-        if (!response.ok) throw new Error(await parseApiError(response, 'تعذر حفظ الإعدادات'));
+        if (!response.ok) throw await apiError(response, 'الخادم لم يحفظ الإعدادات.');
         telegramSaved = await response.json();
         showSettingsAlert(enabled ? 'تم تشغيل الإشعارات' : 'تم إيقاف الإشعارات', 'success');
     } catch (error) {
-        showSettingsAlert(error.message, 'error');
+        showSettingsError(enabled ? 'لم تُشغَّل الإشعارات' : 'لم تُوقَف الإشعارات', error);
     } finally {
         toggle.disabled = false;
         renderTelegramStatus();
@@ -3560,11 +3681,11 @@ async function disconnectTelegram() {
     btn.disabled = true;
     try {
         const response = await fetch(`${API_BASE}/settings/telegram`, {method: 'DELETE'});
-        if (!response.ok) throw new Error(await parseApiError(response, 'تعذر قطع الاتصال'));
+        if (!response.ok) throw await apiError(response, 'الخادم لم يقطع الاتصال.');
         showSettingsAlert('تم قطع الاتصال وحذف بيانات البوت', 'success');
         await loadTelegramSettings();
     } catch (error) {
-        showSettingsAlert(error.message, 'error');
+        showSettingsError('لم يُقطع الاتصال', error);
     } finally {
         btn.disabled = false;
     }
@@ -3585,11 +3706,7 @@ async function loadTelegramSettings() {
 
     try {
         const response = await fetch(`${API_BASE}/settings/telegram`);
-        if (!response.ok) {
-            const msg = await parseApiError(response, 'تعذر تحميل إعدادات Telegram');
-            showSettingsAlert(msg, 'error');
-            return;
-        }
+        if (!response.ok) throw await apiError(response, 'الخادم لم يُرجع الإعدادات.');
         const data = await response.json();
 
         // Keep the token input empty — blank on save preserves the stored token.
@@ -3606,7 +3723,7 @@ async function loadTelegramSettings() {
         updateTelegramTestButtonState();
     } catch (error) {
         logEvent('error', 'Failed to load Telegram settings', {error: error.message});
-        showSettingsAlert('خطأ في الاتصال بالخادم', 'error');
+        showSettingsError('تعذّر تحميل إعدادات Telegram', error);
     }
 }
 
@@ -3645,17 +3762,13 @@ async function saveTelegramSettings(event) {
             body: JSON.stringify(payload)
         });
 
-        if (!response.ok) {
-            const msg = await parseApiError(response, 'تعذر حفظ الإعدادات');
-            showSettingsAlert(msg, 'error');
-            return;
-        }
+        if (!response.ok) throw await apiError(response, 'الخادم لم يحفظ الإعدادات.');
 
-        showSettingsAlert('تم حفظ الإعدادات بنجاح', 'success');
+        showSettingsAlert('تم حفظ الإعدادات', 'success');
         await loadTelegramSettings();
     } catch (error) {
         logEvent('error', 'Failed to save Telegram settings', {error: error.message});
-        showSettingsAlert('خطأ في الاتصال بالخادم', 'error');
+        showSettingsError('لم تُحفظ الإعدادات', error);
     } finally {
         if (submitBtn) submitBtn.disabled = false;
     }
@@ -3664,7 +3777,7 @@ async function saveTelegramSettings(event) {
 async function sendTelegramTestMessage() {
     const payload = collectTelegramFormPayload();
     if (!payload.chat_id) {
-        showSettingsAlert('يجب إدخال Chat ID قبل إرسال رسالة الاختبار', 'error');
+        showSettingsAlert('أدخل معرّف المحادثة أولًا، ثم أرسل رسالة الاختبار.', 'warn');
         return;
     }
 
@@ -3678,23 +3791,19 @@ async function sendTelegramTestMessage() {
             body: JSON.stringify(payload)
         });
 
+        if (!response.ok) throw await apiError(response, 'الخادم لم يُرسل الرسالة.');
         const data = await response.json().catch(() => null);
 
-        if (!response.ok) {
-            const msg = (data && data.detail) || 'تعذر إرسال رسالة الاختبار';
-            showSettingsAlert(msg, 'error');
-            return;
-        }
-
         if (data && data.ok) {
-            showSettingsAlert('تم إرسال رسالة الاختبار بنجاح', 'success');
+            showSettingsAlert('وصلت رسالة الاختبار. تحقق منها في Telegram.', 'success');
         } else {
-            const err = (data && data.error) || 'فشل إرسال رسالة الاختبار';
-            showSettingsAlert(err, 'error');
+            // Telegram's own wording ("Bad Request: chat not found") goes in the details
+            showSettingsAlert('رفض Telegram رسالة الاختبار. تحقق من رمز البوت ومعرّف المحادثة.', 'error', 0,
+                (data && data.error) || '');
         }
     } catch (error) {
         logEvent('error', 'Failed to send Telegram test message', {error: error.message});
-        showSettingsAlert('خطأ في الاتصال بالخادم', 'error');
+        showSettingsError('لم تُرسل رسالة الاختبار', error);
     } finally {
         if (testBtn) testBtn.disabled = false;
         updateTelegramTestButtonState();
