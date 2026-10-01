@@ -74,13 +74,15 @@ Tests went from 123 to 161 (new: `test_batch_edit`, `test_rescan_status`, `test_
 
 ## Next (in order)
 
-1. **B6, animate:**
-   - Replace the ~12 `transition: all` rules and add `prefers-reduced-motion`. The new `.confirm-btn.is-saving` sweep animation must also stop under reduced motion.
-   - Remove the card hover lift and the gradient top bar (`.item-card::before`).
-   - Drop the `padding-bottom` transition on `#libraryPage`.
-   - Collapsed-card expand (B5) is instant; consider a short height/opacity reveal that respects reduced motion.
-   - The `fadeIn` on `.item-card` replays on every render. Screenshots taken right after a load catch cards at partial opacity.
-   - Card collapse-out after confirm, and new-card arrival from SSE.
+1. **B6, animate** (branch e.g. `feature/motion`; run `/impeccable animate` → `reference/animate.md`). Plan brief (SPRINT_4_PLAN §6): motion explains what happened (the file left the queue, a new file arrived, it saved). It doesn't decorate. Durations are 150–250ms, there are no layout-property animations, and everything respects `prefers-reduced-motion`. The operator goes through dozens of cards in a row.
+   - **Inventory** (in `style.css`, by selector):
+     - **11 `transition: all`:** `.item-card`, `.field-input`, `.artist-dropdown-toggle`, `.genre-btn`, `.confirm-btn`, `.btn-confirm-all`, `.nav-link`, `.tab-btn`, `.list-item`, `.album-card`, `.btn-primary, .btn-secondary`. Name the properties instead.
+     - **Keyframes:** `fadeIn`/`fadeOut` (translateY 10px; `.item-card` and `.item-card.card-removing`), `confirm-sweep` (the B3 `.confirm-btn.is-saving` stripe, 1.2s infinite) and `spin` (the rescan icon). All of them need a reduced-motion fallback. There is no `prefers-reduced-motion` anywhere yet.
+     - **Other transitions:** `.item-card::before` (gradient top bar, `transform`), `.artist-dropdown-icon` rotate, the `#libraryPage { transition: padding-bottom }` (drop it; JS sets that padding when the selection bar shows) and a 0.15s background/colour transition.
+     - **Hover:** `.item-card:hover` lifts with `translateY(-2px)` and a shadow, and reveals the `::before` bar. Remove both (B1 decision: calm, and no hover on phones anyway).
+   - **The real bug behind "fadeIn replays":** `confirmItem()` and `deleteItem()` in `app.js` filter `pendingItems` and call `renderItems()`, which rebuilds every card with `innerHTML`. Every remaining card replays `fadeIn`, and the confirmed card just vanishes. Only the SSE path uses `removeItemCardFromDOM()` (adds `.card-removing`, removes after 300ms). So: route confirm and delete through `removeItemCardFromDOM()` (or a shared exit), and make the entrance play only for genuinely new cards (`smartUpdatePendingList` already inserts them one by one). Check that `confirmAllReady()` still works; it re-queries `.confirm-btn:not(:disabled)` on each loop pass. Also check the ready bar count and the badge (`updatePendingCountUI`).
+   - **Collapsed-card expand** (B5, `.card-summary` click in `attachItemListeners`) is instant. A short opacity reveal of the body is enough. Don't animate height.
+   - Screenshots taken right after a load catch cards mid-`fadeIn` (partial opacity). Wait about 400ms or check computed opacity.
 2. **B7, delight:** the empty queue and the confirm-all summary only (it already uses `FILE_FORMS`).
 3. **B8, optimize:** Cairo is loaded from Google Fonts (decide whether to self-host a subset). Also cut DOM work on SSE updates: `addArtistRow`/`removeArtistRow` re-render the whole card.
 4. **B9, audit + polish:**
@@ -92,10 +94,45 @@ Tests went from 123 to 161 (new: `test_batch_edit`, `test_rescan_status`, `test_
 - Batch-edit artist suggestions: the batch artist field is a plain `;`-separated input with no suggestions. A combobox that completes the segment after the last `;` would help «one spelling per artist». This is a feature, not scheduled.
 - `.impeccable/design.json` is stale relative to `DESIGN.md` (detector: `design-sidecar-stale`). `/impeccable document` refreshes it.
 
+## How each step was run
+1. `git checkout main && git pull`, then `git checkout -b feature/<step>`.
+2. Load the Impeccable skill with the step's command (`/impeccable animate …`). Run `node ~/.claude/skills/impeccable/scripts/context.mjs --target app/static/style.css` once, then read that command's `reference/<cmd>.md` and `reference/craft-floor.md` before editing.
+3. Edit, then do **one** batched browser check at 390×844 and 1280×900 (Playwright MCP), fix, and confirm once.
+4. Detectors: `node ~/.claude/skills/impeccable/scripts/detect.mjs --json --scope <type|layout|…> app/static` (B4/B5 left `type` and `layout` clean). Then run `venv/bin/python -m pytest tests/ -q`.
+5. Micro commits per concern (see the staging helper below). Push, `gh pr create --base main`, then `gh pr checks <n> --watch` (checks take about 10s to appear), then `gh pr merge <n> --squash --delete-branch`. Update this handoff and `DESIGN.md` in the step's last commit.
+
 ## Housekeeping
-- **Scratch server:** `venv/bin/python -m uvicorn app.main:app --port 8091` with `INCOMING_ROOT`/`NAVIDROME_ROOT`/`DATA_DIR` set to the session scratchpad `…/scratchpad/env/{incoming,music,data}` and no OpenRouter key, so every queue item is needs-review. It has 4 queue files (one without `###`, and item 1 has 5 artists and a 150-character title) and 5 library tracks, including the الاكرف / الأكرف variant pair. Stop it with `pkill -f "uvicorn app.main:app --port 8091"`. The scratchpad is session-scoped, so regenerate the files with `ffmpeg -f lavfi -i sine=…` in a new session.
-- Python is `venv/bin/python` (there is no bare `python` on PATH): `venv/bin/python -m pytest tests/ -q` → **161 passed** (B4 is CSS/docs only).
-- Screenshots go to `.playwright-mcp/` (untracked; the Playwright MCP only writes inside the repo). Don't commit it.
-- Micro commits per concern on each branch, squash-merged per step. A hunk-staging helper (`git apply --cached` on a filtered diff) made that practical for `app.js`.
+- **Python** is `venv/bin/python` (there is no bare `python` on PATH). `venv/bin/python -m pytest tests/ -q` → **161 passed** (B4/B5 were frontend and docs only). `node --check app/static/app.js` is a quick syntax check.
+- **Scratch environment** (the scratchpad is per-session, so rebuild it). Set `S=<scratchpad>/env`, then:
+  ```bash
+  mkdir -p $S/{incoming,music,data}
+  gen(){ ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=440:duration=2" "$@"; }
+  (cd $S/incoming
+   gen "قصيدة يا حسين في ليلة العاشر من محرم الحرام بصوت حزين جدا مع جوقة كاملة وتوزيع جديد ومؤثرات خاصة لموسم هذا العام الحالي وما بعده من مواسم قادمة###قناة الأصوات.mp3"
+   gen "لطمية جديدة 2026###هيئة الزهراء.mp3"; gen "مولد الإمام علي###قناة المواليد.m4a"; gen "دعاء كميل كامل.mp3")
+  (cd $S/music; i=0; for a in الاكرف الأكرف "باسم الكربلائي" "باسم الكربلائي" الاكرف; do i=$((i+1)); mkdir -p "$a/t"
+   gen -metadata title="صوتية $i" -metadata artist="$a" -metadata album_artist="$a" -metadata genre="لطميات" -metadata album="ألبوم $i" "$a/t/track$i.mp3"; done)
+  ```
+  Start the server **as a background task** (`run_in_background`; a `nohup … &` dies with the shell):
+  `INCOMING_ROOT=$S/incoming NAVIDROME_ROOT=$S/music DATA_DIR=$S/data OPENROUTER_API_KEY= exec venv/bin/python -m uvicorn app.main:app --port 8091`.
+  First run `pgrep -fl "port 8091"`. An older session's server may still hold the port and serve *its* data; `pkill -f "uvicorn app.main:app --port 8091"`.
+  With no OpenRouter key every item is needs-review. To get **ready** cards (collapsed summary, ready bar), mark two as complete scanner suggestions:
+  `sqlite3 $S/data/metadata_editor.db "update pending_items set status='pending', error_message=NULL, genre='لطميات' where id in (3,4);"`
+  Run `curl -X POST localhost:8091/api/library/rescan` to index the library (the الاكرف / الأكرف pair triggers the variants notice). Confirm-all really moves files, so regenerate the env if you need ready cards again.
+- **Browser:** changing only the `#/route` doesn't reload the page, so call `location.reload()` after editing static files (the server sends `no-cache`). Screenshots go to `.playwright-mcp/` (untracked; the MCP only writes inside the repo). Don't commit it. Debug mode may be on in that browser's `localStorage`, which shows «معاينة دون كتابة» on cards. A synthetic `keydown` dispatched on `document` throws in `handleLibraryNav` (`event.target.closest`). That's a test artefact, since real keys target an element.
+- **Shell:** `ls` is aliased to eza and rejects some args, so use `/bin/ls`. BSD `sed -i ''`.
+- **Micro commits:** per concern, squash-merged per step. For `app.js`/`style.css`, where one file holds several concerns, stage hunks by regex with this helper (save it to the scratchpad):
+  ```python
+  # stage.py FILE INCLUDE_REGEX [EXCLUDE_REGEX]  → stages the hunks of FILE that match
+  import re, subprocess, sys
+  f, pat = sys.argv[1], re.compile(sys.argv[2])
+  neg = re.compile(sys.argv[3]) if len(sys.argv) > 3 else None
+  diff = subprocess.run(['git','diff','-U3',f], capture_output=True, text=True).stdout
+  head, *hunks = re.split(r'(?m)^(?=@@ )', diff)
+  keep = [h for h in hunks if pat.search(h) and not (neg and neg.search(h))]
+  print(f'{len(keep)}/{len(hunks)} hunks', file=sys.stderr)
+  if keep: subprocess.run(['git','apply','--cached','--recount','-'], input=head+''.join(keep), text=True, check=True)
+  ```
+  Review with `git diff --cached` before each commit, since a hunk can carry a neighbour's change. A missed hunk can go in with `git commit --fixup=<sha>` + `GIT_SEQUENCE_EDITOR=: git rebase -i --autosquash --autostash <base>`.
 - Untracked and not mine: `.claude/`, `docs/superpowers/`.
 - An Impeccable skill update (v4.3.1) is available. The user chose "not now".
