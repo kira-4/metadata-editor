@@ -52,9 +52,11 @@ typography:
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
     fontSize: "0.85em"
 rounded:
+  xs: "0.25rem"
   sm: "0.5rem"
   md: "0.75rem"
   lg: "1rem"
+  pill: "999px"
 spacing:
   xs: "0.5rem"
   sm: "0.75rem"
@@ -113,7 +115,7 @@ A quiet late-night workroom for cataloguing recordings. The room is deep navy, a
 
 The tool serves devotional content, so it stays calm. Density favours the review card: fields are full width, labels sit above inputs, and the primary action spans the card. Arabic RTL is the native direction. Latin fragments (paths, tokens, IDs, file extensions) are isolated islands inside it, never the other way round.
 
-Today the system mixes this calm base with a few louder habits inherited from earlier iterations: gradient fills on actions, gradient title text, hover lift on cards. They are recorded below as they are and flagged; the design pass decides each case.
+Every fill is solid. Teal confirm is the one saturated action on a card. The only gradient left is the brand mark, the app icon itself, beside the title. Nothing lifts or glows on hover. Sprint 4's design pass (B5–B9) removed the louder habits it inherited: gradient fills, gradient title text, hover lift, emoji icons.
 
 **Key Characteristics:**
 - Dark only, navy not black; depth from tonal steps and 1px seams.
@@ -195,9 +197,10 @@ Spacing follows the 0.5 / 0.75 / 1 / 1.5 / 2rem scale; card internals mostly use
 Nothing lifts on hover. Cards, album cards and buttons answer hover with a tonal step (Lamp Navy background or Signal Blue border); filled buttons brighten (`filter: brightness(1.08)`) and dim slightly when pressed. The old hover lift, confirm glow and card top bar were removed in B6.
 
 ### Shadow Vocabulary
+All of these are tokens in `style.css` (`--shadow-overlay`, `--shadow-dropdown`, `--focus-ring`), next to the signal washes (`--accent-wash`, `--success-wash`, `--warning-wash`, `--error-wash`, their `-edge` borders, `--accent-tint`, `--error-tint`) and `--scrim`.
 - **Overlay** (`0 12px 24px rgba(0,0,0,0.35)`): modals and floating panels.
 - **Dropdown** (`0 4px 16px rgba(0,0,0,0.35)`): suggestion lists.
-- **Focus ring** (`0 0 0 3px rgba(74,158,255,0.1)`): input focus, paired with a Signal Blue border.
+- **Focus ring** (`0 0 0 3px rgba(74,158,255,0.35)`; 0.1 was invisible on navy): input focus, paired with a Signal Blue border.
 
 ### Named Rules
 **The Flat-At-Rest Rule.** Surfaces don't cast shadows at rest. Only overlays float.
@@ -241,15 +244,15 @@ Gently rounded throughout: 0.5rem for controls (inputs, buttons, chips), 0.75rem
 
 ### Buttons
 - **Shape:** gently rounded (0.5rem); confirm is 0.75rem and full width.
-- **Primary:** Signal Blue fill, Night Ink text, 600 weight. Currently a 135° gradient to Signal Blue Light (flagged).
-- **Confirm:** Settled Teal fill (currently gradient to Settled Teal Deep, flagged), Night Ink text, 700 weight, full width at the bottom of the card.
+- **Primary:** solid Signal Blue fill, Night Ink text, 600 weight; hover brightens.
+- **Confirm:** solid Settled Teal fill, Night Ink text, 700 weight, full width at the bottom of the card.
 - **Secondary:** Shelf Navy fill, Seam border, Parchment text; hover Lamp Navy with a Signal Blue border.
 - **Quiet danger:** secondary button with Fault Red text; two-tap arm state gets a red border and a faint red wash.
 - **Disabled:** Shelf Navy fill, Margin text, reduced opacity.
 
 ### Chips (genre presets)
 - **Style:** Shelf Navy fill, 2px Seam border, 600 weight, centred; rows of three on phones.
-- **Selected:** Signal Blue fill (gradient today, flagged) with Night Ink text.
+- **Selected:** solid Signal Blue fill with Night Ink text.
 
 ### Cards / Containers
 - **Review card:** Archive Navy, 1rem corners, 1.5rem padding, 1px Seam border. Inner panels (destination preview, batch summary, rescan status) are Shelf Navy with 0.5rem corners.
@@ -262,7 +265,7 @@ Gently rounded throughout: 0.5rem for controls (inputs, buttons, chips), 0.75rem
 - **Disabled:** half opacity.
 
 ### Navigation
-- **Top bar:** Archive Navy panel holding the brand title (gradient text today, flagged) and three page links. The active link is a Signal Blue fill with Night Ink text. A red count badge sits on the queue link. On phones the brand stacks above an equal-width row of links.
+- **Top bar:** Archive Navy panel holding the brand: the app icon (`apple-touch-icon.png` at 2rem, 0.5rem corners) and the title in Parchment Text. Next to them are three page links. The active link is a Signal Blue fill with Night Ink text. A red count badge sits on the queue link. On phones the brand stacks above an equal-width row of links.
 - **Library tabs:** text tabs with a 3px Signal Blue underline when active.
 
 ### Review Card (signature)

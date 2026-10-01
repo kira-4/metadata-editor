@@ -1,6 +1,6 @@
 # Sprint 4 handoff
 
-**Date:** 2026-09-30 · **Plan:** [SPRINT_4_PLAN.md](SPRINT_4_PLAN.md) · **Paused at:** Track B, step **B9 (audit + polish)**: not started. B0–B8 are merged.
+**Date:** 2026-09-30 · **Plan:** [SPRINT_4_PLAN.md](SPRINT_4_PLAN.md) · **Status:** Sprint 4 is **complete**. Tracks A and B (B0–B9) are merged. The closing critique scored **28/40** (B1: 24/40). Its follow-ups are under Next.
 
 ## Done
 
@@ -88,6 +88,19 @@ Tests went from 123 to 161 (new: `test_batch_edit`, `test_rescan_status`, `test_
   - Tests: `test_static.py` adds gzip, gzip exclusions (a wrapped dummy app) and self-hosted font + cache headers → **164 passed**.
   - Measuring scripts: `.playwright-mcp/b8measure.cjs` (CDP throttling, two servers: `main` in a `git worktree` on :8092 and the branch on :8091) and `b8rows.cjs`.
 
+- **B9, audit + polish** (#57):
+  - **Solid fills everywhere.** Primary, confirm, confirm-all, the selected chip, the active nav and both artwork placeholders are solid. The only gradients left are the brand mark and the saving sweep.
+  - **Brand:** the app icon (`apple-touch-icon.png`, 180px source shown at 2rem) and a Parchment title replace 🎵 and the gradient text.
+  - **Icons:** an inline SVG (`.btn-icon`) replaces 🔄 on rescan. The loading lines no longer use the emoji and read «جارٍ التحميل…».
+  - **Flat-At-Rest:** the settings card and nav badge lost their shadows. Only the dropdowns, modal, selection bar and sticky library controls keep one.
+  - **Tokens:** signal washes and edges (`--accent/success/warning/error-wash`, `-edge`, `--accent-tint`, `--error-tint`), `--shadow-dropdown/overlay`, `--scrim`, `--glint`, `--sweep-light`, and radii `--radius-xs` and `--radius-pill` (added to the DESIGN.md frontmatter). The detector reports **0** findings (17 at the start of B6).
+  - **Focus ring:** 0.35 alpha (0.1 was invisible on navy).
+  - **Native controls:** `color-scheme: dark` makes the checkbox, select menus and scrollbars render dark.
+  - **Settings headings** are neutral (blue means "you can act"). The rescan button contents are centred.
+  - **Path fix:** `formatLibraryPath` keeps the dot outside the extension's LTR isolate. «مولد الإمام عليm4a.» now reads «m4a.مولد الإمام علي».
+  - The nav badge has an `aria-label` («N ملفات في الانتظار»).
+  - **Critique:** run with two isolated agents. Snapshot: `.impeccable/critique/2026-10-01T06-52-12Z__app-static-index-html.md`. Agent A got three things wrong (it said the ready bar was at the top, that there was no reduced-motion handling, and that settings labels were English-only); the snapshot records the corrections.
+
 ### Behaviour changes worth knowing
 - Changing the artist (in batch or single edit) no longer silently changes the album artist, which is the folder.
 - A genre tag already embedded in a downloaded file is now preselected on its card.
@@ -95,11 +108,13 @@ Tests went from 123 to 161 (new: `test_batch_edit`, `test_rescan_status`, `test_
 
 ## Next (in order)
 
-1. **B9, audit + polish:**
-   - Flatten all gradients to solid colours: title, nav pill, buttons, chips, `.btn-confirm-all`, `.artwork-placeholder`, `.album-artwork`.
-   - Replace the 🎵 in the nav brand.
-   - `.settings-card` still has a resting `box-shadow` (Flat-At-Rest Rule).
-   - Re-run `/impeccable critique` and compare with 24/40.
+Sprint 4 is done. These come from the closing critique, for the next sprint to pick from:
+1. **[P1] Needs-review card layout** (`/impeccable layout`): group identity (title, artists), destination (folder, path) and genre. Offer the last-used or channel genre first. Move each ✗ checklist chip next to its field.
+2. **[P1] Redundant text** (`/impeccable distill`): a long title appears in the title, the source line and the destination path. Show the source once (inside «التفاصيل التقنية»). Shorten the path to folder + file.
+3. **[P2] Delete under confirm** (`/impeccable harden`): demote it to a text action with space from confirm, or use an undo toast (deletes already go to trash).
+4. **[P2] Dead disabled confirm** (`/impeccable clarify`): a tap should focus the first missing field.
+5. **[P2] Throughput for 50-card sessions:** move focus to the next card after confirm, carry the genre over, and deep-link from the Telegram ping to its card.
+6. **[P3]:** explain ✓/○ and "ready" in the queue. Enlarge the «تعديل» chip. The token toggle is 36px tall (it sits inside the input).
 
 ### Known loose ends (not scheduled)
 - Batch-edit artist suggestions: the batch artist field is a plain `;`-separated input with no suggestions. A combobox that completes the segment after the last `;` would help «one spelling per artist». This is a feature, not scheduled.
