@@ -21,16 +21,36 @@ library_router = APIRouter(prefix="/api/library")
 
 
 # Request/Response models
+Text = Optional[str]
+TITLE_FIELD = Field(default=None, max_length=300)
+GENRE_FIELD = Field(default=None, max_length=200)
+YEAR_FIELD = Field(default=None, ge=1, le=9999)
+NUMBER_FIELD = Field(default=None, ge=1, le=999)
+
+
+def _reject_blank_required(model):
+    """Title and artist may be left out, but never set to blank."""
+    for name in ("title", "artist"):
+        value = getattr(model, name)
+        if name in model.model_fields_set and (value is None or not value.strip()):
+            raise ValueError(f"{name} cannot be empty")
+
+
 class UpdateTrackRequest(BaseModel):
-    """Request to update track metadata."""
-    title: Optional[str] = None
-    artist: Optional[str] = None
-    album: Optional[str] = None
-    album_artist: Optional[str] = None
-    genre: Optional[str] = None
-    year: Optional[int] = None
-    track_number: Optional[int] = None
-    disc_number: Optional[int] = None
+    """Single track edit. Omitted fields are kept; a field sent as null or "" is cleared."""
+    title: Text = TITLE_FIELD
+    artist: Text = TITLE_FIELD
+    album: Text = TITLE_FIELD
+    album_artist: Text = TITLE_FIELD
+    genre: Text = GENRE_FIELD
+    year: Optional[int] = YEAR_FIELD
+    track_number: Optional[int] = NUMBER_FIELD
+    disc_number: Optional[int] = NUMBER_FIELD
+
+    @model_validator(mode="after")
+    def _check_required(self):
+        _reject_blank_required(self)
+        return self
 
 
 MAX_BATCH_SIZE = 1000
@@ -40,20 +60,17 @@ BATCH_SET_FIELDS = ("title", "artist", "album", "album_artist", "genre", "year")
 class BatchUpdateRequest(BaseModel):
     """Batch edit: fields left None are kept, fields given are set, names in clear_fields are removed."""
     track_ids: List[int] = Field(..., min_length=1, max_length=MAX_BATCH_SIZE)
-    title: Optional[str] = None
-    artist: Optional[str] = None
-    album: Optional[str] = None
-    album_artist: Optional[str] = None
-    genre: Optional[str] = None
-    year: Optional[int] = None
+    title: Text = TITLE_FIELD
+    artist: Text = TITLE_FIELD
+    album: Text = TITLE_FIELD
+    album_artist: Text = TITLE_FIELD
+    genre: Text = GENRE_FIELD
+    year: Optional[int] = YEAR_FIELD
     clear_fields: List[Literal["album", "album_artist", "genre", "year"]] = []
 
     @model_validator(mode="after")
     def _check_fields(self):
-        for name in ("title", "artist"):
-            value = getattr(self, name)
-            if value is not None and not value.strip():
-                raise ValueError(f"{name} cannot be empty")
+        _reject_blank_required(self)
         both = [f for f in self.clear_fields if getattr(self, f) is not None]
         if both:
             raise ValueError(f"Fields both set and cleared: {', '.join(both)}")
@@ -221,36 +238,25 @@ def update_track(
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="Track file not found")
         
-        # Build update kwargs
-        update_kwargs = {}
-        if request.title is not None:
-            update_kwargs['title'] = request.title
-        if request.artist is not None:
-            update_kwargs['artist'] = request.artist
-        if request.album is not None:
-            update_kwargs['album'] = request.album
-        if request.album_artist is not None:
-            update_kwargs['album_artist'] = request.album_artist
-        elif request.artist is not None:
-            # Sync album_artist with artist if artist is updated but album_artist is not
-            update_kwargs['album_artist'] = request.artist
-        if request.genre is not None:
-            update_kwargs['genre'] = request.genre
-        if request.year is not None:
-            update_kwargs['year'] = request.year
-        if request.track_number is not None:
-            update_kwargs['track_number'] = request.track_number
-        if request.disc_number is not None:
-            update_kwargs['disc_number'] = request.disc_number
-        
+        # Sent with a value → set; sent as null/"" → clear; not sent → keep
+        update_kwargs, clear = {}, []
+        for name in request.model_fields_set:
+            value = getattr(request, name)
+            if value is None or (isinstance(value, str) and not value.strip()):
+                clear.append(name)
+            else:
+                update_kwargs[name] = value.strip() if isinstance(value, str) else value
+        if not update_kwargs and not clear:
+            raise HTTPException(status_code=400, detail="Nothing to change")
+
         # Update file metadata
-        success = metadata_processor.update_metadata_safe(file_path, **update_kwargs)
+        success = metadata_processor.update_metadata_safe(file_path, clear=clear, **update_kwargs)
         
         if not success:
             raise HTTPException(status_code=500, detail="Failed to update file metadata")
         
         # Update database
-        updated_track = LibraryManager.update_track_metadata(db, track_id, **update_kwargs)
+        updated_track = LibraryManager.update_track_metadata(db, track_id, clear=clear, **update_kwargs)
         
         return {
             "success": True,
