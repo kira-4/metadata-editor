@@ -9,7 +9,7 @@ colors:
   seam: "#2a2a3e"
   parchment-text: "#e8e8e8"
   faded-text: "#a0a0a0"
-  margin-text: "#6b6b6b"
+  margin-text: "#959bb0"
   signal-blue: "#4a9eff"
   signal-blue-light: "#6bb1ff"
   signal-blue-deep: "#2d7dd2"
@@ -18,14 +18,14 @@ colors:
   caution-amber: "#ffb627"
   fault-red: "#ff5757"
 typography:
-  headline:
+  display:
     fontFamily: "Cairo, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     fontSize: "1.5rem"
-    fontWeight: 700
+    fontWeight: 600
     lineHeight: 1.6
   title:
     fontFamily: "Cairo, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "1rem"
+    fontSize: "1.0625rem"
     fontWeight: 600
     lineHeight: 1.6
   body:
@@ -35,8 +35,18 @@ typography:
     lineHeight: 1.6
   label:
     fontFamily: "Cairo, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "0.85rem"
+    fontSize: "0.875rem"
+    fontWeight: 600
+    lineHeight: 1.6
+  caption:
+    fontFamily: "Cairo, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+    fontSize: "0.8125rem"
     fontWeight: 400
+    lineHeight: 1.6
+  micro:
+    fontFamily: "Cairo, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+    fontSize: "0.6875rem"
+    fontWeight: 700
     lineHeight: 1.6
   mono:
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
@@ -131,7 +141,7 @@ A cool, low-light palette: four navy surface steps, three grey text tones, and a
 - **Shelf Navy** (`shelf-navy`): inputs, chips, secondary buttons, summary panels inside cards.
 - **Lamp Navy** (`lamp-navy`): hover surface.
 - **Seam** (`seam`): every 1px border and divider.
-- **Parchment Text** (`parchment-text`): primary text. **Faded Text** (`faded-text`): labels and meta. **Margin Text** (`margin-text`): placeholders, hints, idle states.
+- **Parchment Text** (`parchment-text`): primary text. **Faded Text** (`faded-text`): labels and meta. **Margin Text** (`margin-text`, `#959bb0`): placeholders, hints, idle states. It measures ≥5.1:1 on all four navies; the old `#6b6b6b` failed AA on every surface.
 
 ### Named Rules
 **The One Meaning Rule.** Each signal colour means one thing. Blue is "you can act", teal is "done", amber is "look at this", red is "failed or destructive". Never use teal for a neutral action or blue for success.
@@ -146,12 +156,24 @@ A cool, low-light palette: four navy surface steps, three grey text tones, and a
 **Character:** Cairo is a geometric Arabic sans with a matching Latin, legible at small sizes on a phone and neutral enough for religious titles.
 
 ### Hierarchy
-- **Headline** (700, 1.5rem): brand title in the nav, page titles.
-- **Title** (600, 1rem): card field values in inputs, list item titles, buttons, tabs.
-- **Body** (400, 1rem, line-height 1.6): running text and inputs.
-- **Label** (400, 0.85rem): field labels, list meta, source line, hints (0.8rem).
+Every `font-size` in `style.css` is a role token (`--text-*`); there are no literal sizes. Line height is 1.6 throughout, which Arabic needs for its ascenders and dots.
+
+- **Display** (`--text-display`, 600, 1.5rem; **1.25rem at ≤600px**): page headings (قائمة الانتظار, مكتبة الصوتيات, الإعدادات), the empty-queue heading, the nav brand (700).
+- **Title** (`--text-title`, 600, 1.0625rem): the card title textarea (the field under review, so it outranks every other field), section headings in Settings, the edit dialog and the detail view.
+- **Body** (`--text-body`, 400, 1rem): inputs, buttons, tabs on desktop, list item titles (600). This is the floor for anything typed into.
+- **Label** (`--text-label`, 600, 0.875rem, Faded Text): field labels (`.field-label`, `.genre-label` and Settings labels share it), genre chips, secondary list lines, notices and alerts (400 for running text).
+- **Caption** (`--text-caption`, 400, 0.8125rem): destination paths, the source line on phones, hints, the Latin hint after a label, field status, technical details.
+- **Micro** (`--text-micro`, 700, 0.6875rem): the nav count badge only.
+
+Icon characters (♪ ✓ ×) use a separate glyph scale (`--glyph-sm/md/lg/xl`: 1.25/1.5/2/3rem), so icon sizes never borrow a reading role.
+
+Roles differ on more than size: Title is 600 in Parchment Text, Label is 600 in Faded Text one step smaller, and the values in inputs are 400. A label and its value are told apart by weight and tone even where their sizes are close.
 
 ### Named Rules
+**The No Fake Italic Rule.** Cairo has no italic, so `font-style: italic` renders a synthesized oblique. Mark secondary text with tone or size instead.
+
+**The Steady Digits Rule.** Digits stay Western (they sit next to Latin paths and IDs). Counts, the nav badge, pagination, library stats, rescan progress and similarity scores use `font-variant-numeric: tabular-nums`, so they don't jitter while updating.
+
 **The Isolated Latin Rule.** Paths, file extensions, tokens and chat IDs are wrapped in `<bdi>` or set `dir="ltr"`, so the bidi algorithm never reorders them inside Arabic prose.
 
 ## Layout
