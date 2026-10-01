@@ -3,7 +3,7 @@ import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Iterable, Optional, List
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
+from sqlalchemy import create_engine, Boolean, Column, Integer, String, DateTime, Text
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 from app.config import config
@@ -113,6 +113,7 @@ class TelegramSettings(Base):
     bot_token = Column(Text, nullable=True)
     chat_id = Column(Text, nullable=True)  # supports negative supergroup IDs like -100...
     message_thread_id = Column(Integer, nullable=True)  # optional topic thread
+    enabled = Column(Boolean, nullable=False, default=True, server_default="1")  # off = keep creds, send nothing
     updated_at = Column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
@@ -191,6 +192,13 @@ def init_db():
             conn.commit()
             import logging
             logging.getLogger(__name__).info("Added album_artist column to database")
+
+        telegram_columns = [col['name'] for col in inspector.get_columns('telegram_settings')]
+        if 'enabled' not in telegram_columns:
+            conn.execute(text('ALTER TABLE telegram_settings ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1'))
+            conn.commit()
+            import logging
+            logging.getLogger(__name__).info("Added enabled column to telegram_settings")
 
 
 def get_db() -> Session:
@@ -906,6 +914,7 @@ class SettingsManager:
         chat_id: Optional[str] = None,
         message_thread_id: Optional[int] = None,
         update_bot_token: bool = True,
+        enabled: Optional[bool] = None,
     ) -> TelegramSettings:
         """
         Update the singleton Telegram settings row.
@@ -921,8 +930,23 @@ class SettingsManager:
 
         settings.chat_id = chat_id
         settings.message_thread_id = message_thread_id
+        if enabled is not None:
+            settings.enabled = enabled
         settings.updated_at = datetime.now(timezone.utc)
 
+        db.commit()
+        db.refresh(settings)
+        return settings
+
+    @staticmethod
+    def clear_telegram_settings(db: Session) -> TelegramSettings:
+        """Disconnect: forget the token, chat and topic."""
+        settings = SettingsManager.get_telegram_settings(db)
+        settings.bot_token = None
+        settings.chat_id = None
+        settings.message_thread_id = None
+        settings.enabled = True
+        settings.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(settings)
         return settings
