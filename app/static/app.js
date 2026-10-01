@@ -2163,6 +2163,7 @@ function setupLibraryListeners() {
                 logEvent('warn', `Main view #${libraryState.currentView}View not found`);
             }
             libraryState.detailContext = null;
+            libraryState.loadSeq = (libraryState.loadSeq || 0) + 1;
             if (libraryState.stale) {
                 libraryState.stale = false;
                 loadLibraryStats();
@@ -2801,15 +2802,43 @@ function handleLibraryNav(event) {
 document.addEventListener('click', handleLibraryNav);
 document.addEventListener('keydown', handleLibraryNav);
 
+// After an edit, reload what the user is looking at (detail identity, filter, page),
+// not the top-level list. The main list is marked stale and reloads on the way back.
+async function refreshLibraryContext() {
+    loadLibraryStats();
+    const ctx = libraryState.detailContext;
+    if (!ctx) return loadViewData();
+
+    libraryState.stale = true;
+    if (ctx.type === 'artist') {
+        await viewArtistAlbums(encodeURIComponent(ctx.name), false);
+    } else if (ctx.type === 'album') {
+        await viewAlbumTracks(encodeURIComponent(ctx.name), false, ctx.albumArtist);
+    } else if (ctx.type === 'genre') {
+        await viewGenreTracks(encodeURIComponent(ctx.name), false);
+    } else {
+        return;
+    }
+
+    // The edit moved every track out of this album/genre: step back instead of showing an empty page
+    const now = libraryState.detailContext;
+    if (now && now.type === ctx.type && now.name === ctx.name
+        && ['album', 'genre'].includes(ctx.type) && libraryState.currentData.tracks.length === 0) {
+        document.getElementById('backBtn').click();
+    }
+}
+
 // View Artist Albums
 async function viewArtistAlbums(artistName, pushToStack = true) {
     const name = decodeURIComponent(artistName);
+    const requestSeq = libraryState.loadSeq = (libraryState.loadSeq || 0) + 1;
 
     try {
         const response = await fetch(`/api/library/albums?artist=${encodeURIComponent(name)}`);
         if (!response.ok) throw new Error('Failed to load albums');
 
         const data = await response.json();
+        if (requestSeq !== libraryState.loadSeq) return;  // a newer view was requested
 
         if (pushToStack) {
             libraryState.navigationStack.push(null); // back leads to main list
@@ -2868,6 +2897,7 @@ function injectSelectAlbumButton(tracks) {
 // View Album Tracks
 async function viewAlbumTracks(albumName, pushToStack = true, albumArtist) {
     const name = decodeURIComponent(albumName);
+    const requestSeq = libraryState.loadSeq = (libraryState.loadSeq || 0) + 1;
 
     try {
         // Album identity = name + album artist, so same-named albums don't mix
@@ -2877,6 +2907,7 @@ async function viewAlbumTracks(albumName, pushToStack = true, albumArtist) {
         if (!response.ok) throw new Error('Failed to load tracks');
 
         const data = await response.json();
+        if (requestSeq !== libraryState.loadSeq) return;
 
         if (pushToStack) {
             // If we came from an artist's album list, save that context for back navigation
@@ -2886,7 +2917,7 @@ async function viewAlbumTracks(albumName, pushToStack = true, albumArtist) {
                 libraryState.navigationStack.push(null);
             }
         }
-        libraryState.detailContext = {type: 'album', name: name};
+        libraryState.detailContext = {type: 'album', name: name, albumArtist};
         libraryState.currentData.tracks = data.tracks; // Store for select all
         
         document.querySelectorAll('.view-content').forEach(v => v.classList.remove('active'));
@@ -2930,12 +2961,14 @@ function selectAllAlbumTracks(tracks) {
 // View Genre Tracks
 async function viewGenreTracks(genreName, pushToStack = true) {
     const name = decodeURIComponent(genreName);
+    const requestSeq = libraryState.loadSeq = (libraryState.loadSeq || 0) + 1;
 
     try {
         const response = await fetch(`/api/library/tracks?genre=${encodeURIComponent(name)}&limit=500`);
         if (!response.ok) throw new Error('Failed to load tracks');
 
         const data = await response.json();
+        if (requestSeq !== libraryState.loadSeq) return;
 
         if (pushToStack) {
             libraryState.navigationStack.push(null);
@@ -3285,7 +3318,7 @@ async function handleSingleEdit() {
         if (!response.ok) throw new Error('Update failed');
         
         closeEditModal();
-        loadViewData(); // Refresh view
+        refreshLibraryContext();
         
     } catch (error) {
         logEvent('error', 'Error updating track', {trackId, error: error.message});
@@ -3341,7 +3374,7 @@ async function handleBatchEdit() {
             renderBatchSummary();
             document.getElementById('batchSummary').scrollIntoView({block: 'center'});
         }
-        loadViewData();
+        refreshLibraryContext();
         
     } catch (error) {
         logEvent('error', 'Error in batch update', {error: error.message});
@@ -3409,8 +3442,7 @@ async function pollRescanStatus(watching = true) {
                 if (!document.getElementById('rescanBtn').disabled) el.style.display = 'none';
             }, 8000);
         }
-        await loadLibraryStats();
-        await loadViewData();
+        await refreshLibraryContext();
     } catch (error) {
         logEvent('error', 'Error polling rescan status', {error: error.message});
         setRescanBusy(false);
