@@ -37,15 +37,6 @@ const artistComboboxState = new Map(); // rowId -> combobox state
 const artistRowsMap = new Map(); // itemId -> array of artist strings
 const artistDraftValues = new Map(); // itemId -> in-progress input value (joined artists)
 const titleDraftValues = new Map(); // itemId -> in-progress title input value
-const libraryArtistComboboxState = {
-    isOpen: false,
-    isLoading: false,
-    suggestions: [],
-    canCreate: false,
-    highlightedIndex: -1,
-    requestToken: 0,
-    debounceTimer: null
-};
 
 function timestampNow() {
     return new Date().toISOString();
@@ -2011,270 +2002,6 @@ function rerenderActiveTrackContext() {
     }
 }
 
-function resetLibraryArtistComboboxState() {
-    clearTimeout(libraryArtistComboboxState.debounceTimer);
-    libraryArtistComboboxState.requestToken += 1;
-    libraryArtistComboboxState.isOpen = false;
-    libraryArtistComboboxState.isLoading = false;
-    libraryArtistComboboxState.suggestions = [];
-    libraryArtistComboboxState.canCreate = false;
-    libraryArtistComboboxState.highlightedIndex = -1;
-    renderLibraryArtistSuggestions();
-}
-
-function getLibraryArtistOptions(inputValue) {
-    const options = (libraryArtistComboboxState.suggestions || []).map(suggestion => ({
-        type: 'existing',
-        id: suggestion.id,
-        name: suggestion.name,
-        score: Number(suggestion.score || 0)
-    }));
-
-    const trimmedInput = String(inputValue || '').trim();
-    if (libraryArtistComboboxState.canCreate && trimmedInput.length > 0) {
-        const normalizedInput = normalizeArtistClient(trimmedInput);
-        const hasEquivalent = options.some(option => normalizeArtistClient(option.name) === normalizedInput);
-        if (!hasEquivalent) {
-            options.push({
-                type: 'create',
-                id: null,
-                name: trimmedInput,
-                score: 0
-            });
-        }
-    }
-
-    return options;
-}
-
-function renderLibraryArtistSuggestions() {
-    const input = document.getElementById('batchArtist');
-    const suggestionsEl = document.getElementById('libraryArtistSuggestions');
-    const toggleBtn = document.getElementById('libraryArtistDropdownToggle');
-    if (!input || !suggestionsEl || !toggleBtn) return;
-
-    if (!libraryArtistComboboxState.isOpen) {
-        suggestionsEl.classList.remove('show');
-        suggestionsEl.innerHTML = '';
-        input.setAttribute('aria-expanded', 'false');
-        toggleBtn.classList.remove('open');
-        return;
-    }
-
-    suggestionsEl.classList.add('show');
-    input.setAttribute('aria-expanded', 'true');
-    toggleBtn.classList.add('open');
-
-    if (libraryArtistComboboxState.isLoading) {
-        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">جارٍ البحث…</div>';
-        return;
-    }
-
-    const options = getLibraryArtistOptions(input.value);
-    if (options.length === 0) {
-        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">لا يوجد اسم مشابه في المكتبة</div>';
-        return;
-    }
-
-    if (
-        libraryArtistComboboxState.highlightedIndex < 0 ||
-        libraryArtistComboboxState.highlightedIndex >= options.length
-    ) {
-        libraryArtistComboboxState.highlightedIndex = 0;
-    }
-
-    suggestionsEl.innerHTML = options.map((option, index) => `
-        <div
-            class="artist-suggestion-item ${index === libraryArtistComboboxState.highlightedIndex ? 'active' : ''} ${option.type === 'create' ? 'create-option' : ''}"
-            role="option"
-            aria-selected="${index === libraryArtistComboboxState.highlightedIndex}"
-            data-index="${index}"
-        >
-            <span class="artist-suggestion-name">
-                ${option.type === 'create' ? `اسم جديد غير موجود في المكتبة: ${escapeHtml(option.name)}` : escapeHtml(option.name)}
-            </span>
-            ${option.type === 'existing' ? formatArtistScore(option.score) : ''}
-        </div>
-    `).join('');
-
-    suggestionsEl.querySelectorAll('.artist-suggestion-item').forEach(optionEl => {
-        optionEl.addEventListener('mousedown', event => {
-            event.preventDefault();
-        });
-        optionEl.addEventListener('click', () => {
-            const optionIndex = Number(optionEl.dataset.index);
-            const selectedOption = options[optionIndex];
-            if (selectedOption) {
-                selectLibraryArtistOption(selectedOption);
-            }
-        });
-    });
-}
-
-function closeLibraryArtistDropdown() {
-    libraryArtistComboboxState.isOpen = false;
-    libraryArtistComboboxState.highlightedIndex = -1;
-    renderLibraryArtistSuggestions();
-}
-
-async function requestLibraryArtistSuggestions(query) {
-    libraryArtistComboboxState.requestToken += 1;
-    const currentToken = libraryArtistComboboxState.requestToken;
-    libraryArtistComboboxState.isLoading = true;
-    renderLibraryArtistSuggestions();
-
-    try {
-        const data = await fetchArtistSuggestions(query, ARTIST_SUGGEST_LIMIT);
-        if (libraryArtistComboboxState.requestToken !== currentToken) return;
-
-        libraryArtistComboboxState.suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
-        libraryArtistComboboxState.canCreate = Boolean(data.canCreate);
-
-        if (
-            query &&
-            libraryArtistComboboxState.suggestions.length > 0 &&
-            Number(libraryArtistComboboxState.suggestions[0].score || 0) < ARTIST_CREATE_THRESHOLD
-        ) {
-            libraryArtistComboboxState.canCreate = true;
-        }
-
-        libraryArtistComboboxState.highlightedIndex =
-            libraryArtistComboboxState.suggestions.length > 0 ? 0 : -1;
-    } catch (error) {
-        logEvent('warn', 'Library artist suggestion lookup failed', {error: error.message});
-        libraryArtistComboboxState.suggestions = [];
-        libraryArtistComboboxState.canCreate = false;
-        libraryArtistComboboxState.highlightedIndex = -1;
-    } finally {
-        if (libraryArtistComboboxState.requestToken === currentToken) {
-            libraryArtistComboboxState.isLoading = false;
-            renderLibraryArtistSuggestions();
-        }
-    }
-}
-
-function queueLibraryArtistSuggestions(query) {
-    clearTimeout(libraryArtistComboboxState.debounceTimer);
-    libraryArtistComboboxState.debounceTimer = setTimeout(() => {
-        requestLibraryArtistSuggestions(query);
-    }, ARTIST_SUGGEST_DEBOUNCE_MS);
-}
-
-function openLibraryArtistDropdown() {
-    const modal = document.getElementById('batchEditModal');
-    if (!modal || modal.style.display !== 'flex') return;
-    libraryArtistComboboxState.isOpen = true;
-    renderLibraryArtistSuggestions();
-    const input = document.getElementById('batchArtist');
-    queueLibraryArtistSuggestions(input ? input.value : '');
-}
-
-function navigateLibraryArtistSuggestions(direction) {
-    const input = document.getElementById('batchArtist');
-    if (!input) return;
-    const options = getLibraryArtistOptions(input.value);
-    if (options.length === 0) return;
-
-    if (libraryArtistComboboxState.highlightedIndex < 0) {
-        libraryArtistComboboxState.highlightedIndex = 0;
-    } else {
-        libraryArtistComboboxState.highlightedIndex =
-            (libraryArtistComboboxState.highlightedIndex + direction + options.length) % options.length;
-    }
-    renderLibraryArtistSuggestions();
-}
-
-function selectLibraryArtistOption(option) {
-    const input = document.getElementById('batchArtist');
-    if (!input || !option) return;
-    input.value = option.name;
-    input.dispatchEvent(new Event('input', {bubbles: true}));
-    closeLibraryArtistDropdown();
-}
-
-function handleLibraryArtistInputKeydown(event) {
-    const input = document.getElementById('batchArtist');
-    if (!input) return;
-    const options = getLibraryArtistOptions(input.value);
-
-    if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        if (!libraryArtistComboboxState.isOpen) {
-            openLibraryArtistDropdown();
-        } else {
-            navigateLibraryArtistSuggestions(1);
-        }
-        return;
-    }
-
-    if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        if (!libraryArtistComboboxState.isOpen) {
-            openLibraryArtistDropdown();
-        } else {
-            navigateLibraryArtistSuggestions(-1);
-        }
-        return;
-    }
-
-    if ((event.key === 'Enter' || event.key === 'Tab') && libraryArtistComboboxState.isOpen && options.length > 0) {
-        const optionIndex = libraryArtistComboboxState.highlightedIndex >= 0
-            ? libraryArtistComboboxState.highlightedIndex
-            : 0;
-        const option = options[optionIndex];
-        if (option) {
-            event.preventDefault();
-            selectLibraryArtistOption(option);
-        }
-        return;
-    }
-
-    if (event.key === 'Escape' && libraryArtistComboboxState.isOpen) {
-        event.preventDefault();
-        closeLibraryArtistDropdown();
-    }
-}
-
-function setupLibraryArtistCombobox() {
-    if (window.libraryArtistComboboxAttached) return;
-
-    const input = document.getElementById('batchArtist');
-    const toggleBtn = document.getElementById('libraryArtistDropdownToggle');
-    if (!input || !toggleBtn) return;
-
-    input.addEventListener('focus', () => {
-        openLibraryArtistDropdown();
-    });
-
-    input.addEventListener('click', () => {
-        openLibraryArtistDropdown();
-    });
-
-    input.addEventListener('input', () => {
-        queueLibraryArtistSuggestions(input.value);
-    });
-
-    input.addEventListener('keydown', handleLibraryArtistInputKeydown);
-
-    input.addEventListener('blur', () => {
-        setTimeout(() => {
-            closeLibraryArtistDropdown();
-        }, 120);
-    });
-
-    toggleBtn.addEventListener('click', event => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (libraryArtistComboboxState.isOpen) {
-            closeLibraryArtistDropdown();
-        } else {
-            openLibraryArtistDropdown();
-        }
-    });
-
-    window.libraryArtistComboboxAttached = true;
-}
-
 // Router
 function initRouter() {
     function handleRoute() {
@@ -2452,14 +2179,6 @@ function setupLibraryListeners() {
         cancelBatchEdit.addEventListener('click', closeEditModal);
     }
 
-    setupLibraryArtistCombobox();
-
-    document.addEventListener('click', event => {
-        if (!event.target.closest('#libraryEditArtistCombobox')) {
-            closeLibraryArtistDropdown();
-        }
-    });
-    
     // Back button
     const backBtn = document.getElementById('backBtn');
     if (backBtn) backBtn.addEventListener('click', () => {
@@ -2516,17 +2235,13 @@ function setupLibraryListeners() {
     // Global Key Listener (Escape)
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (libraryArtistComboboxState.isOpen) {
-                closeLibraryArtistDropdown();
-            } else if (document.getElementById('batchEditModal').style.display === 'flex') {
+            if (document.getElementById('batchEditModal').style.display === 'flex') {
                 closeEditModal();
             } else if (document.getElementById('detailView').style.display === 'block') {
                 document.getElementById('backBtn').click();
             }
         }
     });
-
-    updateMobileFilterControls();
 }
 
 // Load Library Stats
@@ -3463,7 +3178,6 @@ function renderBatchSummary() {
 function showEditModal(mode, trackData = null) {
     libraryState.editMode = mode;
     libraryState.editTrackData = trackData;
-    resetLibraryArtistComboboxState();
     
     // Reset form
     document.getElementById('batchEditForm').reset();
@@ -3577,7 +3291,6 @@ function showEditModal(mode, trackData = null) {
 
 // Close Edit Modal
 function closeEditModal() {
-    resetLibraryArtistComboboxState();
     document.getElementById('batchEditModal').style.display = 'none';
     libraryState.editMode = null;
     libraryState.editTrackData = null;
