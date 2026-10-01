@@ -32,6 +32,7 @@ class FileScanner:
         """Initialize scanner."""
         self.running = False
         self.thread = None
+        self._last_trash_purge = None  # monotonic time of the last purge
     
     @staticmethod
     def parse_filename(filename: str) -> Optional[Tuple[str, str]]:
@@ -174,7 +175,11 @@ class FileScanner:
         try:
             # Compute stable file identifier
             file_identifier = self.compute_file_identifier(file_path)
-            
+
+            # A dismissed file back in /incoming was restored from trash: import it again
+            if DatabaseManager.forget_dismissed(db, file_identifier, str(file_path)):
+                logger.info(f"Re-importing restored file: {file_path}")
+
             # Check if already processed by identifier
             existing = DatabaseManager.get_item_by_identifier(db, file_identifier)
             if existing:
@@ -379,6 +384,21 @@ class FileScanner:
         finally:
             db.close()
     
+    def purge_trash_if_due(self, interval_seconds: float = 3600):
+        """Purge expired trash at most once per interval."""
+        if self._last_trash_purge is not None and time.monotonic() - self._last_trash_purge < interval_seconds:
+            return
+        self._last_trash_purge = time.monotonic()
+        db = SessionLocal()
+        try:
+            purged = DatabaseManager.purge_expired_trash(db)
+            if purged:
+                logger.info(f"Purged {purged} expired item(s) from trash")
+        except Exception as e:
+            logger.warning(f"Trash purge failed: {e}")
+        finally:
+            db.close()
+
     def scan_loop(self):
         """Main scanning loop."""
         logger.info("Starting file scanner loop")
@@ -394,7 +414,9 @@ class FileScanner:
                     if not self.running:
                         break
                     self.process_file(file_path)
-                
+
+                self.purge_trash_if_due()
+
                 # Wait before next scan
                 time.sleep(config.SCAN_INTERVAL_SECONDS)
                 
