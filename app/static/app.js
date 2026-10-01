@@ -1513,13 +1513,15 @@ async function refreshDestinationPreview(itemId) {
     }
 }
 
-// Arabic path segments read right-to-left; each is isolated and the extension kept as one LTR unit
+// Arabic path segments read right-to-left; each is isolated and the extension kept as one LTR unit.
+// The dot stays outside the extension's isolate so it sits between name and extension
+// («mp3.العنوان»); inside it, the dot ended up on the far side («.mp3العنوان»).
 function formatLibraryPath(relativePath) {
     const parts = relativePath.split('/').filter(Boolean);
     return parts.map((part, i) => {
         const dot = i === parts.length - 1 ? part.lastIndexOf('.') : -1;
         return dot > 0
-            ? `<bdi>${escapeHtml(part.slice(0, dot))}<bdi dir="ltr">${escapeHtml(part.slice(dot))}</bdi></bdi>`
+            ? `<bdi>${escapeHtml(part.slice(0, dot))}.<bdi dir="ltr">${escapeHtml(part.slice(dot + 1))}</bdi></bdi>`
             : `<bdi>${escapeHtml(part)}</bdi>`;
     }).join(' <span class="path-sep">/</span> ');
 }
