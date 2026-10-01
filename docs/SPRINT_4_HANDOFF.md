@@ -1,6 +1,6 @@
 # Sprint 4 handoff
 
-**Date:** 2026-09-30 · **Plan:** [SPRINT_4_PLAN.md](SPRINT_4_PLAN.md) · **Paused at:** Track B, step **B8 (optimize)**: not started. B0–B7 are merged.
+**Date:** 2026-09-30 · **Plan:** [SPRINT_4_PLAN.md](SPRINT_4_PLAN.md) · **Paused at:** Track B, step **B9 (audit + polish)**: not started. B0–B8 are merged.
 
 ## Done
 
@@ -80,6 +80,14 @@ Tests went from 123 to 161 (new: `test_batch_edit`, `test_rescan_status`, `test_
   - **Empty queue:** `showEmptyState()` (used by `renderItems` and `updatePendingCountUI`) has two states. **Idle**: «لا ملفات في الانتظار», an inline SVG tray in muted grey (it replaced the 📂). **Cleared** (`.is-cleared`, once `confirmedFolders` is non-empty): «اكتملت المراجعة», how many files went to the library since the page was opened, an «افتح المكتبة» link, and a Settled Teal check in the tray. When the last card's exit finishes, the state fades in and the check draws once (`.is-arriving`, removed after 600ms). It does not replay on route changes. Under reduced motion: fade only. `role="status"`.
   - **Confirm-all summary:** `describeFolders()` names the destination folders: «نُقل 3 ملفات إلى «هيئة الزهراء» و«قناة المواليد».» It shows one folder as «إلى مجلد «…»», 4+ as a count (`FOLDER_FORMS_GENITIVE`, since it follows «إلى»). The alert stays 8s. A single confirm names its folder too. `confirmItem` reads `new_path` from the confirm response (`{album artist}/{title}/{file}`) into `confirmedFolders`. No backend change.
 
+- **B8, optimize** (#56). Measured cold, Slow 4G, 390px, `main` against the branch: **295 → 118 KB** transferred, **FCP 866 → 676 ms**, **3 → 1** hosts.
+  - **Cairo self-hosted** (decision: yes). The files are Google's own v31 variable subsets, byte for byte: `fonts/cairo-arabic-v31.woff2` (30 KB, preloaded) and `cairo-latin-v31.woff2` (33 KB, loads only for Latin text). Subsetting further wouldn't save much. What we gain is that the render-blocking third-party stylesheet is gone and no request reaches Google. `OFL.txt` sits next to them. The `/fonts/*.woff2` files get `Cache-Control: immutable`, and everything else is still `no-cache` + ETag.
+  - **Gzip:** `GZipExceptStreams` in `main.py` (app.js 152 → 36 KB, style.css 55 → 11 KB, and JSON lists). It skips `/api/events`, because gzip buffers SSE; artwork; and woff2/png/jpg.
+  - **Artist rows:** add/remove used to replace the whole card with `outerHTML`. That dropped the status line, the destination preview and typed custom genre, and **left confirm disabled** (no `updateConfirmButton`). Now `renderArtistRows()` rebuilds only `.multi-artist-list` (`renderArtistRowsHtml`, `attachArtistRowListeners`), calls `updateConfirmButton`, and keeps focus on the new or neighbouring row.
+  - **Combobox state** is keyed by row id (`"12_artist_0"`), but `cleanupArtistState` compared those keys with item ids, so every cleanup wiped all of it. That's fixed. `closeArtistDropdown` no longer recreates state for a removed row.
+  - Tests: `test_static.py` adds gzip, gzip exclusions (a wrapped dummy app) and self-hosted font + cache headers → **164 passed**.
+  - Measuring scripts: `.playwright-mcp/b8measure.cjs` (CDP throttling, two servers: `main` in a `git worktree` on :8092 and the branch on :8091) and `b8rows.cjs`.
+
 ### Behaviour changes worth knowing
 - Changing the artist (in batch or single edit) no longer silently changes the album artist, which is the folder.
 - A genre tag already embedded in a downloaded file is now preselected on its card.
@@ -87,8 +95,7 @@ Tests went from 123 to 161 (new: `test_batch_edit`, `test_rescan_status`, `test_
 
 ## Next (in order)
 
-1. **B8, optimize:** Cairo is loaded from Google Fonts (decide whether to self-host a subset). Also cut DOM work on SSE updates: `addArtistRow`/`removeArtistRow` re-render the whole card.
-2. **B9, audit + polish:**
+1. **B9, audit + polish:**
    - Flatten all gradients to solid colours: title, nav pill, buttons, chips, `.btn-confirm-all`, `.artwork-placeholder`, `.album-artwork`.
    - Replace the 🎵 in the nav brand.
    - `.settings-card` still has a resting `box-shadow` (Flat-At-Rest Rule).
