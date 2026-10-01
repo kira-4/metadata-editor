@@ -114,6 +114,7 @@ class TelegramSettings(Base):
     chat_id = Column(Text, nullable=True)  # supports negative supergroup IDs like -100...
     message_thread_id = Column(Integer, nullable=True)  # optional topic thread
     enabled = Column(Boolean, nullable=False, default=True, server_default="1")  # off = keep creds, send nothing
+    app_url = Column(Text, nullable=True)  # where the operator opens the app; messages link to their card
     updated_at = Column(
         DateTime,
         default=lambda: datetime.now(timezone.utc),
@@ -199,6 +200,11 @@ def init_db():
             conn.commit()
             import logging
             logging.getLogger(__name__).info("Added enabled column to telegram_settings")
+        if 'app_url' not in telegram_columns:
+            conn.execute(text('ALTER TABLE telegram_settings ADD COLUMN app_url TEXT'))
+            conn.commit()
+            import logging
+            logging.getLogger(__name__).info("Added app_url column to telegram_settings")
 
 
 def get_db() -> Session:
@@ -917,13 +923,14 @@ class SettingsManager:
         message_thread_id: Optional[int] = None,
         update_bot_token: bool = True,
         enabled: Optional[bool] = None,
+        app_url: Optional[str] = None,
     ) -> TelegramSettings:
         """
         Update the singleton Telegram settings row.
 
         When update_bot_token is False, the existing bot_token is preserved
         regardless of the `bot_token` argument — lets the UI submit a blank
-        token field to mean "leave it alone".
+        token field to mean "leave it alone". app_url None leaves it; "" clears it.
         """
         settings = SettingsManager.get_telegram_settings(db)
 
@@ -934,6 +941,8 @@ class SettingsManager:
         settings.message_thread_id = message_thread_id
         if enabled is not None:
             settings.enabled = enabled
+        if app_url is not None:
+            settings.app_url = app_url or None
         settings.updated_at = datetime.now(timezone.utc)
 
         db.commit()
