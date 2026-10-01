@@ -249,13 +249,16 @@
                         <input type="checkbox" id="debugModeToggle" role="switch">
                         وضع التصحيح: زر «معاينة» في كل بطاقة ومراحل المعالجة
                     </label>
-                    <ol id="workflowSteps" class="workflow-steps" hidden>
-                        <li class="workflow-step">الاستيراد من Pinchflat</li>
-                        <li class="workflow-step">اقتراح العنوان والفنان</li>
-                        <li class="workflow-step">المراجعة في قائمة الانتظار</li>
-                        <li class="workflow-step">كتابة البيانات الوصفية</li>
-                        <li class="workflow-step">النقل إلى مكتبة Navidrome</li>
-                    </ol>
+                    <div id="workflowSteps" class="workflow" hidden>
+                        <p class="workflow-lead" id="workflowLead">ما يمرّ به كل ملف، بالترتيب. إن تعثّر ملف فابحث في السجل عن المرحلة التي توقف عندها.</p>
+                        <ol class="workflow-steps" aria-labelledby="workflowLead">
+                            <li class="workflow-step"><strong>الاستيراد من Pinchflat</strong> يُفحص مجلد الوارد دوريًا، ويُنسخ كل ملف جديد إلى مجلد مؤقت. الأصل لا يُمسّ.</li>
+                            <li class="workflow-step"><strong>اقتراح العنوان والفنان</strong> يقترحهما نموذج لغوي من عنوان الفيديو واسم القناة. إن تعذّر ذلك وصلت البطاقة بعلامة «يحتاج مراجعة».</li>
+                            <li class="workflow-step"><strong>المراجعة في قائمة الانتظار</strong> تصحّح الحقول ثم تؤكّد. زر «معاينة» يعرض ما سيُكتب دون أن يكتبه.</li>
+                            <li class="workflow-step"><strong>كتابة البيانات الوصفية</strong> تُكتب الوسوم في النسخة المؤقتة، ثم تُقرأ مجددًا للتحقق منها.</li>
+                            <li class="workflow-step"><strong>النقل إلى مكتبة Navidrome</strong> يُنقل الملف إلى مجلد الفنان في المكتبة. إن وُجد ملف بالاسم نفسه تسألك البطاقة: استبدال أم الإبقاء على الاثنين.</li>
+                        </ol>
+                    </div>
                     <div class="settings-actions">
                         <button type="button" id="toggleLogsBtn" class="btn-secondary" aria-expanded="false" aria-controls="logPanel">إظهار سجل العمليات</button>
                         <button type="button" id="downloadLogsBtn" class="btn-secondary">تنزيل السجل</button>

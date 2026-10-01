@@ -145,32 +145,55 @@ body {
     gap: var(--spacing-sm) var(--spacing-md);
 }
 
-.workflow-steps {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-md);
+/* Debug mode: the pipeline each file goes through, each step with what happens in it */
+.workflow {
+    margin: var(--spacing-sm) 0 var(--spacing-md);
+    max-width: 65ch;
+}
+
+.workflow-lead {
+    margin-bottom: var(--spacing-sm);
+    color: var(--text-secondary);
+    font-size: var(--text-label);
 }
 
 .workflow-steps {
+    display: grid;
+    gap: var(--spacing-sm);
     list-style: none;
     counter-reset: step;
-    margin-top: var(--spacing-sm);
 }
 
 .workflow-step {
     counter-increment: step;
-    background: var(--bg-tertiary);
+    display: grid;
+    grid-template-columns: 1.75rem 1fr;
+    column-gap: var(--spacing-xs);
     color: var(--text-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-pill);
-    padding: 0.4rem 0.9rem;
     font-size: var(--text-label);
-    font-weight: 600;
+    line-height: 1.7;
 }
 
 .workflow-step::before {
-    content: counter(step) ". ";
+    content: counter(step);
+    grid-row: span 2;
+    align-self: start;
+    display: grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-top: 0.15rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-pill);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+}
+
+.workflow-step strong {
+    color: var(--text-primary);
+    font-weight: 600;
 }
 
 .pending-toolbar {
@@ -1017,15 +1040,6 @@ body {
         grid-template-columns: 1fr;
     }
 
-    .workflow-steps {
-        gap: 0.35rem;
-    }
-
-    .workflow-step {
-        font-size: var(--text-caption);
-        padding: 0.3rem 0.6rem;
-    }
-
 }
 
 /* Navigation */
@@ -1661,10 +1675,48 @@ body {
     cursor: pointer;
 }
 
+/* role="switch" checkboxes drawn as switches: a pill track whose thumb sits at the start
+   when off and slides to the end when on (inset-inline-start, so RTL needs no flip) */
 .switch-label input {
-    width: 1.25rem;
-    height: 1.25rem;
-    accent-color: var(--accent-primary);
+    appearance: none;
+    position: relative;
+    flex-shrink: 0;
+    width: 2.75rem;
+    height: 1.5rem;
+    margin: 0;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-pill);
+    background: var(--bg-tertiary);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+
+.switch-label input::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    inset-inline-start: 0.1875rem;
+    width: 1.0625rem;
+    height: 1.0625rem;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    transform: translateY(-50%);
+    transition: inset-inline-start var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+
+.switch-label input:checked {
+    border-color: var(--accent-primary);
+    background: var(--accent-primary);
+}
+
+.switch-label input:checked::before {
+    inset-inline-start: calc(100% - 1.0625rem - 0.1875rem);
+    background: var(--bg-primary);
+}
+
+.switch-label input:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 3px;
 }
 
 .btn-danger-quiet {
