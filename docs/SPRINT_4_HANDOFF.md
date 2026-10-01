@@ -1,6 +1,6 @@
 # Sprint 4 handoff
 
-**Date:** 2026-09-30 · **Plan:** [SPRINT_4_PLAN.md](SPRINT_4_PLAN.md) · **Paused at:** Track B, step **B6 (animate)**: not started. B0–B5 are merged.
+**Date:** 2026-09-30 · **Plan:** [SPRINT_4_PLAN.md](SPRINT_4_PLAN.md) · **Paused at:** Track B, step **B7 (delight)**: not started. B0–B6 are merged.
 
 ## Done
 
@@ -67,6 +67,15 @@ Tests went from 123 to 161 (new: `test_batch_edit`, `test_rescan_status`, `test_
   - **Counts:** stats, list meta, variant counts and the selection bar use `arabicCount` (`ARTIST_FORMS`, `ALBUM_FORMS` added). The selection bar reads «المحدد: صوتيتان», nominative so every form is correct.
   - The dead single-artist library combobox (about 290 lines JS + CSS) was removed. Its markup went in a8287fd when the batch artist field became `;`-separated.
 
+- **B6, animate** (#54):
+  - **The fadeIn replay bug is fixed.** `confirmItem()` and `deleteItem()` no longer rebuild the list. They call `removeItemCardFromDOM()`, the same path as SSE. It is safe to call twice, because the SSE event often lands before the fetch response. It also clears `albumArtistChoice`/`shownAlbumArtist` now.
+  - **Exit:** the card plays `card-leave` (200ms). A timer (`CARD_EXIT_MS`; hidden pages run no animations) then calls `removeCardAndCloseGap()`, which FLIPs the later cards into the gap with WAAPI (240ms). The empty state waits until the last card has gone.
+  - **Arrival:** `.item-card` has no default animation. `smartUpdatePendingList` adds `.card-arriving`: a fade-up plus a Signal Blue border that settles over 1.2s. The class is dropped on `animationend`. The first load (`renderItems`) never animates.
+  - **Ready count:** `READY_CONFIRM_SELECTOR` skips leaving cards. `updatePendingCountUI()` now refreshes the confirm-all button and ready bar.
+  - **Expand:** `.card-expanding` fades the fields in (no height animation).
+  - **CSS:** motion tokens (`--dur-fast/base/enter`, `--ease-out/in`). All 11 `transition: all` now name their properties. Hover lifts, glows and the card's hover top bar are gone (filled buttons brighten instead). The `#libraryPage` padding transition is gone. There is one `prefers-reduced-motion` block: fades stay; translate, FLIP, sweep and spin go. The detector went from 17 to 15 (`layout-transition`, `side-tab` cleared).
+  - `DESIGN.md` gained a **Motion** section (tokens, the four moments, three named rules) and an updated Elevation note.
+
 ### Behaviour changes worth knowing
 - Changing the artist (in batch or single edit) no longer silently changes the album artist, which is the folder.
 - A genre tag already embedded in a downloaded file is now preselected on its card.
@@ -74,20 +83,12 @@ Tests went from 123 to 161 (new: `test_batch_edit`, `test_rescan_status`, `test_
 
 ## Next (in order)
 
-1. **B6, animate** (branch e.g. `feature/motion`; run `/impeccable animate` → `reference/animate.md`). Plan brief (SPRINT_4_PLAN §6): motion explains what happened (the file left the queue, a new file arrived, it saved). It doesn't decorate. Durations are 150–250ms, there are no layout-property animations, and everything respects `prefers-reduced-motion`. The operator goes through dozens of cards in a row.
-   - **Inventory** (in `style.css`, by selector):
-     - **11 `transition: all`:** `.item-card`, `.field-input`, `.artist-dropdown-toggle`, `.genre-btn`, `.confirm-btn`, `.btn-confirm-all`, `.nav-link`, `.tab-btn`, `.list-item`, `.album-card`, `.btn-primary, .btn-secondary`. Name the properties instead.
-     - **Keyframes:** `fadeIn`/`fadeOut` (translateY 10px; `.item-card` and `.item-card.card-removing`), `confirm-sweep` (the B3 `.confirm-btn.is-saving` stripe, 1.2s infinite) and `spin` (the rescan icon). All of them need a reduced-motion fallback. There is no `prefers-reduced-motion` anywhere yet.
-     - **Other transitions:** `.item-card::before` (gradient top bar, `transform`), `.artist-dropdown-icon` rotate, the `#libraryPage { transition: padding-bottom }` (drop it; JS sets that padding when the selection bar shows) and a 0.15s background/colour transition.
-     - **Hover:** `.item-card:hover` lifts with `translateY(-2px)` and a shadow, and reveals the `::before` bar. Remove both (B1 decision: calm, and no hover on phones anyway).
-   - **The real bug behind "fadeIn replays":** `confirmItem()` and `deleteItem()` in `app.js` filter `pendingItems` and call `renderItems()`, which rebuilds every card with `innerHTML`. Every remaining card replays `fadeIn`, and the confirmed card just vanishes. Only the SSE path uses `removeItemCardFromDOM()` (adds `.card-removing`, removes after 300ms). So: route confirm and delete through `removeItemCardFromDOM()` (or a shared exit), and make the entrance play only for genuinely new cards (`smartUpdatePendingList` already inserts them one by one). Check that `confirmAllReady()` still works; it re-queries `.confirm-btn:not(:disabled)` on each loop pass. Also check the ready bar count and the badge (`updatePendingCountUI`).
-   - **Collapsed-card expand** (B5, `.card-summary` click in `attachItemListeners`) is instant. A short opacity reveal of the body is enough. Don't animate height.
-   - Screenshots taken right after a load catch cards mid-`fadeIn` (partial opacity). Wait about 400ms or check computed opacity.
-2. **B7, delight:** the empty queue and the confirm-all summary only (it already uses `FILE_FORMS`).
-3. **B8, optimize:** Cairo is loaded from Google Fonts (decide whether to self-host a subset). Also cut DOM work on SSE updates: `addArtistRow`/`removeArtistRow` re-render the whole card.
-4. **B9, audit + polish:**
+1. **B7, delight:** the empty queue and the confirm-all summary only (it already uses `FILE_FORMS`). The empty state now appears only after the last card's exit (`updatePendingCountUI`), so a delight moment there can build on that beat. The plan says calm: no confetti (DESIGN.md Don'ts).
+2. **B8, optimize:** Cairo is loaded from Google Fonts (decide whether to self-host a subset). Also cut DOM work on SSE updates: `addArtistRow`/`removeArtistRow` re-render the whole card.
+3. **B9, audit + polish:**
    - Flatten all gradients to solid colours: title, nav pill, buttons, chips, `.btn-confirm-all`, `.artwork-placeholder`, `.album-artwork`.
    - Replace the 🎵 in the nav brand.
+   - `.settings-card` still has a resting `box-shadow` (Flat-At-Rest Rule).
    - Re-run `/impeccable critique` and compare with 24/40.
 
 ### Known loose ends (not scheduled)

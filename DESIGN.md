@@ -192,7 +192,7 @@ Spacing follows the 0.5 / 0.75 / 1 / 1.5 / 2rem scale; card internals mostly use
 
 **Direction: flat, tonal layers.** Depth comes from the navy steps (Night Ink → Archive Navy → Shelf Navy → Lamp Navy) and 1px Seam borders. Shadows belong only to things that float above the page: modals, dropdown suggestion lists, the selection bar.
 
-Flagged for the design pass: cards and primary buttons still lift on hover (`translateY(-2px)` with `0 8px 24px` shadow, coloured glow on confirm), and cards grow a blue→teal top bar on hover. These contradict the flat direction.
+Nothing lifts on hover. Cards, album cards and buttons answer hover with a tonal step (Lamp Navy background or Signal Blue border); filled buttons brighten (`filter: brightness(1.08)`) and dim slightly when pressed. The old hover lift, confirm glow and card top bar were removed in B6.
 
 ### Shadow Vocabulary
 - **Overlay** (`0 12px 24px rgba(0,0,0,0.35)`): modals and floating panels.
@@ -201,6 +201,30 @@ Flagged for the design pass: cards and primary buttons still lift on hover (`tra
 
 ### Named Rules
 **The Flat-At-Rest Rule.** Surfaces don't cast shadows at rest. Only overlays float.
+
+## Motion
+
+**Direction: motion reports what happened to a file.** It never decorates. The operator goes through dozens of cards in a row, so routine motion is short and nothing waits on it.
+
+| Token | Value | Use |
+|---|---|---|
+| `--dur-fast` | 150ms | hover, focus, chip selection |
+| `--dur-base` | 200ms | routine state change, card exit |
+| `--dur-enter` | 240ms | a new card arriving, cards closing a gap |
+| `--ease-out` | `cubic-bezier(0.16, 1, 0.3, 1)` | arrivals and settling |
+| `--ease-in` | `cubic-bezier(0.4, 0, 1, 1)` | exits |
+
+- **A file leaves the queue** (confirmed, moved to the trash, or gone from the server): its card fades and rises 8px (`card-leave`, 200ms, ease-in). Then the cards after it slide into the gap from their old positions (FLIP via the Web Animations API, transform only, 240ms). This is the product's one authored motion.
+- **A file arrives** (SSE or poll, never on page load): the card fades up 8px (`card-arrive`). Its border starts Signal Blue and fades to Seam over 1.2s (`card-arrive-mark`), so a new file can still be found after the slide ends.
+- **A ready card opens** (phone): the fields fade in where they are (`card-reveal`). The height is not animated.
+- **Saving:** the confirm button's slow sweep (`confirm-sweep`). The rescan icon spins.
+
+### Named Rules
+**The Explained Change Rule.** Every animation names a change of state: arrived, left, opened, saving. A card that didn't change doesn't move. Rebuilding the list must never replay an entrance.
+
+**The Named Property Rule.** Transitions list their properties. No `transition: all`, and no animation of layout properties (width, height, padding, margins, top/left).
+
+**The Still Under Reduced Motion Rule.** With `prefers-reduced-motion: reduce`, the fades stay (they still say "this changed") and all movement goes: no translate, no FLIP slide, no sweep, no spin. `app.js` reads the same media query.
 
 ## Shapes
 
@@ -251,5 +275,6 @@ Artwork and source line, title input, one row per artist (combobox with suggesti
 - **Don't** add a light theme. The product is dark only.
 - **Don't** use religious imagery (calligraphy, domes, geometric patterns) as decoration.
 - **Don't** introduce playful motion or celebration effects (no confetti).
+- **Don't** animate a card that didn't change state, and don't lift anything on hover (see The Explained Change Rule).
 - **Don't** give a signal colour a second meaning (see The One Meaning Rule).
 - **Don't** add shadows to surfaces at rest (see The Flat-At-Rest Rule).
