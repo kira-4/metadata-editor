@@ -29,25 +29,36 @@ class LibraryScanner:
         self.total_files = 0
         self.processed_files = 0
         self.errors = []
+        self.started_at: Optional[str] = None
+        self.finished_at: Optional[str] = None
+        self._start_lock = threading.Lock()
         
     def start_scan(self, progress_callback: Optional[Callable] = None, force_full: bool = False, repair: bool = False):
-        """Start a library scan in the background."""
-        if self.is_scanning:
-            logger.warning("Library scan already in progress")
-            return False
-        
-        self.progress_callback = progress_callback
-        self.scan_thread = threading.Thread(target=self._scan_library, args=(force_full, repair), daemon=True)
-        self.scan_thread.start()
+        """Start a library scan in the background. Returns False if one is already running."""
+        # Reserve the scan before the thread exists, so two quick requests can't both start one
+        with self._start_lock:
+            if self.is_scanning:
+                logger.warning("Library scan already in progress")
+                return False
+            self.is_scanning = True
+
+        try:
+            self.progress_callback = progress_callback
+            self.scan_thread = threading.Thread(target=self._scan_library, args=(force_full, repair), daemon=True)
+            self.scan_thread.start()
+        except Exception:
+            self.is_scanning = False
+            raise
         return True
     
     @staticmethod
-    def _collect_audio_files(root: Path, audio_extensions: set) -> list:
+    def _collect_audio_files(root: Path, audio_extensions: set, unreadable: Optional[list] = None) -> list:
         """
         Walk root recursively, returning a list of audio file paths.
 
         Uses a single os.scandir-based walk instead of multiple rglob calls,
         and filters by suffix.lower() instead of running one rglob per extension.
+        Directories that can't be listed are appended to `unreadable`.
         """
         audio_extensions_lower = {ext.lower() for ext in audio_extensions}
         audio_files = []
@@ -55,8 +66,10 @@ class LibraryScanner:
         def _walk(dir_path: Path):
             try:
                 entries = os.scandir(dir_path)
-            except PermissionError:
-                logger.warning(f"Permission denied: {dir_path}")
+            except OSError as e:
+                logger.warning(f"Cannot list {dir_path}: {e}")
+                if unreadable is not None:
+                    unreadable.append(str(dir_path))
                 return
 
             for entry in entries:
@@ -88,6 +101,8 @@ class LibraryScanner:
         self.total_files = 0
         self.processed_files = 0
         self.errors = []
+        self.started_at = datetime.now(timezone.utc).isoformat()
+        self.finished_at = None
 
         try:
             logger.info(f"Starting library scan of {config.NAVIDROME_ROOT}")
@@ -96,9 +111,11 @@ class LibraryScanner:
 
             try:
                 # Single-pass walk
+                unreadable = []
                 audio_files = self._collect_audio_files(
-                    config.NAVIDROME_ROOT, config.AUDIO_EXTENSIONS
+                    config.NAVIDROME_ROOT, config.AUDIO_EXTENSIONS, unreadable
                 )
+                self.errors.extend(f"Cannot read folder: {d}" for d in unreadable)
 
                 self.total_files = len(audio_files)
                 logger.info(f"Found {self.total_files} audio files to scan")
@@ -136,7 +153,10 @@ class LibraryScanner:
                         self.errors.append(error_msg)
 
                 # Cleanup: only when force_full=True (user explicitly requested)
-                if force_full:
+                # A partial walk would make unreadable files look deleted, so skip cleanup then
+                if force_full and unreadable:
+                    logger.warning("Skipping missing-file cleanup: some folders could not be read")
+                elif force_full:
                     self._cleanup_missing_files(db, scanned_paths)
 
                 logger.info(f"Library scan complete. Processed {self.processed_files}/{self.total_files} files")
@@ -165,6 +185,7 @@ class LibraryScanner:
                 })
 
         finally:
+            self.finished_at = datetime.now(timezone.utc).isoformat()
             self.is_scanning = False
     
     def _index_file(self, db: Session, file_path: Path, force: bool = False, repair: bool = False):
@@ -499,7 +520,9 @@ class LibraryScanner:
             'is_scanning': self.is_scanning,
             'total': self.total_files,
             'processed': self.processed_files,
-            'errors': self.errors
+            'errors': self.errors,
+            'started_at': self.started_at,
+            'finished_at': self.finished_at,
         }
 
 
