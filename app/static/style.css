@@ -753,6 +753,11 @@ body {
     color: var(--text-muted);
 }
 
+/* No message, no line: the gap between confirm and delete stays one step */
+.item-status:empty {
+    display: none;
+}
+
 .destination-choice {
     border: 1px solid var(--warning);
     border-radius: var(--radius-sm);
@@ -2504,8 +2509,7 @@ textarea.title-input {
     .item-card.is-collapsed > .item-header,
     .item-card.is-collapsed > .card-group,
     .item-card.is-collapsed .dry-run-btn,
-    .item-card.is-collapsed .delete-btn,
-    .item-card.is-collapsed .item-status:empty {
+    .item-card.is-collapsed .delete-btn {
         display: none;
     }
 
