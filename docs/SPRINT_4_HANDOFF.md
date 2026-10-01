@@ -127,7 +127,7 @@ Sprint 4 is done. These come from the closing critique.
 
 ### Known loose ends (not scheduled)
 - Batch-edit artist suggestions: the batch artist field is a plain `;`-separated input with no suggestions. A combobox that completes the segment after the last `;` would help «one spelling per artist». This is a feature, not scheduled.
-- `.impeccable/design.json` is stale relative to `DESIGN.md` (detector: `design-sidecar-stale`). `/impeccable document` refreshes it.
+- ~~`.impeccable/design.json` was stale~~: refreshed 2026-10-01 from DESIGN.md (11 named rules, Sprint 4 components); doctor reports no drift.
 
 ## How each step was run
 1. `git checkout main && git pull`, then `git checkout -b feature/<step>`.
