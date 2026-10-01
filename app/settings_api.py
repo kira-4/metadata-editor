@@ -1,5 +1,6 @@
 """Settings endpoints (Telegram notifications, etc)."""
 import logging
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,6 +22,7 @@ class TelegramSettingsResponse(BaseModel):
     chat_id: Optional[str] = None
     message_thread_id: Optional[int] = None
     enabled: bool = True
+    app_url: Optional[str] = None
 
 
 class TelegramSettingsUpdate(BaseModel):
@@ -29,6 +31,7 @@ class TelegramSettingsUpdate(BaseModel):
     chat_id: Optional[str] = None
     message_thread_id: Optional[int] = None
     enabled: Optional[bool] = None  # None leaves it as is
+    app_url: Optional[str] = None  # None leaves it as is, "" clears it
 
 
 class TelegramTestRequest(BaseModel):
@@ -36,6 +39,7 @@ class TelegramTestRequest(BaseModel):
     bot_token: Optional[str] = None
     chat_id: str
     message_thread_id: Optional[int] = None
+    app_url: Optional[str] = None  # the test message links to the queue, so the link can be tried
 
 
 class TelegramTestResponse(BaseModel):
@@ -51,7 +55,20 @@ def _public(settings) -> TelegramSettingsResponse:
         chat_id=settings.chat_id,
         message_thread_id=settings.message_thread_id,
         enabled=bool(settings.enabled),
+        app_url=settings.app_url,
     )
+
+
+def _normalize_app_url(raw: Optional[str]) -> Optional[str]:
+    """None stays None (leave as is); blank becomes "" (clear); otherwise an http(s) base without a trailing slash."""
+    if raw is None:
+        return None
+    url = raw.strip().split("#", 1)[0].rstrip("/")
+    if not url:
+        return ""
+    if not re.match(r"^https?://[^\s/]+", url):
+        raise HTTPException(status_code=400, detail="app_url must start with http:// or https://")
+    return url
 
 
 @settings_router.get("/telegram", response_model=TelegramSettingsResponse)
@@ -76,6 +93,7 @@ def update_telegram_settings(
     incoming_token = (request.bot_token or "").strip()
     chat_id = (request.chat_id or "").strip() or None
     thread_id = request.message_thread_id
+    app_url = _normalize_app_url(request.app_url)
 
     existing = SettingsManager.get_telegram_settings(db)
 
@@ -94,6 +112,7 @@ def update_telegram_settings(
         message_thread_id=thread_id,
         update_bot_token=True,  # we've already computed the effective token
         enabled=request.enabled,
+        app_url=app_url,
     )
     return _public(updated)
 
@@ -118,5 +137,6 @@ def test_telegram_settings(
     if not incoming_token:
         return TelegramTestResponse(ok=False, error="bot_token is required (none stored)")
 
-    ok, error = send_test(incoming_token, chat_id, thread_id)
+    app_url = _normalize_app_url(request.app_url) or None
+    ok, error = send_test(incoming_token, chat_id, thread_id, app_url)
     return TelegramTestResponse(ok=ok, error=error or None)
