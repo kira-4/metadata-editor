@@ -29,7 +29,7 @@ def clean_dirs():
     """Every test starts with empty incoming/staging/library dirs."""
     import shutil
 
-    for d in (config.INCOMING_ROOT, config.STAGING_DIR, config.NAVIDROME_ROOT):
+    for d in (config.INCOMING_ROOT, config.STAGING_DIR, config.NAVIDROME_ROOT, config.TRASH_DIR):
         shutil.rmtree(d, ignore_errors=True)
         d.mkdir(parents=True)
 

@@ -35,6 +35,13 @@ class Config:
     except ValueError:
         raise ValueError(f"SCAN_INTERVAL_SECONDS must be a positive integer, got: {_scan_interval!r}")
 
+    # Dismissed originals are kept in TRASH_DIR this long before being purged
+    _trash_days = os.getenv("TRASH_RETENTION_DAYS", "30")
+    try:
+        TRASH_RETENTION_DAYS = max(1, int(_trash_days))
+    except ValueError:
+        raise ValueError(f"TRASH_RETENTION_DAYS must be a positive integer, got: {_trash_days!r}")
+
     # Web server
     _port = os.getenv("PORT", "8090")
     try:
@@ -54,6 +61,9 @@ class Config:
     
     # Staging directory for processing files
     STAGING_DIR = DATA_DIR / "staging"
+
+    # Originals of dismissed items: TRASH_DIR/{item_id}/{original filename}
+    TRASH_DIR = DATA_DIR / "trash"
     
     @classmethod
     def ensure_directories(cls):
@@ -61,6 +71,7 @@ class Config:
         cls.DATA_DIR.mkdir(parents=True, exist_ok=True)
         cls.ARTWORK_DIR.mkdir(parents=True, exist_ok=True)
         cls.STAGING_DIR.mkdir(parents=True, exist_ok=True)
+        cls.TRASH_DIR.mkdir(parents=True, exist_ok=True)
 
 
 config = Config()
