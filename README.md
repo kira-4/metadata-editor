@@ -34,7 +34,7 @@ Requirements: Docker with Compose, an [OpenRouter API key](https://openrouter.ai
    |---|---|---|
    | Pinchflat downloads | `/incoming` | Files to process |
    | Navidrome library | `/music` | Destination |
-   | `./data` | `/data` | SQLite DB, staging, artwork cache |
+   | `./data` | `/data` | SQLite DB, staging, trash, artwork cache |
 
    Create the host directories **before** the first start. Otherwise Docker creates them as root, and
    the container (which runs as `PUID:PGID`) can't write to them.
@@ -71,6 +71,7 @@ docker compose up -d
 | `NAVIDROME_ROOT` | `/music` | Library directory (inside the container). |
 | `DATA_DIR` | `/data` | Database, staging and artwork cache. |
 | `SCAN_INTERVAL_SECONDS` | `30` | How often `/incoming` is polled. |
+| `TRASH_RETENTION_DAYS` | `30` | How long dismissed originals stay in `/data/trash` before being purged. |
 | `PORT` | `8090` | Web UI port. |
 | `TZ` | `America/Los_Angeles` | Timezone (compose). |
 | `APP_NAME` | `محرر الأصوات الولائية` | Title shown in the UI and API docs. |
@@ -102,8 +103,9 @@ docker compose up -d
 
    The track is indexed into the library browser immediately and the staging copy is removed.
 
-Deleting a pending item removes its staging copy and the original in `/incoming`. Completed items can't
-be deleted from the queue.
+Deleting a pending item removes its staging copy and moves the original from `/incoming` to
+`/data/trash/{id}/`. It is purged after `TRASH_RETENTION_DAYS`. To restore it, move the file back into the
+incoming folder and the next scan imports it again. Completed items can't be deleted from the queue.
 
 ## Development
 
@@ -130,7 +132,7 @@ python -m pytest tests/ -v
 | POST | `/api/pending/{id}/update` | Save a draft (title, artist, genre). |
 | GET | `/api/pending/{id}/dry-run` | Destination preview and whether it already exists. |
 | POST | `/api/pending/{id}/confirm` | Apply the draft and move. Returns 409 if the destination exists and no `on_conflict` is given. |
-| DELETE | `/api/pending/{id}` | Discard an item. |
+| DELETE | `/api/pending/{id}` | Dismiss an item. The original goes to trash. |
 | GET | `/api/artwork/{id}` | Artwork of a pending item. |
 | GET | `/api/artists/suggest` | Arabic-aware artist autocomplete. |
 | GET | `/api/events` | SSE stream of queue changes. |
