@@ -20,6 +20,9 @@
 }
 
 :root {
+    /* Dark only (PRODUCT.md): native controls, scrollbars and select menus render dark too */
+    color-scheme: dark;
+
     /* Dark theme colors */
     --bg-primary: #0f0f23;
     --bg-secondary: #1a1a2e;
@@ -37,6 +40,26 @@
     --success: #00d4aa;
     --warning: #ffb627;
     --error: #ff5757;
+
+    /* Signal washes: a dark surface tinted by its signal, plus a 40% edge (alerts, badges) */
+    --accent-wash: #16243d;
+    --accent-edge: rgba(74, 158, 255, 0.4);
+    --accent-tint: rgba(74, 158, 255, 0.15);   /* selected rows on any navy */
+    --success-wash: #0f2b2e;
+    --success-edge: rgba(0, 212, 170, 0.4);
+    --warning-wash: #2e2716;
+    --warning-edge: rgba(255, 182, 39, 0.4);
+    --error-wash: #33161f;
+    --error-edge: rgba(255, 87, 87, 0.4);
+    --error-tint: rgba(255, 87, 87, 0.12);     /* armed delete, failed rows */
+
+    /* Focus and elevation (DESIGN.md → Shadow Vocabulary). Only overlays cast shadows. */
+    --focus-ring: 0 0 0 3px rgba(74, 158, 255, 0.35);
+    --shadow-dropdown: 0 4px 16px rgba(0, 0, 0, 0.35);
+    --shadow-overlay: 0 12px 24px rgba(0, 0, 0, 0.35);
+    --scrim: rgba(0, 0, 0, 0.7);
+    --glint: rgba(255, 255, 255, 0.06);        /* a pill on a navy surface */
+    --sweep-light: rgba(255, 255, 255, 0.25);  /* the saving sweep on confirm */
     
     --border-color: #2a2a3e;
     --shadow: rgba(0, 0, 0, 0.3);
@@ -49,9 +72,11 @@
     --spacing-xl: 2rem;
     
     /* Border radius */
+    --radius-xs: 0.25rem;   /* inline code, the dropdown toggle inside an input */
     --radius-sm: 0.5rem;
     --radius-md: 0.75rem;
     --radius-lg: 1rem;
+    --radius-pill: 999px;   /* status pills: pipeline steps, similarity score */
     
     /* Font */
     --font-family: 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -129,7 +154,7 @@ body {
     background: var(--bg-tertiary);
     color: var(--text-secondary);
     border: 1px solid var(--border-color);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     padding: 0.4rem 0.9rem;
     font-size: var(--text-label);
     font-weight: 600;
@@ -151,7 +176,7 @@ body {
     top: var(--spacing-sm);
     z-index: 50;
     cursor: pointer;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--shadow-dropdown);
     border-radius: var(--radius-sm);
     border: 1px solid transparent;
     padding: var(--spacing-sm) var(--spacing-md);
@@ -160,26 +185,26 @@ body {
 }
 
 .global-alert.info {
-    background: #16243d;
-    border-color: rgba(74, 158, 255, 0.4);
+    background: var(--accent-wash);
+    border-color: var(--accent-edge);
     color: var(--accent-hover);
 }
 
 .global-alert.success {
-    background: #0f2b2e;
-    border-color: rgba(0, 212, 170, 0.4);
+    background: var(--success-wash);
+    border-color: var(--success-edge);
     color: var(--success);
 }
 
 .global-alert.warn {
-    background: #2e2716;
-    border-color: rgba(255, 182, 39, 0.4);
+    background: var(--warning-wash);
+    border-color: var(--warning-edge);
     color: var(--warning);
 }
 
 .global-alert.error {
-    background: #33161f;
-    border-color: rgba(255, 87, 87, 0.4);
+    background: var(--error-wash);
+    border-color: var(--error-edge);
     color: var(--error);
 }
 
@@ -293,7 +318,7 @@ body {
 .field-input:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.1);
+    box-shadow: var(--focus-ring);
 }
 
 .artist-combobox {
@@ -312,7 +337,7 @@ body {
     width: 1.6rem;
     height: 1.6rem;
     border: none;
-    border-radius: 0.35rem;
+    border-radius: var(--radius-xs);
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
@@ -344,7 +369,7 @@ body {
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
-    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+    box-shadow: var(--shadow-overlay);
     z-index: 30;
     max-height: 220px;
     overflow-y: auto;
@@ -390,8 +415,8 @@ body {
     flex-shrink: 0;
     font-size: var(--text-caption);
     color: var(--text-secondary);
-    background: rgba(255, 255, 255, 0.06);
-    border-radius: 999px;
+    background: var(--glint);
+    border-radius: var(--radius-pill);
     padding: 0.05rem 0.5rem;
     white-space: nowrap;
 }
@@ -447,7 +472,7 @@ body {
 }
 
 .genre-btn.selected {
-    background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));
+    background: var(--accent-primary);
     border-color: var(--accent-primary);
     color: var(--bg-primary);
 }
@@ -480,7 +505,7 @@ body {
 
 .confirm-btn {
     width: 100%;
-    background: linear-gradient(135deg, var(--success), #00b894);
+    background: var(--success);
     border: none;
     border-radius: var(--radius-md);
     padding: var(--spacing-md);
@@ -514,7 +539,7 @@ body {
 /* Saving: still teal (it is happening), dimmed, with a slow sweep instead of a spinner */
 .confirm-btn.is-saving,
 .confirm-btn.is-saving:disabled {
-    background: var(--success) linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.25) 50%, transparent 100%) no-repeat;
+    background: var(--success) linear-gradient(90deg, transparent 0%, var(--sweep-light) 50%, transparent 100%) no-repeat;
     background-size: 40% 100%;
     color: var(--bg-primary);
     border: none;
@@ -536,7 +561,7 @@ body {
 }
 
 .btn-confirm-all {
-    background: linear-gradient(135deg, var(--success), #00b894);
+    background: var(--success);
     border: none;
     border-radius: var(--radius-sm);
     padding: var(--spacing-sm) var(--spacing-lg);
@@ -573,7 +598,7 @@ body {
 }
 
 .error-message {
-    background: rgba(255, 87, 87, 0.1);
+    background: var(--error-tint);
     border: 1px solid var(--error);
     border-radius: var(--radius-sm);
     padding: var(--spacing-sm);
@@ -600,7 +625,7 @@ body {
 }
 
 .btn-secondary.delete-btn:hover {
-    background: rgba(255, 87, 87, 0.1);
+    background: var(--error-tint);
     border-color: var(--error);
 }
 
@@ -912,7 +937,7 @@ body {
 .nav-link.active {
     /* Dark text on the bright blue: white only reached ~2.5:1 contrast */
     color: var(--bg-primary);
-    background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));
+    background: var(--accent-primary);
     border-color: var(--accent-primary);
 }
 
@@ -1048,7 +1073,7 @@ body {
 .search-input:focus {
     outline: none;
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.1);
+    box-shadow: var(--focus-ring);
 }
 
 .sort-select {
@@ -1168,7 +1193,7 @@ body {
     width: 100%;
     aspect-ratio: 1;
     border-radius: var(--radius-sm);
-    background: linear-gradient(135deg, var(--bg-tertiary), var(--bg-hover));
+    background: var(--bg-tertiary);
     margin-bottom: var(--spacing-sm);
     display: flex;
     align-items: center;
@@ -1246,7 +1271,7 @@ body {
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));
+    background: var(--accent-primary);
     color: var(--bg-primary);
 }
 
@@ -1385,7 +1410,6 @@ body {
     height: 18px;
     border-radius: 50%;
     transform: translate(-30%, -30%);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     padding: 0;
     margin: 0;
     z-index: 10;
@@ -1393,7 +1417,7 @@ body {
 
 /* Multi-Select Mode Styling */
 .list-item.selected {
-    background: rgba(74, 158, 255, 0.15);
+    background: var(--accent-tint);
     border-color: var(--accent-primary);
 }
 
@@ -1432,14 +1456,13 @@ body {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     padding: var(--spacing-lg);
-    box-shadow: 0 2px 8px var(--shadow);
     margin-bottom: var(--spacing-lg);
 }
 
 .settings-card h3 {
     font-size: var(--text-title);
     font-weight: 600;
-    color: var(--accent-primary);
+    color: var(--text-primary);  /* blue means "you can act" (One Meaning Rule); a heading isn't a control */
     margin-bottom: var(--spacing-sm);
 }
 
@@ -1507,7 +1530,7 @@ body {
 
 .btn-danger-quiet.armed {
     border-color: var(--error);
-    background: rgba(255, 87, 87, 0.12);
+    background: var(--error-tint);
 }
 
 /* Rescan progress line under the library header */
@@ -1624,7 +1647,7 @@ body {
 
 .field-hint code {
     background: var(--bg-tertiary);
-    border-radius: 0.25rem;
+    border-radius: var(--radius-xs);
     padding: 0 0.3rem;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.85em;
@@ -2286,7 +2309,7 @@ body {
     padding: var(--spacing-xs) var(--spacing-sm);
     border: 1px solid var(--warning);
     border-radius: var(--radius-sm);
-    background: #2e2716;
+    background: var(--warning-wash);
     color: var(--warning);
     font-size: var(--text-label);
 }
@@ -2304,7 +2327,7 @@ body {
 .btn-secondary.delete-btn.armed,
 .btn-danger-quiet.armed {
     border-color: var(--error);
-    background: rgba(255, 87, 87, 0.12);
+    background: var(--error-tint);
 }
 
 /* The card title is a textarea that grows, so long Arabic titles are read in full */
