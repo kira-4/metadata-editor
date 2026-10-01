@@ -879,11 +879,11 @@ function createItemCard(item) {
                     <div class="field-head">
                         <span class="field-label" id="artists-label-${item.id}">الفنانون</span>
                         ${fieldCheck('artist')}
+                        <button type="button" class="btn-add-artist" data-id="${item.id}">+ إضافة فنان</button>
                     </div>
                     <div class="multi-artist-list" data-id="${item.id}" role="group" aria-labelledby="artists-label-${item.id}">
                         ${artistRowsHtml}
                     </div>
-                    <button type="button" class="btn-add-artist" data-id="${item.id}">+ إضافة فنان</button>
                     <p class="artist-hint" aria-live="polite"></p>
                 </div>
             </section>

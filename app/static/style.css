@@ -2059,23 +2059,26 @@ body {
     background: var(--bg-secondary);
 }
 
-.btn-add-artist {
+/* Text actions at the end of a field head («+ إضافة فنان», the genre's «تغيير»): a 44px
+   target whose negative block margin keeps the label row at text height */
+.btn-add-artist,
+.genre-change {
+    margin-inline-start: auto;
+    margin-block: -0.625rem;
+    min-height: 44px;
+    padding: 0 var(--spacing-sm);
     background: transparent;
-    color: var(--accent-primary);
-    border: 1px dashed var(--border-color);
+    border: none;
     border-radius: var(--radius-sm);
-    padding: var(--spacing-xs) var(--spacing-sm);
-    cursor: pointer;
+    color: var(--accent-primary);
     font-family: var(--font-family);
     font-size: var(--text-label);
-    margin-top: var(--spacing-xs);
-    width: 100%;
-    text-align: center;
+    cursor: pointer;
 }
 
-.btn-add-artist:hover {
+.btn-add-artist:hover,
+.genre-change:hover {
     background: var(--bg-tertiary);
-    border-color: var(--accent-primary);
 }
 
 .destination-preview:empty {
