@@ -2329,7 +2329,7 @@ async function runArtistMerge(groupEl, group, apply) {
         const body = await response.json();
 
         if (!apply) {
-            const lines = [`سيُعدَّل ${arabicCount(body.track_count, ['مقطع واحد', 'مقطعان', 'مقاطع', 'مقطعًا', 'مقطع'])} ليصبح باسم «${target}».`];
+            const lines = [`ستُعدَّل ${arabicCount(body.track_count, TRACK_FORMS)} لتصبح باسم «${target}».`];
             if (body.move_count) lines.push(`سيُنقل ${arabicCount(body.move_count, ['ملف واحد', 'ملفان', 'ملفات', 'ملفًا', 'ملف'])} إلى مجلد «${target}».`);
             if (body.blocked_count) lines.push(`${body.blocked_count} ملف له نسخة بنفس الاسم في المجلد، سيُعدَّل دون نقل.`);
             previewEl.textContent = lines.join(' ');
@@ -2343,7 +2343,7 @@ async function runArtistMerge(groupEl, group, apply) {
         if (r.failed) {
             showAlert(`دُمج ${r.successful} صوتية، وتعذّر ${r.failed}: ${r.errors.map(e => e.error).join('، ')}`, 'warn', 0);
         } else {
-            showAlert(`تم توحيد ${arabicCount(r.successful, ['مقطع واحد', 'مقطعين', 'مقاطع', 'مقطعًا', 'مقطع'])} باسم «${target}».`, 'success');
+            showAlert(`تم توحيد ${arabicCount(r.successful, TRACK_FORMS)} باسم «${target}».`, 'success');
         }
         groupEl.remove();
         libraryState.variantGroups = (libraryState.variantGroups || []).filter(g => g !== group);
@@ -3076,7 +3076,8 @@ const BATCH_FIELDS = [
     {key: 'year', input: 'batchYear', label: 'السنة', clearable: true},
 ];
 const batchEdit = {states: {}, failures: [], saving: false};
-const FILE_FORMS = ['ملف واحد', 'ملفان', 'ملفات', 'ملفًا', 'ملف'];
+// Queue items are ملفات (files waiting to move); library items are صوتيات (tracks)
+const TRACK_FORMS = ['صوتية واحدة', 'صوتيتان', 'صوتيات', 'صوتيةً', 'صوتية'];
 
 function setupBatchFieldControls() {
     if (window.batchFieldControlsAttached) return;
@@ -3113,7 +3114,7 @@ function renderBatchFieldState(field) {
         el.innerHTML = '<span class="batch-state">بدون تغيير</span>'
             + (field.clearable ? '<button type="button" class="batch-state-btn" data-action="clear">مسح من الكل</button>' : '');
     } else {
-        const text = state === 'set' ? 'ستتغير القيمة في كل الملفات' : 'سيُمسح من كل الملفات';
+        const text = state === 'set' ? 'ستتغير القيمة في كل الصوتيات المحددة' : 'سيُمسح من كل الصوتيات المحددة';
         el.innerHTML = `<span class="batch-state ${state}">${text}</span>`
             + '<button type="button" class="batch-state-btn" data-action="keep">تراجع</button>';
     }
@@ -3131,7 +3132,7 @@ function renderBatchSummary() {
 
     let html = '';
     if (batchEdit.failures.length > 0) {
-        html += `<div class="batch-failures"><strong>تعذّر تعديل ${arabicCount(batchEdit.failures.length, FILE_FORMS)}، وما زالت محددة لإعادة المحاولة:</strong><ul>`
+        html += `<div class="batch-failures"><strong>تعذّر تعديل ${arabicCount(batchEdit.failures.length, TRACK_FORMS)}، وما زالت محددة لإعادة المحاولة:</strong><ul>`
             + batchEdit.failures.map(e => `<li>${escapeHtml(e.title || `#${e.track_id}`)} — ${escapeHtml(e.error)}</li>`).join('')
             + '</ul></div>';
     }
@@ -3139,7 +3140,7 @@ function renderBatchSummary() {
         html += '<span class="batch-summary-idle">لم يتغير أي حقل بعد</span>';
     } else {
         const names = changed.map(f => batchEdit.states[f.key] === 'clear' ? `${f.label} (مسح)` : f.label);
-        html += `سيُعدَّل ${arabicCount(count, FILE_FORMS)} · الحقول: ${escapeHtml(names.join('، '))}`;
+        html += `ستُعدَّل ${arabicCount(count, TRACK_FORMS)} · الحقول: ${escapeHtml(names.join('، '))}`;
     }
     summary.innerHTML = html;
     saveBtn.disabled = batchEdit.saving || changed.length === 0;
@@ -3178,7 +3179,7 @@ function showEditModal(mode, trackData = null) {
     }
     
     if (mode === 'single' && trackData) {
-        title.textContent = 'تعديل الملف';
+        title.textContent = 'تعديل الصوتية';
         
         // Show Artwork Section
         artworkSection.style.display = 'block';
@@ -3229,7 +3230,7 @@ function showEditModal(mode, trackData = null) {
         document.getElementById('batchYear').value = trackData.year || '';
         
     } else {
-        title.textContent = 'تعديل الميتاداتا (متعدد)';
+        title.textContent = 'تعديل البيانات الوصفية لعدة صوتيات';
         
         // Hide Artwork Section for batch
         artworkSection.style.display = 'none';
@@ -3331,7 +3332,7 @@ async function handleSingleEdit() {
         
     } catch (error) {
         logEvent('error', 'Error updating track', {trackId, error: error.message});
-        showAlert(`خطأ في تحديث الملف: ${error.message}`, 'error');
+        showAlert(`تعذّر حفظ الصوتية: ${error.message}`, 'error');
     }
 }
 
@@ -3371,7 +3372,7 @@ async function handleBatchEdit() {
         logEvent('info', 'Batch update completed', result);
 
         if (result.failed === 0) {
-            showAlert(`تم تعديل ${arabicCount(result.successful, FILE_FORMS)}`, 'success');
+            showAlert(`تم تعديل ${arabicCount(result.successful, TRACK_FORMS)}`, 'success');
             closeEditModal();
             clearSelection();
         } else {
@@ -3387,7 +3388,7 @@ async function handleBatchEdit() {
         
     } catch (error) {
         logEvent('error', 'Error in batch update', {error: error.message});
-        showAlert(`خطأ في تعديل الملفات: ${error.message}`, 'error');
+        showAlert(`تعذّر تعديل الصوتيات: ${error.message}`, 'error');
     } finally {
         batchEdit.saving = false;
         if (libraryState.editMode === 'batch') renderBatchSummary();
