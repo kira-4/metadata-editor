@@ -532,6 +532,22 @@ body {
     margin-bottom: var(--spacing-lg);
 }
 
+/* A genre decided before review, folded to its head line until «تغيير» */
+.genre-section.is-folded .genre-buttons,
+.genre-section.is-folded .custom-genre-wrapper {
+    display: none;
+}
+
+.genre-section.is-folded > .field-head {
+    margin-bottom: 0;
+}
+
+.genre-current {
+    color: var(--text-primary);
+    font-size: var(--text-label);
+    font-weight: 600;
+}
+
 .genre-buttons {
     display: grid;
     grid-template-columns: repeat(2, 1fr);

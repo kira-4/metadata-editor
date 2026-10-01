@@ -27,6 +27,7 @@ let pendingItems = [];
 let selectedGenres = {}; // itemId -> genre
 let customGenreVisible = {}; // itemId -> boolean
 const expandedCards = new Set(); // ready cards the user opened on a phone; they stay open
+const openedGenres = new Set();  // needs-review cards whose folded genre the user opened
 let confirmAllRunning = false;
 const confirmedFolders = []; // the folder of every file confirmed since this page loaded, in order
 let sseConnection = null;
@@ -653,6 +654,7 @@ function removeItemCardFromDOM(itemId, container) {
     delete selectedGenres[itemId];
     delete customGenreVisible[itemId];
     expandedCards.delete(itemId);
+    openedGenres.delete(itemId);
     updatePendingCountUI();
 }
 
@@ -894,12 +896,14 @@ function createItemCard(item) {
                 <p class="destination-pending">يظهر المجلد والمسار بعد كتابة العنوان والفنان.</p>
             </section>
 
-            <section class="card-group genre-section" aria-labelledby="genre-label-${item.id}">
+            <section class="card-group genre-section ${genreFolded ? 'is-folded' : ''}" aria-labelledby="genre-label-${item.id}">
                 <div class="field-head">
                     <h3 class="field-label group-label" id="genre-label-${item.id}">النوع</h3>
+                    ${genreFolded ? `<span class="genre-current">${escapeHtml(currentGenre)}</span>` : ''}
                     ${fieldCheck('genre')}
+                    ${genreFolded ? `<button type="button" class="genre-change" aria-expanded="false" aria-controls="genre-buttons-${item.id}">تغيير</button>` : ''}
                 </div>
-                <div class="genre-buttons" role="group" aria-labelledby="genre-label-${item.id}">
+                <div class="genre-buttons" id="genre-buttons-${item.id}" role="group" aria-labelledby="genre-label-${item.id}">
                     ${orderedGenres.map(genre => `
                         <button type="button" class="genre-btn ${currentGenre === genre ? 'selected' : ''}" data-id="${item.id}" data-genre="${genre}" aria-pressed="${currentGenre === genre}">
                             ${genre}${genre === suggestion.genre ? `<small class="genre-hint">${suggestion.reason}</small>` : ''}
@@ -1412,6 +1416,9 @@ function attachItemListeners(itemId) {
         addArtistBtn.addEventListener('click', () => addArtistRow(itemId));
     }
 
+    // A folded genre opens in place, focused on the chosen genre
+    card.querySelector('.genre-change')?.addEventListener('click', () => openGenreFold(itemId));
+
     // Genre button listeners
     const genreButtons = card.querySelectorAll('.genre-btn');
     genreButtons.forEach(btn => {
@@ -1561,10 +1568,21 @@ function updateConfirmButton(itemId) {
     queueDestinationPreview(itemId);
 }
 
+function openGenreFold(itemId) {
+    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    const section = card?.querySelector('.genre-section.is-folded');
+    if (!section) return;
+    openedGenres.add(itemId);
+    section.classList.remove('is-folded');
+    section.querySelectorAll('.genre-current, .genre-change').forEach(el => el.remove());
+    (section.querySelector('.genre-btn.selected') || section.querySelector('.genre-btn'))?.focus();
+}
+
 // A waiting confirm is not a dead end: a tap takes the operator to the first missing field
 function focusFirstMissing(itemId) {
     const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
     const first = (card?.querySelector('.confirm-btn')?.dataset.missing || '').split(' ')[0];
+    if (first === 'genre') openGenreFold(itemId);
     const target = {
         title: () => card.querySelector('.title-input'),
         artist: () => Array.from(card.querySelectorAll('.artist-input')).find(input => !input.value.trim()),
