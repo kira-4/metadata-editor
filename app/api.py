@@ -4,8 +4,9 @@ import shutil
 from pathlib import Path
 from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.artist_matching import derive_album_artist, normalize_artist_name, rank_artist_candidates
@@ -15,6 +16,7 @@ from app.events import event_stream, publish_event
 from app.library_scanner import library_scanner
 from app.metadata_processor import metadata_processor
 from app.mover import file_mover
+from app.scanner import file_scanner
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +200,17 @@ def dry_run_item(item_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error generating dry-run for item {item_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/health")
+def health(db: Session = Depends(get_db)):
+    """Liveness for the Docker healthcheck: 503 when SQLite on /data is unusable."""
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return JSONResponse(status_code=503, content={"status": "error", "detail": str(e)})
+    return {"status": "ok", "scanner_running": file_scanner.running}
 
 
 @router.get("/pending")
