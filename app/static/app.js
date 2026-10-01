@@ -1605,11 +1605,15 @@ function renderDestinationPreview(itemId, dryRun) {
     const folder = artists.length > 1
         ? `<select class="album-artist-select" aria-label="فنان المجلد">${artists.map(a =>
             `<option value="${escapeHtml(a)}" ${a === albumArtist ? 'selected' : ''}>${escapeHtml(a)}</option>`).join('')}</select>`
-        : `<strong>${escapeHtml(albumArtist)}</strong>`;
+        : `<span class="visually-hidden">المجلد: </span><bdi>${escapeHtml(albumArtist)}</bdi>`;
+    // The shelf label: the folder names the shelf, the file sits beneath it (full path on hover)
+    const fileName = String(move.relative_path || '').split('/').pop();
 
     el.innerHTML = `
-        <div class="destination-row"><span class="destination-label">المجلد:</span> ${folder}</div>
-        <div class="destination-path" title="${escapeHtml(move.destination_path || '')}">${formatLibraryPath(move.relative_path || '')}</div>
+        <div class="shelf-label" title="${escapeHtml(move.destination_path || '')}">
+            <div class="shelf-folder">${folder}</div>
+            <div class="shelf-file">${formatLibraryPath(fileName)}</div>
+        </div>
         ${move.destination_exists ? '<div class="destination-warning">يوجد ملف بهذا الاسم في المكتبة، وسيُطلب منك الاختيار عند التأكيد</div>' : ''}
     `;
 

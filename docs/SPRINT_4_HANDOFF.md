@@ -113,6 +113,7 @@ Sprint 4 is done. These come from the closing critique.
 **Decided 2026-10-01 for the next round:**
 - **Focus: review throughput.** Items 1, 2 and 5 first: the needs-review layout, removing the repeated title text, then focus on the next card and genre carry-over.
 - **Tone: one signature detail.** Add a single recognisable element within the Night Archive rules: no religious ornament, no gradients on controls, calm. Pick it during `/impeccable shape` or `bolder` (restrained), not by decorating.
+  **Done** (`feature/shelf-label`): the **shelf label**. On the queue card, the destination is a recessed holder (Night Ink) with a Shelf Navy plate: the folder at Title weight, the file name beneath it. Queue card only. A side spine was rejected (it reads as the side-stripe trope), and so was a teal "filed" stamp (the card leaves within 200ms, too fast to read). Check script: `.playwright-mcp/sl1check.cjs`. See DESIGN.md → Review Card → Shelf label.
 
 1. ~~**[P1] Needs-review card layout**~~ **done** (`feature/needs-review-layout`): three seam-separated groups (name, الوجهة, النوع); checks beside each label; remembered genre first (`metadataEditor.genreMemory`: `last` + `byChannel`, written on a successful single confirm, which confirm-all uses too). Check script: `.playwright-mcp/l1check.cjs`.
 2. ~~**[P1] Redundant text**~~ **done** (`feature/distill-long-title`): the source (video title, channel) and the scanner's raw error share one «التفاصيل التقنية» fold beside the artwork; the path shows folder / file on one line, with the stem ellipsised and the extension kept (full path in `title`). Check script: `.playwright-mcp/d1check.cjs`.
@@ -133,7 +134,7 @@ Sprint 4 is done. These come from the closing critique.
 5. Micro commits per concern (see the staging helper below). Push, `gh pr create --base main`, then `gh pr checks <n> --watch` (checks take about 10s to appear), then `gh pr merge <n> --squash --delete-branch`. Update this handoff and `DESIGN.md` in the step's last commit.
 
 ## Housekeeping
-- **Python** is `venv/bin/python` (there is no bare `python` on PATH). `venv/bin/python -m pytest tests/ -q` → **161 passed** (B4/B5 were frontend and docs only). `node --check app/static/app.js` is a quick syntax check.
+- **Python** is `venv/bin/python` (there is no bare `python` on PATH). `venv/bin/python -m pytest tests/ -q` → **164 passed** (B4/B5 were frontend and docs only). `node --check app/static/app.js` is a quick syntax check.
 - **Scratch environment** (the scratchpad is per-session, so rebuild it). Set `S=<scratchpad>/env`, then:
   ```bash
   mkdir -p $S/{incoming,music,data}

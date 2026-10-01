@@ -269,7 +269,9 @@ Gently rounded throughout: 0.5rem for controls (inputs, buttons, chips), 0.75rem
 - **Library tabs:** text tabs with a 3px Signal Blue underline when active.
 
 ### Review Card (signature)
-Artwork and source line, then three groups separated by a 1px Seam and 1.5rem (1rem on phones) above and below it: **the name** (title input; one row per artist with a combobox of suggestions and a remove ×; "+ add artist"), **الوجهة** (the folder line, "المجلد:" with a select when there are several artists, and an RTL destination path, or a dashed placeholder until title and artist exist), and **النوع** (genre chips). The full-width confirm button, a status line and a quiet delete follow.
+Artwork and source line, then three groups separated by a 1px Seam and 1.5rem (1rem on phones) above and below it: **the name** (title input; one row per artist with a combobox of suggestions and a remove ×; "+ add artist"), **الوجهة** (the shelf label, below), and **النوع** (genre chips). The full-width confirm button, a status line and a quiet delete follow.
+
+**Shelf label (the card's signature):** the destination is drawn as a catalogue label in its holder. The holder is a slot recessed below the card (Night Ink, 1px Seam, 0.5rem corners, 0.25rem inset). The plate inside it is one step up (Shelf Navy, 0.25rem corners, concentric). On the plate, the folder (album artist) is printed at Title size and weight in Parchment Text. With several artists the folder is a transparent-fill picker printed on the plate. The file name sits beneath it in Caption, Margin Text; its stem gives way with an ellipsis and the extension stays. The full path is in the label's `title`. Until title and artist exist, the holder is empty: the same slot, dashed, with the hint. The exists-warning sits in the slot under the plate. It uses only existing tonal steps: no colour, stripe or ornament. It appears on the queue card only.
 
 **Field checks (needs-review cards only):** each required field carries its check beside its label instead of in a list at the top: an amber pill («✗ مطلوب», «✗ فنان واحد على الأقل», «✗ اختر نوعًا») while missing, and a bare teal ✓ once filled.
 
