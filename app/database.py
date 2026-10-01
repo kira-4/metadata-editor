@@ -1,5 +1,6 @@
 """Database models and operations."""
-from datetime import datetime, timezone
+import shutil
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Optional, List
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
@@ -28,7 +29,7 @@ class PendingItem(Base):
     genre = Column(String(200), nullable=True)
     extension = Column(String(10), nullable=False)
     artwork_path = Column(Text, nullable=True)
-    status = Column(String(20), default="pending")  # pending, done, error, needs_manual
+    status = Column(String(20), default="pending")  # pending, processing, done, error, needs_manual, dismissed
     error_message = Column(Text, nullable=True)
     file_identifier = Column(Text, nullable=True, index=True)  # Stable hash for duplicate detection
     raw_gemini_response = Column(Text, nullable=True)  # Raw response for debugging parse failures
@@ -392,6 +393,45 @@ class DatabaseManager:
         return db.query(PendingItem).filter(
             PendingItem.file_identifier == file_identifier
         ).first()
+
+    @staticmethod
+    def mark_as_dismissed(db: Session, item_id: int, trash_path: str) -> None:
+        """Hide an item from the queue; its original now lives at trash_path."""
+        db.query(PendingItem).filter(PendingItem.id == item_id).update(
+            {"status": "dismissed", "current_path": trash_path, "artwork_path": None,
+             "updated_at": datetime.now(timezone.utc)},
+            synchronize_session=False,
+        )
+        db.commit()
+
+    @staticmethod
+    def forget_dismissed(db: Session, file_identifier: str, original_path: str) -> int:
+        """Drop dismissed rows for a file that is back in /incoming, so it re-imports.
+
+        Their trash dirs go too: the file is in /incoming again, and ids get reused.
+        """
+        rows = db.query(PendingItem).filter(
+            PendingItem.status == "dismissed",
+            (PendingItem.file_identifier == file_identifier) | (PendingItem.original_path == original_path),
+        ).all()
+        for row in rows:
+            shutil.rmtree(config.TRASH_DIR / str(row.id), ignore_errors=True)
+            db.delete(row)
+        db.commit()
+        return len(rows)
+
+    @staticmethod
+    def purge_expired_trash(db: Session) -> int:
+        """Delete trashed originals (and their rows) older than TRASH_RETENTION_DAYS."""
+        cutoff = datetime.now(timezone.utc) - timedelta(days=config.TRASH_RETENTION_DAYS)
+        expired = db.query(PendingItem).filter(
+            PendingItem.status == "dismissed", PendingItem.updated_at < cutoff
+        ).all()
+        for item in expired:
+            shutil.rmtree(config.TRASH_DIR / str(item.id), ignore_errors=True)
+            db.delete(item)
+        db.commit()
+        return len(expired)
 
 
 class LibraryManager:
