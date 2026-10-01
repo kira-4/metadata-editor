@@ -114,6 +114,10 @@ Tickets are small enough for one PR each. Every ticket ships with a regression t
 | S3-4 | GitHub Actions: `pytest` + `node --check app/static/app.js`. | #29 |
 | S3-5 | Replace hard delete with a `dismissed` status. Move the original to `/data/trash` with retention. | N4 |
 
+### Sprint 4 — UI follow-ups and design pass
+
+See [SPRINT_4_PLAN.md](SPRINT_4_PLAN.md).
+
 ### Later (only when a real need shows up)
 
 - Contrast fixes on confirm/primary buttons (#13) are cheap, so batch them with S2-1.
