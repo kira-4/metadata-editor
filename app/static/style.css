@@ -690,6 +690,15 @@ body {
     cursor: not-allowed;
 }
 
+/* Armed (first tap of two): the solid fill gives way to a teal outline on a wash, so the
+   button visibly changes state; an inset ring keeps its size steady while the text swaps */
+.btn-confirm-all.armed,
+.ready-bar-btn.armed {
+    background: var(--success-wash);
+    color: var(--success);
+    box-shadow: inset 0 0 0 2px var(--success);
+}
+
 .error-badge {
     background: var(--error);
     color: var(--bg-primary);

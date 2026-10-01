@@ -121,7 +121,7 @@ Sprint 4 is done. These come from the closing critique.
 4. ~~**[P2] Dead disabled confirm**~~ **done** (`feature/final-polish`): tapping a waiting «تأكيد» focuses the first missing field.
 5. **[P2] Throughput for 50-card sessions:** ~~focus the next card after confirm/delete~~ and ~~genre carry-over~~ are done. Still open: deep-link from the Telegram ping to its card, and applying a genre to the rest of a channel (`/impeccable shape`).
 6. **[P3]:** ~~enlarge the «تعديل» chip~~ and ~~the 44px token toggle~~ are done; the queue header now shows «N من M جاهزة». Still open: the debug checkbox is 15×20px, and the settings pipeline steps aren't explained (`/impeccable polish`).
-7. **[P2] Confirm-all in one tap** (`/impeccable harden`): arm it with a second tap that names the count.
+7. ~~**[P2] Confirm-all in one tap**~~ **done** (`feature/confirm-all-arm`): two taps; the first names the count and turns the button to a teal outline; a change in the ready count disarms it. Check script: `.playwright-mcp/ca1check.cjs`.
 8. **[P2] Needs-review card is ~1000px tall at 390px** (`/impeccable distill`): fold the groups that are already complete.
 
 ### Known loose ends (not scheduled)
