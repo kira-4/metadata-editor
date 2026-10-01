@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Literal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.config import config
@@ -33,15 +33,31 @@ class UpdateTrackRequest(BaseModel):
     disc_number: Optional[int] = None
 
 
+MAX_BATCH_SIZE = 1000
+BATCH_SET_FIELDS = ("title", "artist", "album", "album_artist", "genre", "year")
+
+
 class BatchUpdateRequest(BaseModel):
-    """Request to batch update tracks."""
-    track_ids: List[int]
+    """Batch edit: fields left None are kept, fields given are set, names in clear_fields are removed."""
+    track_ids: List[int] = Field(..., min_length=1, max_length=MAX_BATCH_SIZE)
     title: Optional[str] = None
     artist: Optional[str] = None
     album: Optional[str] = None
     album_artist: Optional[str] = None
     genre: Optional[str] = None
     year: Optional[int] = None
+    clear_fields: List[Literal["album", "album_artist", "genre", "year"]] = []
+
+    @model_validator(mode="after")
+    def _check_fields(self):
+        for name in ("title", "artist"):
+            value = getattr(self, name)
+            if value is not None and not value.strip():
+                raise ValueError(f"{name} cannot be empty")
+        both = [f for f in self.clear_fields if getattr(self, f) is not None]
+        if both:
+            raise ValueError(f"Fields both set and cleared: {', '.join(both)}")
+        return self
 
 
 class BatchUpdateResult(BaseModel):
@@ -253,89 +269,54 @@ def batch_update_tracks(
     request: BatchUpdateRequest,
     db: Session = Depends(get_db)
 ):
-    """Batch update multiple tracks."""
-    try:
-        if not request.track_ids:
-            raise HTTPException(status_code=400, detail="No tracks specified")
-        
-        results = {
-            "total": len(request.track_ids),
-            "successful": 0,
-            "failed": 0,
-            "errors": []
-        }
-        
-        # Build update kwargs
-        update_kwargs = {}
-        if request.title is not None:
-            update_kwargs['title'] = request.title
-        if request.artist is not None:
-            update_kwargs['artist'] = request.artist
-        if request.album is not None:
-            update_kwargs['album'] = request.album
-        if request.album_artist is not None:
-            update_kwargs['album_artist'] = request.album_artist
-        elif request.artist is not None:
-            # Sync album_artist with artist if artist is updated but album_artist is not
-            update_kwargs['album_artist'] = request.artist
-        if request.genre is not None:
-            update_kwargs['genre'] = request.genre
-        if request.year is not None:
-            update_kwargs['year'] = request.year
-        
-        # Process each track
-        for track_id in request.track_ids:
-            try:
-                track = LibraryManager.get_track_by_id(db, track_id)
-                if not track:
-                    results["failed"] += 1
-                    results["errors"].append({
-                        "track_id": track_id,
-                        "error": "Track not found"
-                    })
-                    continue
-                
-                file_path = Path(track.file_path)
-                if not file_path.exists():
-                    results["failed"] += 1
-                    results["errors"].append({
-                        "track_id": track_id,
-                        "file_path": str(file_path),
-                        "error": "File not found"
-                    })
-                    continue
-                
-                # Update file metadata
-                success = metadata_processor.update_metadata_safe(file_path, **update_kwargs)
-                
-                if not success:
-                    results["failed"] += 1
-                    results["errors"].append({
-                        "track_id": track_id,
-                        "file_path": str(file_path),
-                        "error": "Failed to update file metadata"
-                    })
-                    continue
-                
-                # Update database
-                LibraryManager.update_track_metadata(db, track_id, **update_kwargs)
-                results["successful"] += 1
-            
-            except Exception as e:
-                results["failed"] += 1
-                results["errors"].append({
-                    "track_id": track_id,
-                    "error": str(e)
-                })
-                logger.error(f"Error in batch update for track {track_id}: {e}")
-        
-        return results
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in batch update: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    """Batch update multiple tracks. Only the fields sent are touched."""
+    update_kwargs = {
+        name: getattr(request, name) for name in BATCH_SET_FIELDS if getattr(request, name) is not None
+    }
+    clear = list(dict.fromkeys(request.clear_fields))
+    if not update_kwargs and not clear:
+        raise HTTPException(status_code=400, detail="Nothing to change")
+
+    track_ids = list(dict.fromkeys(request.track_ids))
+    results = {
+        "total": len(track_ids),
+        "successful": 0,
+        "failed": 0,
+        "errors": []
+    }
+
+    def fail(track_id, error, track=None):
+        results["failed"] += 1
+        entry = {"track_id": track_id, "error": error}
+        if track is not None:
+            entry.update(title=track.title, file_path=track.file_path)
+        results["errors"].append(entry)
+
+    for track_id in track_ids:
+        track = None
+        try:
+            track = LibraryManager.get_track_by_id(db, track_id)
+            if not track:
+                fail(track_id, "Track not found")
+                continue
+
+            file_path = Path(track.file_path)
+            if not file_path.exists():
+                fail(track_id, "File not found", track)
+                continue
+
+            if not metadata_processor.update_metadata_safe(file_path, clear=clear, **update_kwargs):
+                fail(track_id, "Failed to update file metadata", track)
+                continue
+
+            LibraryManager.update_track_metadata(db, track_id, clear=clear, **update_kwargs)
+            results["successful"] += 1
+
+        except Exception as e:
+            logger.error(f"Error in batch update for track {track_id}: {e}")
+            fail(track_id, str(e), track)
+
+    return results
 
 
 class ArtistMergeRequest(BaseModel):
