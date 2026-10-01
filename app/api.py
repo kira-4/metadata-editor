@@ -33,6 +33,7 @@ class UpdateItemRequest(BaseModel):
     """Request to update item fields."""
     title: Optional[str] = None
     artist: Optional[str] = None
+    album_artist: Optional[str] = None  # must be one of the listed artists
     genre: Optional[str] = None
 
 
@@ -44,6 +45,17 @@ class ConfirmItemRequest(UpdateItemRequest):
     user chooses.
     """
     on_conflict: Optional[Literal["replace", "keep_both"]] = None
+
+
+def _split_artists(artists: Optional[str]) -> list:
+    return [a.strip() for a in (artists or "").split(";") if a.strip()]
+
+
+def _effective_album_artist(artist: str, channel: str, chosen: Optional[str]) -> str:
+    """The user's choice while it is still a listed artist, otherwise derived from the channel."""
+    if chosen and chosen.strip() in _split_artists(artist):
+        return chosen.strip()
+    return derive_album_artist(artist, channel)
 
 
 def _validated_updates(request: UpdateItemRequest, item) -> dict:
@@ -61,8 +73,16 @@ def _validated_updates(request: UpdateItemRequest, item) -> dict:
         if len(artist) > 300:
             raise HTTPException(status_code=400, detail="اسم الفنان طويل جداً (max 300 chars)")
         updates["artist"] = artist
-        # Auto-derive album_artist from the updated artist list
-        updates["album_artist"] = derive_album_artist(artist, item.channel)
+
+    artist_value = updates.get("artist", item.current_artist or "")
+    if request.album_artist is not None:
+        chosen = request.album_artist.strip()
+        if chosen not in _split_artists(artist_value):
+            raise HTTPException(status_code=400, detail="فنان المجلد يجب أن يكون أحد الفنانين المدرجين")
+        updates["album_artist"] = chosen
+    elif "artist" in updates:
+        # Keep an earlier choice while that artist is still listed
+        updates["album_artist"] = _effective_album_artist(artist_value, item.channel, item.album_artist)
 
     if request.genre is not None:
         genre = request.genre.strip()
@@ -132,16 +152,26 @@ def suggest_artists(
 
 
 @router.get("/pending/{item_id}/dry-run")
-def dry_run_item(item_id: int, db: Session = Depends(get_db)):
-    """Preview metadata write and destination path without modifying files."""
+def dry_run_item(
+    item_id: int,
+    title: Optional[str] = Query(default=None, max_length=300),
+    artist: Optional[str] = Query(default=None, max_length=300),
+    album_artist: Optional[str] = Query(default=None, max_length=300),
+    db: Session = Depends(get_db),
+):
+    """Preview metadata write and destination path without modifying files.
+
+    Query params preview an unsaved draft; omitted ones fall back to saved values.
+    """
     try:
         item = DatabaseManager.get_item_by_id(db, item_id)
         if not item:
             raise HTTPException(status_code=404, detail="Item not found")
 
-        title = (item.current_title or "").strip()
-        artist = (item.current_artist or "").strip()
-        album_artist = (derive_album_artist(artist, item.channel) or "").strip()
+        title = (title if title is not None else item.current_title or "").strip()
+        artist = (artist if artist is not None else item.current_artist or "").strip()
+        chosen = album_artist if album_artist is not None else item.album_artist
+        album_artist = (_effective_album_artist(artist, item.channel, chosen) or "").strip()
         genre = (item.genre or "").strip()
 
         missing_fields = []
@@ -159,6 +189,13 @@ def dry_run_item(item_id: int, db: Session = Depends(get_db)):
             title=title or "untitled",
             extension=item.extension
         )
+        # Confirm asks before using a "(1)" name, so preview the plain path and flag a clash
+        plain = file_mover.build_destination_path(
+            album_artist or "unknown", title or "untitled", item.extension, dedupe=False
+        )
+        preview["destination_path"] = str(plain)
+        preview["relative_path"] = str(plain.relative_to(config.NAVIDROME_ROOT))
+        preview["destination_exists"] = plain.exists()
 
         current_path = Path(item.current_path)
         file_exists = current_path.exists()
@@ -313,7 +350,7 @@ def _run_confirm(db: Session, item_id: int, draft: dict, on_conflict: Optional[s
         
         title = item.current_title.strip()
         artist = item.current_artist.strip()
-        album_artist = derive_album_artist(artist, item.channel)
+        album_artist = _effective_album_artist(artist, item.channel, item.album_artist)
         genre = item.genre.strip()
 
         current_path = Path(item.current_path)
