@@ -137,6 +137,9 @@ def apply_merge(db: Session, sources: List[str], target: str) -> dict:
         try:
             if not path.exists():
                 raise RuntimeError("File not found")
+            # Tags are written to a temp file beside the track, so the folder must be writable
+            if not os.access(path.parent, os.W_OK):
+                raise PermissionError(f"No write permission on folder: {path.parent}")
             if not metadata_processor.update_metadata_safe(
                 path,
                 artist=change["artist_after"],
@@ -158,5 +161,9 @@ def apply_merge(db: Session, sources: List[str], target: str) -> dict:
         except Exception as e:
             logger.error(f"Artist merge failed for {path}: {e}")
             results["failed"] += 1
-            results["errors"].append({"file_path": str(path), "error": str(e)})
+            results["errors"].append({
+                "file_path": str(path),
+                "error": str(e),
+                "permission": isinstance(e, PermissionError),
+            })
     return results

@@ -110,3 +110,19 @@ def test_existing_destination_is_not_overwritten(client, db, make_audio):
     assert target_file.read_bytes() == original
     assert variant.exists()  # retagged in place, not moved
     assert metadata_processor.read_metadata(variant)["artist"] == "X"
+
+
+def test_read_only_folder_reports_permission(client, split_artist):
+    _, _, variant_file, _ = split_artist
+    folder = variant_file.parent
+    folder.chmod(0o555)
+    try:
+        body = client.post("/api/library/artist-merge", json={
+            "sources": ["الشيخ حسين الاكرف"], "target": "الشيخ حسين الأكرف", "apply": True}).json()
+    finally:
+        folder.chmod(0o755)
+
+    [error] = body["results"]["errors"]
+    assert error["permission"] is True
+    assert str(folder) in error["error"]
+    assert variant_file.exists()
