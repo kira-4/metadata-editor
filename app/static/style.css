@@ -259,10 +259,11 @@ body {
     overflow: hidden;
 }
 
+/* Artwork and the source line: context, not something to edit */
 .item-header {
     display: flex;
+    align-items: center;
     gap: var(--spacing-md);
-    margin-bottom: var(--spacing-md);
 }
 
 .artwork {
@@ -286,16 +287,67 @@ body {
     border: 2px solid var(--border-color);
 }
 
-.item-info {
-    flex: 1;
+/* Three groups the operator checks in order: the name (title + artists), where it
+   goes (folder + path), and the genre. Tight inside a group, a seam between them. */
+.card-group {
+    margin-top: var(--spacing-lg);
+    padding-top: var(--spacing-lg);
+    border-top: 1px solid var(--border-color);
 }
 
-.field-group {
-    margin-bottom: var(--spacing-sm);
+.card-group-identity {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
 }
 
-.field-label,
-.genre-label {
+/* A label and, on needs-review cards, its ✓/✗ check on one line */
+.field-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-xs);
+}
+
+.field-head .field-label {
+    margin-bottom: 0;
+}
+
+.card-group-destination > .group-label {
+    margin-bottom: var(--spacing-xs);
+}
+
+.field-check {
+    flex-shrink: 0;
+    padding: 0.0625rem var(--spacing-xs);
+    border: 1px solid var(--warning-edge);
+    border-radius: var(--radius-pill);
+    background: var(--warning-wash);
+    color: var(--warning);
+    font-size: var(--text-caption);
+    font-weight: 600;
+    line-height: 1.6;
+}
+
+.field-check.done {
+    border-color: transparent;
+    background: none;
+    color: var(--success);
+}
+
+.destination-preview:not(:empty) + .destination-pending {
+    display: none;
+}
+
+.destination-pending {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px dashed var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    font-size: var(--text-caption);
+}
+
+.field-label {
     display: block;
     font-size: var(--text-label);
     font-weight: 600;
@@ -433,17 +485,14 @@ body {
 }
 
 .source-text {
+    flex: 1;
+    min-width: 0;
     font-size: var(--text-label);
     color: var(--text-muted);
-    margin-top: var(--spacing-xs);
 }
 
 .genre-section {
-    margin: var(--spacing-md) 0;
-}
-
-.genre-label {
-    margin-bottom: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
 }
 
 .genre-buttons {
@@ -2035,33 +2084,19 @@ body {
         padding: var(--spacing-md);
     }
 
-    /* Artwork + source share the first row; fields span the full width below */
+    /* Small artwork beside the source line; the groups below are already full width */
     .item-header {
-        display: grid;
-        grid-template-columns: 56px minmax(0, 1fr);
-        column-gap: var(--spacing-sm);
-        row-gap: 0;
-        margin-bottom: var(--spacing-sm);
-    }
-
-    .item-info {
-        display: contents;
+        gap: var(--spacing-sm);
     }
 
     .item-header .artwork,
     .item-header .artwork-placeholder {
-        grid-row: 1;
-        grid-column: 1;
         width: 56px;
         height: 56px;
         font-size: var(--glyph-md);
     }
 
     .item-header .source-text {
-        grid-row: 1;
-        grid-column: 2;
-        align-self: center;
-        margin: 0 0 var(--spacing-sm);
         font-size: var(--text-caption);
         display: -webkit-box;
         -webkit-line-clamp: 3;
@@ -2069,13 +2104,13 @@ body {
         overflow: hidden;
     }
 
-    .item-header .field-group,
-    .item-header .destination-preview {
-        grid-column: 1 / -1;
+    .card-group {
+        margin-top: var(--spacing-md);
+        padding-top: var(--spacing-md);
     }
 
-    .genre-label {
-        margin-bottom: var(--spacing-xs);
+    .genre-section {
+        margin-bottom: var(--spacing-md);
     }
 
     .genre-buttons {
@@ -2251,28 +2286,6 @@ body {
     margin-top: 0.15rem;
 }
 
-.review-checklist {
-    list-style: none;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--spacing-xs) var(--spacing-md);
-    margin-top: var(--spacing-xs);
-    color: var(--text-secondary);
-}
-
-.review-checklist li::before {
-    content: '○';
-    margin-inline-end: 0.35rem;
-}
-
-.review-checklist li.done {
-    color: var(--success);
-}
-
-.review-checklist li.done::before {
-    content: '✓';
-}
-
 /* Latin name beside an Arabic label, for people who know the Telegram term */
 .field-latin {
     margin-inline-start: 0.35rem;
@@ -2282,8 +2295,7 @@ body {
 }
 
 /* Long Arabic titles and channel names must wrap, never widen the card */
-.item-card,
-.item-info {
+.item-card {
     min-width: 0;
 }
 
@@ -2408,7 +2420,7 @@ textarea.title-input {
 
     .item-card.is-collapsed > .item-problem,
     .item-card.is-collapsed > .item-header,
-    .item-card.is-collapsed > .genre-section,
+    .item-card.is-collapsed > .card-group,
     .item-card.is-collapsed .dry-run-btn,
     .item-card.is-collapsed .delete-btn,
     .item-card.is-collapsed .item-status:empty {
