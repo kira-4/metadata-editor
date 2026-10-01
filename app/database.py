@@ -224,6 +224,7 @@ class DatabaseManager:
         inferred_title: Optional[str] = None,
         inferred_artist: Optional[str] = None,
         album_artist: Optional[str] = None,
+        genre: Optional[str] = None,
         artwork_path: Optional[str] = None,
         error_message: Optional[str] = None,
         file_identifier: Optional[str] = None,
@@ -266,6 +267,7 @@ class DatabaseManager:
             album_artist=album_artist,
             current_title=inferred_title,  # Initially same as inferred
             current_artist=inferred_artist,
+            genre=(genre or "").strip() or None,  # genre already embedded in the file
             extension=extension,
             artwork_path=artwork_path,
             status=status,
