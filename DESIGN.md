@@ -226,6 +226,7 @@ All of these are tokens in `style.css` (`--shadow-overlay`, `--shadow-dropdown`,
 ### Delight, kept to outcomes
 The only two "moments" report what really happened, in the product's words:
 - **Queue cleared:** «اكتملت المراجعة», with how many files went to the library since the page was opened, and «افتح المكتبة». With nothing confirmed yet it stays neutral: «لا ملفات في الانتظار», an empty muted tray, and no check.
+- **Confirm-all arming:** confirm-all moves every ready file, so it takes two taps (`armTwoTap`, 4s). The first tap names the count («اضغط مجددًا لنقل 3 ملفات», genitive forms: «ملفين»), and the solid teal gives way to a teal outline on Settled Teal wash (inset ring, so the height holds). If the ready count changes while armed, the button disarms and shows the new count: a second tap only ever moves what it named. Teal, not red: it completes work, it doesn't destroy it.
 - **Confirm-all summary:** names where the files went: one folder «إلى مجلد «…»», two or three by name, more as a count («إلى 5 مجلدات في المكتبة»). A single confirm names its folder too. The folder is read from the server's `new_path`.
 No celebration beyond this: no confetti, no sound, no streaks.
 
