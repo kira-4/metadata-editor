@@ -2328,3 +2328,15 @@ textarea.title-input {
     line-height: 1.6;
     min-height: 44px;
 }
+
+/* Counts and progress keep a steady width as digits change (Western digits, beside Latin paths) */
+.count,
+.nav-badge,
+#pageInfo,
+.library-stats,
+.selection-info,
+.rescan-status,
+.variant-count,
+.artist-suggestion-score {
+    font-variant-numeric: tabular-nums;
+}
