@@ -455,7 +455,7 @@ def get_artwork(item_id: int, db: Session = Depends(get_db)):
 
 @router.delete("/pending/{item_id}")
 def delete_item(item_id: int, db: Session = Depends(get_db)):
-    """Delete a pending item and its files."""
+    """Dismiss a pending item: original to trash, staging copy removed."""
     try:
         item = DatabaseManager.get_item_by_id(db, item_id)
         if not item:
@@ -467,42 +467,44 @@ def delete_item(item_id: int, db: Session = Depends(get_db)):
         if item.status == "processing":
             raise HTTPException(status_code=409, detail="الملف قيد النقل حالياً")
 
-        # Paths
+        if item.status == "dismissed":
+            raise HTTPException(status_code=409, detail="الملف محذوف بالفعل")
+
         current_path = Path(item.current_path)
         original_path = Path(item.original_path)
         artwork_path = Path(item.artwork_path) if item.artwork_path else None
 
-        # 1. Delete staged file (current_path) — only if it really lives in staging
+        # 1. Move the original to trash first. If that fails, change nothing: a
+        # dismissed row with its original still in /incoming would be re-imported.
+        trash_path = original_path
+        if original_path.exists():
+            trash_path = config.TRASH_DIR / str(item.id) / original_path.name
+            trash_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(original_path), str(trash_path))
+            logger.info(f"Moved original to trash: {original_path} -> {trash_path}")
+
+        # 2. Delete staged file (current_path) — only if it really lives in staging
         if current_path.exists() and current_path.resolve().is_relative_to(config.STAGING_DIR.resolve()):
             try:
                 current_path.unlink()
-                
+
                 # Cleanup staging dir if empty
                 staging_dir = current_path.parent
                 if staging_dir.is_relative_to(config.STAGING_DIR) and not any(staging_dir.iterdir()):
                     staging_dir.rmdir()
             except Exception as e:
                 logger.warning(f"Failed to delete staged file {current_path}: {e}")
-                
-        # 2. Delete original file (original_path) - to prevent rescan
-        if original_path.exists():
-            try:
-                original_path.unlink()
-                logger.info(f"Deleted original file: {original_path}")
-            except Exception as e:
-                logger.warning(f"Failed to delete original file {original_path}: {e}")
-        
+
         # 3. Delete artwork if exists
         if artwork_path and artwork_path.exists():
             try:
                 artwork_path.unlink()
             except Exception as e:
                 logger.warning(f"Failed to delete artwork {artwork_path}: {e}")
-                
-        # 4. Remove from DB
-        db.delete(item)
-        db.commit()
-        
+
+        # 4. Keep the row as history; purged with the trash after TRASH_RETENTION_DAYS
+        DatabaseManager.mark_as_dismissed(db, item.id, str(trash_path))
+
         publish_event({"type": "item_deleted", "id": item_id})
 
         return {"success": True}
