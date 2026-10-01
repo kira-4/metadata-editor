@@ -186,6 +186,14 @@
                         أدخل بيانات بوت Telegram ليتم تنبيهك عند وصول ملف جديد يتطلب المراجعة.
                     </p>
 
+                    <div id="telegramStatus" class="telegram-status" style="display: none;">
+                        <span id="telegramStatusText"></span>
+                        <label class="switch-label">
+                            <input type="checkbox" id="telegramEnabled" role="switch">
+                            إرسال الإشعارات
+                        </label>
+                    </div>
+
                     <form id="telegramSettingsForm" class="settings-form">
                         <div class="form-group">
                             <label for="telegramBotToken">Bot Token</label>
@@ -193,6 +201,7 @@
                                 <input
                                     type="password"
                                     id="telegramBotToken"
+                                    dir="ltr"
                                     class="field-input"
                                     autocomplete="off"
                                     placeholder="••••••••"
@@ -216,6 +225,7 @@
                             <input
                                 type="text"
                                 id="telegramChatId"
+                                dir="ltr"
                                 class="field-input"
                                 autocomplete="off"
                                 placeholder="مثال: 123456789 أو -1001234567890"
@@ -242,6 +252,7 @@
                         <div class="settings-actions">
                             <button type="submit" class="btn-primary">حفظ</button>
                             <button type="button" id="telegramTestBtn" class="btn-secondary">إرسال رسالة اختبار</button>
+                            <button type="button" id="telegramDisconnectBtn" class="btn-secondary btn-danger-quiet" style="display: none;">قطع الاتصال</button>
                         </div>
                     </form>
                 </section>

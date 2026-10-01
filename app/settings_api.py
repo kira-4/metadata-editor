@@ -20,6 +20,7 @@ class TelegramSettingsResponse(BaseModel):
     bot_token_set: bool = False
     chat_id: Optional[str] = None
     message_thread_id: Optional[int] = None
+    enabled: bool = True
 
 
 class TelegramSettingsUpdate(BaseModel):
@@ -27,6 +28,7 @@ class TelegramSettingsUpdate(BaseModel):
     bot_token: Optional[str] = None
     chat_id: Optional[str] = None
     message_thread_id: Optional[int] = None
+    enabled: Optional[bool] = None  # None leaves it as is
 
 
 class TelegramTestRequest(BaseModel):
@@ -41,17 +43,27 @@ class TelegramTestResponse(BaseModel):
     error: Optional[str] = None
 
 
-@settings_router.get("/telegram", response_model=TelegramSettingsResponse)
-def get_telegram_settings(db: Session = Depends(get_db)) -> TelegramSettingsResponse:
-    """Return the current Telegram settings with the token masked."""
-    settings = SettingsManager.get_telegram_settings(db)
+def _public(settings) -> TelegramSettingsResponse:
     token = (settings.bot_token or "").strip()
     return TelegramSettingsResponse(
         bot_token_masked=mask_token(token) if token else None,
         bot_token_set=bool(token),
         chat_id=settings.chat_id,
         message_thread_id=settings.message_thread_id,
+        enabled=bool(settings.enabled),
     )
+
+
+@settings_router.get("/telegram", response_model=TelegramSettingsResponse)
+def get_telegram_settings(db: Session = Depends(get_db)) -> TelegramSettingsResponse:
+    """Return the current Telegram settings with the token masked."""
+    return _public(SettingsManager.get_telegram_settings(db))
+
+
+@settings_router.delete("/telegram", response_model=TelegramSettingsResponse)
+def disconnect_telegram(db: Session = Depends(get_db)) -> TelegramSettingsResponse:
+    """Forget the bot token, chat and topic."""
+    return _public(SettingsManager.clear_telegram_settings(db))
 
 
 @settings_router.put("/telegram", response_model=TelegramSettingsResponse)
@@ -81,15 +93,9 @@ def update_telegram_settings(
         chat_id=chat_id,
         message_thread_id=thread_id,
         update_bot_token=True,  # we've already computed the effective token
+        enabled=request.enabled,
     )
-
-    token = (updated.bot_token or "").strip()
-    return TelegramSettingsResponse(
-        bot_token_masked=mask_token(token) if token else None,
-        bot_token_set=bool(token),
-        chat_id=updated.chat_id,
-        message_thread_id=updated.message_thread_id,
-    )
+    return _public(updated)
 
 
 @settings_router.post("/telegram/test", response_model=TelegramTestResponse)

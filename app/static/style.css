@@ -1403,6 +1403,48 @@ body {
     line-height: 1.5;
 }
 
+/* Telegram connection status + on/off switch */
+.telegram-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
+    color: var(--success);
+}
+
+.telegram-status.paused {
+    color: var(--warning);
+}
+
+.switch-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    min-height: 44px;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.switch-label input {
+    width: 1.25rem;
+    height: 1.25rem;
+    accent-color: var(--accent-primary);
+}
+
+.btn-danger-quiet {
+    color: var(--error);
+}
+
+.btn-danger-quiet.armed {
+    border-color: var(--error);
+    background: rgba(255, 87, 87, 0.12);
+}
+
 /* Rescan progress line under the library header */
 .rescan-status {
     display: flex;

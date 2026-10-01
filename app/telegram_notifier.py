@@ -6,6 +6,7 @@ are best-effort and must never break the scanner pipeline.
 """
 import html
 import logging
+import re
 from typing import Optional, Tuple
 
 import httpx
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 _TELEGRAM_API_BASE = "https://api.telegram.org"
 _HTTP_TIMEOUT_SECONDS = 10.0
+# Bot tokens look like "123456789:AA..."; they also appear inside request URLs as "/bot<token>/"
+_TOKEN_PATTERN = re.compile(r"\d{5,}:[A-Za-z0-9_-]{10,}")
 
 _REASON_LABEL = {
     "pending": "📋 ملف جديد بانتظار المراجعة",
@@ -37,6 +40,20 @@ def send_message(
     """
     if not bot_token or not chat_id:
         return False, "bot_token and chat_id are required"
+    ok, error = _send(bot_token, chat_id, text, message_thread_id)
+    return ok, _redact(error, bot_token)
+
+
+def _redact(text: str, bot_token: str) -> str:
+    """Strip the bot token from error text before it is logged or shown."""
+    if not text:
+        return text
+    if bot_token:
+        text = text.replace(bot_token, mask_token(bot_token) or "•••")
+    return _TOKEN_PATTERN.sub("•••", text)
+
+
+def _send(bot_token: str, chat_id: str, text: str, message_thread_id: Optional[int]) -> Tuple[bool, str]:
 
     url = f"{_TELEGRAM_API_BASE}/bot{bot_token}/sendMessage"
     payload = {
@@ -92,9 +109,13 @@ def notify_actionable(item, reason: str) -> None:
             bot_token = (settings.bot_token or "").strip()
             chat_id = (settings.chat_id or "").strip()
             message_thread_id = settings.message_thread_id
+            enabled = settings.enabled
         finally:
             db.close()
 
+        if not enabled:
+            logger.debug("Telegram notifications are off — skipping item %s", getattr(item, "id", "?"))
+            return
         if not bot_token or not chat_id:
             logger.debug("Telegram not configured — skipping notification for item %s", getattr(item, "id", "?"))
             return
