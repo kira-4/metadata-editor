@@ -1962,7 +1962,7 @@ body {
 .album-artist-select {
     flex: 1;
     min-width: 0;
-    min-height: 2.25rem;
+    min-height: 44px;
     padding: 0.25rem 0.5rem;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
