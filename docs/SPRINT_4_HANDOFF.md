@@ -1,6 +1,6 @@
 # Sprint 4 handoff
 
-**Date:** 2026-09-30 · **Plan:** [SPRINT_4_PLAN.md](SPRINT_4_PLAN.md) · **Status:** Sprint 4 is **complete**. Tracks A and B (B0–B9) are merged. The closing critique scored **28/40** (B1: 24/40). Its follow-ups are under Next.
+**Date:** 2026-09-30 · **Plan:** [SPRINT_4_PLAN.md](SPRINT_4_PLAN.md) · **Status:** Sprint 4 is **complete**. Tracks A and B (B0–B9) are merged. The closing critique scored **28/40** (B1: 24/40). After the final polish pass (`feature/final-polish`) the re-run critique scored **29/40**, with no P0/P1 left. Snapshot: `.impeccable/critique/2026-10-01T07-29-34Z__app-static-index-html.md`. Its follow-ups are under Next.
 
 ## Done
 
@@ -117,10 +117,12 @@ Sprint 4 is done. These come from the closing critique.
 
 1. ~~**[P1] Needs-review card layout**~~ **done** (`feature/needs-review-layout`): three seam-separated groups (name, الوجهة, النوع); checks beside each label; remembered genre first (`metadataEditor.genreMemory`: `last` + `byChannel`, written on a successful single confirm, which confirm-all uses too). Check script: `.playwright-mcp/l1check.cjs`.
 2. ~~**[P1] Redundant text**~~ **done** (`feature/distill-long-title`): the source (video title, channel) and the scanner's raw error share one «التفاصيل التقنية» fold beside the artwork; the path shows folder / file on one line, with the stem ellipsised and the extension kept (full path in `title`). Check script: `.playwright-mcp/d1check.cjs`.
-3. **[P2] Delete under confirm** (`/impeccable harden`): demote it to a text action with space from confirm, or use an undo toast (deletes already go to trash).
-4. **[P2] Dead disabled confirm** (`/impeccable clarify`): a tap should focus the first missing field.
-5. **[P2] Throughput for 50-card sessions:** move focus to the next card after confirm, carry the genre over, and deep-link from the Telegram ping to its card.
-6. **[P3]:** explain ✓/○ and "ready" in the queue. Enlarge the «تعديل» chip. The token toggle is 36px tall (it sits inside the input).
+3. ~~**[P2] Delete under confirm**~~ **done** (`feature/final-polish`): delete is a quiet red text action on every screen size.
+4. ~~**[P2] Dead disabled confirm**~~ **done** (`feature/final-polish`): tapping a waiting «تأكيد» focuses the first missing field.
+5. **[P2] Throughput for 50-card sessions:** ~~focus the next card after confirm/delete~~ and ~~genre carry-over~~ are done. Still open: deep-link from the Telegram ping to its card, and applying a genre to the rest of a channel (`/impeccable shape`).
+6. **[P3]:** ~~enlarge the «تعديل» chip~~ and ~~the 44px token toggle~~ are done; the queue header now shows «N من M جاهزة». Still open: the debug checkbox is 15×20px, and the settings pipeline steps aren't explained (`/impeccable polish`).
+7. **[P2] Confirm-all in one tap** (`/impeccable harden`): arm it with a second tap that names the count.
+8. **[P2] Needs-review card is ~1000px tall at 390px** (`/impeccable distill`): fold the groups that are already complete.
 
 ### Known loose ends (not scheduled)
 - Batch-edit artist suggestions: the batch artist field is a plain `;`-separated input with no suggestions. A combobox that completes the segment after the last `;` would help «one spelling per artist». This is a feature, not scheduled.

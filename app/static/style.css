@@ -129,11 +129,20 @@ body {
     padding: var(--spacing-xl);
 }
 
+/* Title and count on one side, the queue's actions on the other */
 .queue-header {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
+    gap: var(--spacing-sm) var(--spacing-md);
     margin-bottom: var(--spacing-lg);
+}
+
+.queue-title {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm) var(--spacing-md);
 }
 
 .workflow-steps {
@@ -168,7 +177,6 @@ body {
     display: flex;
     flex-wrap: wrap;
     gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-md);
 }
 
 .global-alert {
@@ -604,20 +612,32 @@ body {
     letter-spacing: 0;
 }
 
-.confirm-btn:hover:not(:disabled) {
+.confirm-btn:hover:not(:disabled, [aria-disabled="true"]) {
     filter: brightness(1.08);
 }
 
-.confirm-btn:active:not(:disabled) {
+.confirm-btn:active:not(:disabled, [aria-disabled="true"]) {
     filter: brightness(0.94);
 }
 
-/* Waiting for input: the label says what is missing, so it must stay readable */
-.confirm-btn:disabled {
+/* Waiting for input: the label says what is missing, so it must stay readable.
+   A tap takes you to the missing field, so it answers hover like a control. */
+.confirm-btn:disabled,
+.confirm-btn[aria-disabled="true"] {
     background: var(--bg-tertiary);
     color: var(--text-secondary);
     border: 1px dashed var(--border-color);
     cursor: not-allowed;
+}
+
+.confirm-btn[aria-disabled="true"] {
+    cursor: pointer;
+    transition: border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.confirm-btn[aria-disabled="true"]:hover {
+    border-color: var(--text-muted);
+    color: var(--text-primary);
 }
 
 /* Saving: still teal (it is happening), dimmed, with a slow sweep instead of a spinner */
@@ -701,16 +721,21 @@ body {
     width: 100%;
 }
 
+/* Destructive, recoverable (trash) and rare: a quiet text action set apart from confirm */
 .btn-secondary.delete-btn {
-    width: 100%;
-    border-color: var(--error);
+    align-self: center;
+    min-height: 44px;
+    margin-top: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-lg);
+    border-color: transparent;
+    background: transparent;
     color: var(--error);
-    margin-top: var(--spacing-sm);
+    font-size: var(--text-label);
 }
 
 .btn-secondary.delete-btn:hover {
     background: var(--error-tint);
-    border-color: var(--error);
+    border-color: transparent;
 }
 
 .item-status {
@@ -964,9 +989,6 @@ body {
         padding: 0.3rem 0.6rem;
     }
 
-    .pending-toolbar {
-        flex-direction: column;
-    }
 }
 
 /* Navigation */
@@ -1749,6 +1771,7 @@ body {
 }
 
 .token-input-wrapper .field-input {
+    min-height: 3rem;
     padding-inline-end: 4.25rem;
     letter-spacing: 0.05em;
 }
@@ -1760,7 +1783,7 @@ body {
     top: 50%;
     transform: translateY(-50%);
     min-width: 3.5rem;
-    height: 2.25rem;
+    height: 2.75rem;
     padding: 0 var(--spacing-xs);
     font-family: var(--font-family);
     border: none;
@@ -2147,16 +2170,9 @@ body {
 /* Phones: compact review card — full-width fields, small artwork beside the
    source line, genres in rows of three, 44px touch targets, quieter delete. */
 @media (max-width: 600px) {
-    .pending-toolbar {
-        flex-direction: row;
-        flex-wrap: wrap;
-        gap: var(--spacing-xs);
-    }
-
     .pending-toolbar > button {
-        flex: 1 1 0;
         min-height: 44px;
-        padding: var(--spacing-xs) var(--spacing-sm);
+        padding: var(--spacing-xs) var(--spacing-md);
         font-size: var(--text-label);
     }
 
@@ -2221,18 +2237,6 @@ body {
 
     .confirm-btn {
         min-height: 48px;
-    }
-
-    /* Destructive action stays reachable but no longer competes with confirm */
-    .btn-secondary.delete-btn {
-        width: auto;
-        align-self: center;
-        min-height: 44px;
-        margin-top: 0;
-        padding: var(--spacing-xs) var(--spacing-lg);
-        border-color: transparent;
-        background: transparent;
-        font-size: var(--text-label);
     }
 }
 
@@ -2509,7 +2513,8 @@ textarea.title-input {
 
     .card-summary-edit {
         align-self: start;
-        padding: 0.125rem var(--spacing-xs);
+        padding: var(--spacing-xs) var(--spacing-sm);
+        line-height: 1.2;
         border: 1px solid var(--border-color);
         border-radius: var(--radius-sm);
         font-size: var(--text-label);

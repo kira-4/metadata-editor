@@ -621,13 +621,30 @@ function removeCardAndCloseGap(card) {
     updatePendingCountUI();
 }
 
+function nextQueueCard(card) {
+    const live = el => el && !el.classList.contains('card-removing');
+    let el = card.nextElementSibling;
+    while (el && !live(el)) el = el.nextElementSibling;
+    if (el) return el;
+    el = card.previousElementSibling;
+    while (el && !live(el)) el = el.previousElementSibling;
+    return el;
+}
+
 // Remove a single item card from the DOM: it fades out, then the rest close the gap.
 // Safe to call twice (the confirm response and its SSE event both land here).
 function removeItemCardFromDOM(itemId, container) {
     const card = (container || document).querySelector(`.item-card[data-id="${itemId}"]`);
     if (card && !card.classList.contains('card-removing')) {
         card.classList.add('card-removing');
-        setTimeout(() => removeCardAndCloseGap(card), CARD_EXIT_MS);
+        setTimeout(() => {
+            // Focus was on this card (or dropped to the page when its button disabled):
+            // hand it to the card that takes its place, so a keyboard session carries on
+            const focusHere = card.contains(document.activeElement) || document.activeElement === document.body;
+            const next = nextQueueCard(card);
+            removeCardAndCloseGap(card);
+            if (focusHere && next) next.focus({preventScroll: true});
+        }, CARD_EXIT_MS);
     }
     pendingItems = pendingItems.filter(i => i.id !== itemId);
     albumArtistChoice.delete(itemId);
@@ -903,7 +920,7 @@ function createItemCard(item) {
                     معاينة دون كتابة
                 </button>
                 ` : ''}
-                <button class="confirm-btn" data-id="${item.id}" disabled>${CONFIRM_LABEL}</button>
+                <button class="confirm-btn" data-id="${item.id}" aria-disabled="true">${CONFIRM_LABEL}</button>
                 <div class="item-status" id="itemStatus-${item.id}"></div>
                 <button type="button" class="btn-secondary btn-danger-quiet delete-btn" data-id="${item.id}">حذف الملف</button>
             </div>
@@ -1428,7 +1445,10 @@ function attachItemListeners(itemId) {
     // Confirm button
     const confirmBtn = card.querySelector('.confirm-btn');
     if (confirmBtn) {
-        confirmBtn.addEventListener('click', () => confirmItem(itemId));
+        confirmBtn.addEventListener('click', () => {
+            if (confirmBtn.getAttribute('aria-disabled') === 'true') focusFirstMissing(itemId);
+            else confirmItem(itemId);
+        });
     }
 
     const deleteBtn = card.querySelector('.delete-btn');
@@ -1505,7 +1525,9 @@ function updateConfirmButton(itemId) {
     };
     const missing = Object.keys(MISSING_FIELD_ACTIONS).filter(key => !present[key]);
 
-    confirmBtn.disabled = missing.length > 0;
+    // Waiting is aria-disabled, not disabled: a tap still lands and leads to the missing field
+    confirmBtn.setAttribute('aria-disabled', String(missing.length > 0));
+    confirmBtn.dataset.missing = missing.join(' ');
     // A failed attempt keeps its "retry" look until the card stops being confirmable
     if (missing.length > 0) confirmBtn.classList.remove('is-failed');
     // A disabled confirm says what it is waiting for ("أضف فنانًا واختر النوع")
@@ -1530,6 +1552,20 @@ function updateConfirmButton(itemId) {
     }
     updateConfirmAllButton();
     queueDestinationPreview(itemId);
+}
+
+// A waiting confirm is not a dead end: a tap takes the operator to the first missing field
+function focusFirstMissing(itemId) {
+    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    const first = (card?.querySelector('.confirm-btn')?.dataset.missing || '').split(' ')[0];
+    const target = {
+        title: () => card.querySelector('.title-input'),
+        artist: () => Array.from(card.querySelectorAll('.artist-input')).find(input => !input.value.trim()),
+        genre: () => card.querySelector('.genre-btn'),
+    }[first]?.();
+    if (!target) return;
+    target.scrollIntoView({block: 'center', behavior: reducedMotion.matches ? 'auto' : 'smooth'});
+    target.focus({preventScroll: true});
 }
 
 // Album artist (the folder) and destination: the server resolves them from the draft,
@@ -1630,15 +1666,23 @@ function renderDestinationPreview(itemId, dryRun) {
 }
 
 // A card on its way out still has its button for a moment; it is not "ready"
-const READY_CONFIRM_SELECTOR = '.item-card:not(.card-removing) .confirm-btn:not(:disabled)';
+const CONFIRMABLE = '.confirm-btn:not(:disabled):not([aria-disabled="true"])';
+const READY_CONFIRM_SELECTOR = `.item-card:not(.card-removing) ${CONFIRMABLE}`;
 
 // Show/hide the "confirm all ready" button based on how many cards are ready
 // (toolbar on wider screens, the sticky bar at the bottom on phones)
 function updateConfirmAllButton() {
+    const readyCount = document.querySelectorAll(READY_CONFIRM_SELECTOR).length;
+    // The header count says how many are ready, in the same words as the phone's ready bar
+    const itemCount = document.getElementById('itemCount');
+    if (itemCount && pendingItems.length > 0) {
+        itemCount.textContent = readyCount > 0
+            ? `${readyCount} من ${pendingItems.length} جاهزة`
+            : arabicCount(pendingItems.length, FILE_FORMS);
+    }
     if (confirmAllRunning) return;
     const btn = document.getElementById('confirmAllReadyBtn');
     const bar = document.getElementById('readyBar');
-    const readyCount = document.querySelectorAll(READY_CONFIRM_SELECTOR).length;
     if (btn) {
         btn.hidden = readyCount < 2;
         btn.disabled = false;
@@ -1674,7 +1718,7 @@ async function confirmAllReady() {
 
     for (const itemId of readyIds) {
         // Re-check: the item may have left meanwhile (SSE from another tab, a failed earlier pass)
-        const stillExists = document.querySelector(`.item-card:not(.card-removing) .confirm-btn[data-id="${itemId}"]:not(:disabled)`);
+        const stillExists = document.querySelector(`.item-card:not(.card-removing) ${CONFIRMABLE}[data-id="${itemId}"]`);
         if (!stillExists) continue;
 
         if (await confirmItem(itemId)) {
