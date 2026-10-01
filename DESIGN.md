@@ -265,6 +265,8 @@ Gently rounded throughout: 0.5rem for controls (inputs, buttons, chips), 0.75rem
 - **Focus:** Signal Blue border plus the soft focus ring.
 - **Changed (batch edit):** Signal Blue border while a field is set to change.
 - **Disabled:** half opacity.
+- **Switch** (`role="switch"` checkboxes: Telegram «إرسال الإشعارات», debug mode): a 2.75×1.5rem pill track, Shelf Navy with a Faded Text thumb at the start when off; Signal Blue with a Night Ink thumb at the end when on. The thumb moves on `inset-inline-start`, so RTL needs no flip. The whole label is the 44px target.
+- **Debug pipeline:** with debug mode on, Settings lists the five steps each file goes through, numbered in small round counters, each with its name and one line on what happens there (and where it can stop), under a lead that points to the log.
 
 ### Navigation
 - **Top bar:** Archive Navy panel holding the brand: the app icon (`apple-touch-icon.png` at 2rem, 0.5rem corners) and the title in Parchment Text. Next to them are three page links. The active link is a Signal Blue fill with Night Ink text. A red count badge sits on the queue link. On phones the brand stacks above an equal-width row of links.
