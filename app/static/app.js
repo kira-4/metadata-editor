@@ -489,6 +489,15 @@ async function loadPendingItems(options = {}) {
     }
 }
 
+// Cards that need the operator's attention go last, so a session starts with one-tap confirms
+function needsReview(item) {
+    return item.status === 'needs_manual' || item.status === 'error';
+}
+
+function sortQueue(items) {
+    return items.slice().sort((a, b) => needsReview(a) - needsReview(b));  // stable: keeps server order within each group
+}
+
 // Surgically add/remove cards without touching existing ones
 function smartUpdatePendingList(freshItems, focusSnapshot = null) {
     const container = document.getElementById('pendingItems');
@@ -504,7 +513,7 @@ function smartUpdatePendingList(freshItems, focusSnapshot = null) {
         if (item.genre && item.genre.trim()) selectedGenres[item.id] = item.genre.trim();
     });
 
-    pendingItems = freshItems;
+    pendingItems = sortQueue(freshItems);
 
     // Remove cards no longer in the list
     oldIds.forEach(id => {
@@ -513,14 +522,19 @@ function smartUpdatePendingList(freshItems, focusSnapshot = null) {
         }
     });
 
-    // Add genuinely new cards at the top (createItemCard uses escapeHtml for all user data)
+    // Add genuinely new cards at the top of their group: ready ones first, needs-review ones
+    // above the older needs-review cards (createItemCard uses escapeHtml for all user data)
     // eslint-disable-next-line no-unsanitized/method
     freshItems.forEach(item => {
         if (!oldIds.has(item.id)) {
             const tmp = document.createElement('div');
             tmp.innerHTML = createItemCard(item); // createItemCard escapes all user-provided values
             const newCard = tmp.firstElementChild;
-            container.prepend(newCard);
+            if (needsReview(item)) {
+                container.insertBefore(newCard, container.querySelector('.item-card.needs-review, .item-card.has-error'));
+            } else {
+                container.prepend(newCard);
+            }
             attachItemListeners(item.id);
             updateConfirmButton(item.id);
         }
@@ -606,7 +620,8 @@ function renderItems(options = {}) {
     
     emptyState.classList.remove('show');
     itemCount.textContent = arabicCount(pendingItems.length, FILE_FORMS);
-    
+
+    pendingItems = sortQueue(pendingItems);
     container.innerHTML = pendingItems.map(item => createItemCard(item)).join('');
     
     // Attach event listeners
