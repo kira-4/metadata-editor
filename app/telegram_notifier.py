@@ -20,6 +20,8 @@ _HTTP_TIMEOUT_SECONDS = 10.0
 # Bot tokens look like "123456789:AA..."; they also appear inside request URLs as "/bot<token>/"
 _TOKEN_PATTERN = re.compile(r"\d{5,}:[A-Za-z0-9_-]{10,}")
 
+_OPEN_CARD_LABEL = "افتح البطاقة"
+
 _REASON_LABEL = {
     "pending": "📋 ملف جديد بانتظار المراجعة",
     "needs_manual": "⚠️ ملف يتطلب تدخلاً يدوياً",
@@ -32,14 +34,26 @@ def send_message(
     chat_id: str,
     text: str,
     message_thread_id: Optional[int] = None,
+    button_url: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
     Post a message to Telegram. Returns (ok, error_message).
+
+    With button_url, the message carries an «افتح البطاقة» button. Telegram refuses some
+    button URLs (bare IPs, unusual hosts), so a refused button is retried once as a
+    plain link line: a missing button must never cost the notification.
 
     Never raises — network/HTTP errors are captured into the error string.
     """
     if not bot_token or not chat_id:
         return False, "bot_token and chat_id are required"
+    if button_url:
+        markup = {"inline_keyboard": [[{"text": _OPEN_CARD_LABEL, "url": button_url}]]}
+        ok, error = _send(bot_token, chat_id, text, message_thread_id, markup)
+        if ok or not error.startswith("Telegram API 400"):
+            return ok, _redact(error, bot_token)
+        logger.info("Telegram refused the card button, sending the link as text: %s", _redact(error, bot_token))
+        text = f"{text}\n{html.escape(button_url)}"
     ok, error = _send(bot_token, chat_id, text, message_thread_id)
     return ok, _redact(error, bot_token)
 
@@ -53,7 +67,13 @@ def _redact(text: str, bot_token: str) -> str:
     return _TOKEN_PATTERN.sub("•••", text)
 
 
-def _send(bot_token: str, chat_id: str, text: str, message_thread_id: Optional[int]) -> Tuple[bool, str]:
+def _send(
+    bot_token: str,
+    chat_id: str,
+    text: str,
+    message_thread_id: Optional[int],
+    reply_markup: Optional[dict] = None,
+) -> Tuple[bool, str]:
 
     url = f"{_TELEGRAM_API_BASE}/bot{bot_token}/sendMessage"
     payload = {
@@ -64,6 +84,8 @@ def _send(bot_token: str, chat_id: str, text: str, message_thread_id: Optional[i
     }
     if message_thread_id is not None:
         payload["message_thread_id"] = message_thread_id
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
 
     try:
         with httpx.Client(timeout=_HTTP_TIMEOUT_SECONDS) as client:
@@ -88,10 +110,18 @@ def send_test(
     bot_token: str,
     chat_id: str,
     message_thread_id: Optional[int] = None,
+    app_url: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """Send a verification ping with the *provided* credentials (not the stored ones)."""
     text = "✅ <b>Metadata-editor</b>\nرسالة اختبار — إعدادات الإشعارات تعمل."
-    return send_message(bot_token, chat_id, text, message_thread_id)
+    return send_message(bot_token, chat_id, text, message_thread_id, card_url(app_url))
+
+
+def card_url(app_url: Optional[str], item_id: Optional[int] = None) -> Optional[str]:
+    """The queue (or one card in it) at the operator's app address; None without an address."""
+    if not app_url:
+        return None
+    return f"{app_url}/#/pending/{item_id}" if item_id is not None else f"{app_url}/#/pending"
 
 
 def notify_actionable(item, reason: str) -> None:
@@ -110,6 +140,7 @@ def notify_actionable(item, reason: str) -> None:
             chat_id = (settings.chat_id or "").strip()
             message_thread_id = settings.message_thread_id
             enabled = settings.enabled
+            app_url = settings.app_url
         finally:
             db.close()
 
@@ -121,7 +152,7 @@ def notify_actionable(item, reason: str) -> None:
             return
 
         text = _format_message(item, reason)
-        ok, error = send_message(bot_token, chat_id, text, message_thread_id)
+        ok, error = send_message(bot_token, chat_id, text, message_thread_id, card_url(app_url, getattr(item, "id", None)))
         if not ok:
             logger.warning("Failed to send Telegram notification for item %s: %s", getattr(item, "id", "?"), error)
     except Exception as exc:  # noqa: BLE001 - notifications must never bubble up
