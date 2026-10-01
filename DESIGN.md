@@ -269,7 +269,11 @@ Gently rounded throughout: 0.5rem for controls (inputs, buttons, chips), 0.75rem
 - **Library tabs:** text tabs with a 3px Signal Blue underline when active.
 
 ### Review Card (signature)
-Artwork and source line, title input, one row per artist (combobox with suggestions, remove ×), "+ add artist", the folder line ("المجلد:" with a select when there are several artists, and an RTL destination path), genre chips, then the full-width confirm button, a status line and a quiet delete.
+Artwork and source line, then three groups separated by a 1px Seam and 1.5rem (1rem on phones) above and below it: **the name** (title input; one row per artist with a combobox of suggestions and a remove ×; "+ add artist"), **الوجهة** (the folder line, "المجلد:" with a select when there are several artists, and an RTL destination path, or a dashed placeholder until title and artist exist), and **النوع** (genre chips). The full-width confirm button, a status line and a quiet delete follow.
+
+**Field checks (needs-review cards only):** each required field carries its check beside its label instead of in a list at the top: an amber pill («✗ مطلوب», «✗ فنان واحد على الأقل», «✗ اختر نوعًا») while missing, and a bare teal ✓ once filled.
+
+**Genre order:** the remembered genre goes first among the six chips, with a micro caption saying why: «هذه القناة» (the last genre confirmed for this channel) or «آخر اختيار» (the last genre confirmed at all). It only changes the order and selects nothing. The memory is per-browser (`localStorage`), and cards already on screen keep their order.
 
 **Collapsed (phones, ≤600px):** a complete scanner suggestion (`pending`, with title, artist and genre) shows only a summary (title; artists · genre; destination path) with an «تعديل» tag, plus the real confirm button. Tapping the summary opens the full card for good. Cards that need review, or that the operator has opened, never collapse. A sticky ready bar («N من M جاهزة» + confirm-all) sits at the bottom of the queue on phones and replaces the toolbar's confirm-all.
 
