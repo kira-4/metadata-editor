@@ -3813,6 +3813,12 @@ async function loadTelegramSettings() {
 
         chatInput.value = data.chat_id || '';
         threadInput.value = data.message_thread_id ?? '';
+        // No saved address yet: offer the one this browser is using, saved with the form
+        const appUrlInput = document.getElementById('telegramAppUrl');
+        appUrlInput.value = data.app_url || browserAppUrl();
+        document.getElementById('telegramAppUrlHint').textContent = data.app_url
+            ? 'يفتح زر «افتح البطاقة» في كل إشعار البطاقة نفسها على هذا العنوان.'
+            : 'هذا عنوان التطبيق في هذا المتصفح، ويُحفظ مع الإعدادات. يفتح زر «افتح البطاقة» في كل إشعار البطاقة نفسها عليه.';
 
         telegramSaved = data;
         renderTelegramStatus();
@@ -3838,8 +3844,14 @@ function collectTelegramFormPayload() {
     return {
         bot_token: tokenInput.value || '',
         chat_id: (chatInput.value || '').trim(),
-        message_thread_id: threadId
+        message_thread_id: threadId,
+        app_url: (document.getElementById('telegramAppUrl')?.value || '').trim()
     };
+}
+
+// Where this page is open (e.g. the Tailscale name), without the route
+function browserAppUrl() {
+    return `${window.location.origin}${window.location.pathname}`.replace(/\/$/, '');
 }
 
 async function saveTelegramSettings(event) {
