@@ -1453,7 +1453,7 @@ function showDestinationChoice(itemId, existingPath) {
 
 // Delete item
 async function deleteItem(itemId) {
-    if (!confirm('هل أنت متأكد من حذف هذا الملف نهائياً؟')) return;
+    if (!confirm('سيُنقل الملف الأصلي إلى سلة المهملات، ويمكن استعادته قبل حذفه التلقائي. هل تريد المتابعة؟')) return;
     
     const deleteBtn = document.querySelector(`.item-card[data-id="${itemId}"] .delete-btn`);
     if (deleteBtn) {
@@ -1474,7 +1474,7 @@ async function deleteItem(itemId) {
         // Remove item from list (optimistic update)
         pendingItems = pendingItems.filter(i => i.id !== itemId);
         renderItems();
-        showAlert('تم حذف الملف من قائمة الانتظار.', 'success');
+        showAlert('نُقل الملف إلى سلة المهملات.', 'success');
         logEvent('info', 'Pending item deleted', {itemId});
         
     } catch (error) {

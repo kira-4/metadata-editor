@@ -18,6 +18,7 @@ services:
       - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-}
       - APP_NAME=محرر الأصوات الولائية
       - SCAN_INTERVAL_SECONDS=30
+      - TRASH_RETENTION_DAYS=${TRASH_RETENTION_DAYS:-30}
       - TZ=America/Los_Angeles
       - PORT=8090
 
