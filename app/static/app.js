@@ -400,11 +400,9 @@ function setupGlobalUI() {
         refreshBtn.addEventListener('click', () => loadPendingItems({showLoading: true}));
     }
 
-    const confirmAllReadyBtn = document.getElementById('confirmAllReadyBtn');
-    document.getElementById('readyBarConfirmBtn')?.addEventListener('click', confirmAllReady);
-    if (confirmAllReadyBtn) {
-        confirmAllReadyBtn.addEventListener('click', confirmAllReady);
-    }
+    ['confirmAllReadyBtn', 'readyBarConfirmBtn'].forEach(id => {
+        document.getElementById(id)?.addEventListener('click', onConfirmAllClick);
+    });
 
     // Diagnostics live in Settings; the queue only shows their effect (the per-card preview button)
     debugEnabled = readDebugPreference();
@@ -1686,15 +1684,38 @@ function updateConfirmAllButton() {
     if (btn) {
         btn.hidden = readyCount < 2;
         btn.disabled = false;
-        btn.textContent = `✓ تأكيد ونقل الجاهزة (${readyCount})`;
+        setConfirmAllIdle(btn, `✓ تأكيد ونقل الجاهزة (${readyCount})`, readyCount);
     }
     if (bar) {
         bar.hidden = readyCount < 2;
         document.getElementById('readyBarCount').textContent = `${readyCount} من ${pendingItems.length} جاهزة`;
         const barBtn = document.getElementById('readyBarConfirmBtn');
         barBtn.disabled = false;
-        barBtn.textContent = '✓ تأكيد ونقل الجاهزة';
+        setConfirmAllIdle(barBtn, '✓ تأكيد ونقل الجاهزة', readyCount);
     }
+}
+
+// An armed confirm-all keeps its message while the ready count it named still holds.
+// If the count changes (SSE, an edit), it disarms: a second tap must move what it said.
+function setConfirmAllIdle(btn, idleText, readyCount) {
+    if (btn.classList.contains('armed')) {
+        if (Number(btn.dataset.armedCount) === readyCount) return;
+        disarmTwoTap(btn);
+    }
+    btn.textContent = idleText;
+}
+
+// Confirm-all moves every ready file into the library, so it takes two taps;
+// the first names how many files will move.
+function onConfirmAllClick(event) {
+    if (confirmAllRunning) return;
+    const btn = event.currentTarget;
+    const readyCount = document.querySelectorAll(READY_CONFIRM_SELECTOR).length;
+    if (!armTwoTap(btn, `اضغط مجددًا لنقل ${arabicCount(readyCount, FILE_FORMS_GENITIVE)}`)) {
+        btn.dataset.armedCount = readyCount;
+        return;
+    }
+    confirmAllReady();
 }
 
 // Confirm all ready items sequentially
@@ -1978,19 +1999,20 @@ const armTimers = new WeakMap();
 
 function armTwoTap(btn, armedText) {
     if (btn.classList.contains('armed')) {
-        clearTimeout(armTimers.get(btn));
-        btn.classList.remove('armed');
-        btn.textContent = btn.dataset.idleText;
+        disarmTwoTap(btn);
         return true;
     }
     btn.dataset.idleText = btn.textContent.trim();
     btn.classList.add('armed');
     btn.textContent = armedText;
-    armTimers.set(btn, setTimeout(() => {
-        btn.classList.remove('armed');
-        btn.textContent = btn.dataset.idleText;
-    }, 4000));
+    armTimers.set(btn, setTimeout(() => disarmTwoTap(btn), 4000));
     return false;
+}
+
+function disarmTwoTap(btn) {
+    clearTimeout(armTimers.get(btn));
+    btn.classList.remove('armed');
+    btn.textContent = btn.dataset.idleText;
 }
 
 // Delete item (the original goes to the trash folder and can be restored from there)
@@ -3238,6 +3260,7 @@ const batchEdit = {states: {}, failures: [], saving: false};
 // Queue items are ملفات (files waiting to move); library items are صوتيات (tracks)
 const TRACK_FORMS = ['صوتية واحدة', 'صوتيتان', 'صوتيات', 'صوتيةً', 'صوتية'];
 const FILE_FORMS = ['ملف واحد', 'ملفان', 'ملفات', 'ملفًا', 'ملف'];
+const FILE_FORMS_GENITIVE = ['ملف واحد', 'ملفين', 'ملفات', 'ملفًا', 'ملف'];  // after «لنقل»
 const ARTIST_FORMS = ['فنان واحد', 'فنانان', 'فنانين', 'فنانًا', 'فنان'];
 const ALBUM_FORMS = ['ألبوم واحد', 'ألبومان', 'ألبومات', 'ألبومًا', 'ألبوم'];
 const FOLDER_FORMS_GENITIVE = ['مجلد واحد', 'مجلدين', 'مجلدات', 'مجلدًا', 'مجلد'];  // after «إلى»
