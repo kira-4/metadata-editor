@@ -145,32 +145,55 @@ body {
     gap: var(--spacing-sm) var(--spacing-md);
 }
 
-.workflow-steps {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-md);
+/* Debug mode: the pipeline each file goes through, each step with what happens in it */
+.workflow {
+    margin: var(--spacing-sm) 0 var(--spacing-md);
+    max-width: 65ch;
+}
+
+.workflow-lead {
+    margin-bottom: var(--spacing-sm);
+    color: var(--text-secondary);
+    font-size: var(--text-label);
 }
 
 .workflow-steps {
+    display: grid;
+    gap: var(--spacing-sm);
     list-style: none;
     counter-reset: step;
-    margin-top: var(--spacing-sm);
 }
 
 .workflow-step {
     counter-increment: step;
-    background: var(--bg-tertiary);
+    display: grid;
+    grid-template-columns: 1.75rem 1fr;
+    column-gap: var(--spacing-xs);
     color: var(--text-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-pill);
-    padding: 0.4rem 0.9rem;
     font-size: var(--text-label);
-    font-weight: 600;
+    line-height: 1.7;
 }
 
 .workflow-step::before {
-    content: counter(step) ". ";
+    content: counter(step);
+    grid-row: span 2;
+    align-self: start;
+    display: grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-top: 0.15rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-pill);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+}
+
+.workflow-step strong {
+    color: var(--text-primary);
+    font-weight: 600;
 }
 
 .pending-toolbar {
@@ -1015,15 +1038,6 @@ body {
     
     .genre-buttons {
         grid-template-columns: 1fr;
-    }
-
-    .workflow-steps {
-        gap: 0.35rem;
-    }
-
-    .workflow-step {
-        font-size: var(--text-caption);
-        padding: 0.3rem 0.6rem;
     }
 
 }
