@@ -2,7 +2,7 @@
 import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, Iterable, Optional, List
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
@@ -528,9 +528,10 @@ class LibraryManager:
         genre: Optional[str] = None,
         year: Optional[int] = None,
         track_number: Optional[int] = None,
-        disc_number: Optional[int] = None
+        disc_number: Optional[int] = None,
+        clear: Iterable[str] = ()
     ) -> Optional[LibraryTrack]:
-        """Update track metadata fields."""
+        """Update track metadata fields. None leaves a field as is; names in `clear` are set to NULL."""
         track = db.query(LibraryTrack).filter(LibraryTrack.id == track_id).first()
         if not track:
             return None
@@ -551,6 +552,8 @@ class LibraryManager:
             track.track_number = track_number
         if disc_number is not None:
             track.disc_number = disc_number
+        for field in clear:
+            setattr(track, field, None)
         
         track.updated_at = datetime.utcnow()
         db.commit()
