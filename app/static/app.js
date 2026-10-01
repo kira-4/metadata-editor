@@ -20,6 +20,8 @@ const CONFIRM_LABEL = '✓ تأكيد ونقل إلى المكتبة';
 let pendingItems = [];
 let selectedGenres = {}; // itemId -> genre
 let customGenreVisible = {}; // itemId -> boolean
+const expandedCards = new Set(); // ready cards the user opened on a phone; they stay open
+let confirmAllRunning = false;
 let sseConnection = null;
 let pendingPollTimer = null;
 let debugEnabled = false;
@@ -366,6 +368,7 @@ function setupGlobalUI() {
     }
 
     const confirmAllReadyBtn = document.getElementById('confirmAllReadyBtn');
+    document.getElementById('readyBarConfirmBtn')?.addEventListener('click', confirmAllReady);
     if (confirmAllReadyBtn) {
         confirmAllReadyBtn.addEventListener('click', confirmAllReady);
     }
@@ -563,6 +566,7 @@ function removeItemCardFromDOM(itemId, container) {
     titleDraftValues.delete(itemId);
     delete selectedGenres[itemId];
     delete customGenreVisible[itemId];
+    expandedCards.delete(itemId);
     updatePendingCountUI();
 }
 
@@ -681,8 +685,20 @@ function createItemCard(item) {
 
     const problem = (hasError || isManual) ? describeItemProblem(item) : null;
 
+    // A complete suggestion collapses to a summary on phones: read it, confirm it, or open it to edit
+    const artistNames = artistList.filter(Boolean);
+    const collapsible = item.status === 'pending' && Boolean(titleValue.trim()) && artistNames.length > 0 && Boolean(currentGenre);
+    const collapsed = collapsible && !expandedCards.has(item.id);
+
     return `
-        <div class="item-card ${isManual ? 'needs-review' : ''} ${hasError ? 'has-error' : ''}" data-id="${item.id}">
+        <div class="item-card ${isManual ? 'needs-review' : ''} ${hasError ? 'has-error' : ''} ${collapsed ? 'is-collapsed' : ''}" data-id="${item.id}" tabindex="-1">
+            ${collapsible ? `
+            <button type="button" class="card-summary" aria-expanded="${!collapsed}">
+                <span class="card-summary-title">${escapeHtml(titleValue)}</span>
+                <span class="card-summary-edit">تعديل</span>
+                <span class="card-summary-meta">${artistNames.map(a => `<bdi>${escapeHtml(a)}</bdi>`).join('، ')} · ${escapeHtml(currentGenre)}</span>
+                <span class="card-summary-path" id="summary-path-${item.id}"></span>
+            </button>` : ''}
             ${problem ? `
             <div class="item-problem ${hasError ? 'error' : 'warn'}" role="note">
                 <strong>${hasError ? 'تعذّرت معالجة هذا الملف' : 'يحتاج مراجعة'}</strong>
@@ -1217,6 +1233,17 @@ function attachItemListeners(itemId) {
     // Title input listener
     const titleInput = card.querySelector('.title-input');
 
+    const summary = card.querySelector('.card-summary');
+    if (summary) {
+        summary.addEventListener('click', () => {
+            expandedCards.add(itemId);
+            card.classList.remove('is-collapsed');
+            summary.setAttribute('aria-expanded', 'true');
+            if (titleInput) autosizeTitle(titleInput);
+            card.focus({preventScroll: true});  // the summary hides; keep focus on this card
+        });
+    }
+
     if (titleInput) {
         // A title is one line of metadata: Enter must not add a newline, and the box grows to show it all
         autosizeTitle(titleInput);
@@ -1475,6 +1502,9 @@ function renderDestinationPreview(itemId, dryRun) {
         ${move.destination_exists ? '<div class="destination-warning">يوجد ملف بهذا الاسم في المكتبة، وسيُطلب منك الاختيار عند التأكيد</div>' : ''}
     `;
 
+    const summaryPath = document.getElementById(`summary-path-${itemId}`);
+    if (summaryPath) summaryPath.innerHTML = formatLibraryPath(move.relative_path || '');
+
     const select = el.querySelector('.album-artist-select');
     if (select) {
         select.addEventListener('change', () => {
@@ -1485,21 +1515,35 @@ function renderDestinationPreview(itemId, dryRun) {
 }
 
 // Show/hide the "confirm all ready" button based on how many cards are ready
+// (toolbar on wider screens, the sticky bar at the bottom on phones)
 function updateConfirmAllButton() {
+    if (confirmAllRunning) return;
     const btn = document.getElementById('confirmAllReadyBtn');
-    if (!btn) return;
+    const bar = document.getElementById('readyBar');
     const readyCount = document.querySelectorAll('.confirm-btn:not(:disabled)').length;
-    btn.style.display = readyCount >= 2 ? 'inline-flex' : 'none';
-    btn.textContent = `✓ تأكيد ونقل الجاهزة (${readyCount})`;
+    if (btn) {
+        btn.hidden = readyCount < 2;
+        btn.disabled = false;
+        btn.textContent = `✓ تأكيد ونقل الجاهزة (${readyCount})`;
+    }
+    if (bar) {
+        bar.hidden = readyCount < 2;
+        document.getElementById('readyBarCount').textContent = `${readyCount} من ${pendingItems.length} جاهزة`;
+        const barBtn = document.getElementById('readyBarConfirmBtn');
+        barBtn.disabled = false;
+        barBtn.textContent = '✓ تأكيد ونقل الجاهزة';
+    }
 }
 
 // Confirm all ready items sequentially
 async function confirmAllReady() {
-    const btn = document.getElementById('confirmAllReadyBtn');
-    if (btn) {
+    confirmAllRunning = true;
+    ['confirmAllReadyBtn', 'readyBarConfirmBtn'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
         btn.disabled = true;
         btn.textContent = 'جارٍ نقل الجاهزة…';
-    }
+    });
 
     // Collect IDs of ready items at the moment the button is clicked
     const readyIds = Array.from(document.querySelectorAll('.confirm-btn:not(:disabled)'))
@@ -1521,7 +1565,7 @@ async function confirmAllReady() {
         }
     }
 
-    if (btn) btn.disabled = false;
+    confirmAllRunning = false;
 
     if (failCount === 0) {
         showAlert(`نُقل ${arabicCount(successCount, FILE_FORMS)} إلى المكتبة.`, 'success');
