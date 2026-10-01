@@ -263,9 +263,11 @@ body {
     margin-bottom: var(--spacing-sm);
 }
 
-.field-label {
+.field-label,
+.genre-label {
     display: block;
     font-size: var(--text-label);
+    font-weight: 600;
     color: var(--text-secondary);
     margin-bottom: 0.25rem;
 }
@@ -403,7 +405,6 @@ body {
     font-size: var(--text-label);
     color: var(--text-muted);
     margin-top: var(--spacing-xs);
-    font-style: italic;
 }
 
 .genre-section {
@@ -411,10 +412,7 @@ body {
 }
 
 .genre-label {
-    display: block;
-    font-weight: 600;
     margin-bottom: var(--spacing-sm);
-    color: var(--text-secondary);
 }
 
 .genre-buttons {
@@ -2323,6 +2321,8 @@ body {
 /* The card title is a textarea that grows, so long Arabic titles are read in full */
 textarea.title-input {
     display: block;
+    font-size: var(--text-title);
+    font-weight: 600;
     resize: none;
     overflow: hidden;
     line-height: 1.6;
