@@ -142,6 +142,6 @@ Same as before: one ticket = one branch = one PR, a failing test first for Track
 - [x] S4-3 visible, selectable album artist + destination preview
 - [x] S4-4 Telegram disable/disconnect
 - [x] S4-5 favicon
-- [ ] S4-6 detail-view refresh
+- [x] S4-6 detail-view refresh
 - [ ] S4-7 clear-field semantics, byte-safe filenames
 - [ ] B0 init + document · B1 critique · B2 clarify · B3 harden · B4 typeset · B5 layout · B6 animate · B7 delight · B8 optimize · B9 audit + polish
