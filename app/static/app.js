@@ -441,7 +441,7 @@ async function loadPendingItems(options = {}) {
         if (showLoading && container) {
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'loading';
-            loadingDiv.textContent = 'جاري تحميل الملفات...';
+            loadingDiv.textContent = 'جارٍ تحميل الملفات…';
             container.replaceChildren(loadingDiv);
         }
 
@@ -2425,7 +2425,7 @@ async function loadViewData() {
     try {
         // Show loading state
         const container = document.getElementById(`${view}List`) || document.getElementById('tracksList');
-        if (container) container.innerHTML = '<div class="loading"><span class="spinning">🔄</span> جاري التحميل...</div>';
+        if (container) container.innerHTML = '<div class="loading">جارٍ التحميل…</div>';
         
         let endpoint = `/api/library/${view}`;
         const params = new URLSearchParams();

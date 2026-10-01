@@ -253,7 +253,7 @@ body {
     width: 80px;
     height: 80px;
     border-radius: var(--radius-md);
-    background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-hover) 100%);
+    background: var(--bg-tertiary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -875,10 +875,18 @@ body {
 .nav-brand h1 {
     font-size: var(--text-display);
     font-weight: 700;
-    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--success) 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+/* The brand mark is the app icon itself (PRODUCT.md): the one place its gradient lives */
+.brand-mark {
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--radius-sm);
+    flex: none;
 }
 
 .nav-links {
@@ -923,7 +931,7 @@ body {
     }
 
     .nav-brand h1 {
-        text-align: center;
+        justify-content: center;
     }
 
     .nav-links {
@@ -1270,7 +1278,7 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.7);
+    background: var(--scrim);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1334,6 +1342,24 @@ body {
 .spinning {
     display: inline-block;
     animation: spin 1s linear infinite;
+}
+
+.btn-icon {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.125em;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+#rescanBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-xs);
 }
 
 /* Navigation Badge */
