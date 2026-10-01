@@ -60,7 +60,7 @@
 
                 <div class="queue-header">
                     <h2>قائمة الانتظار</h2>
-                    <span class="count" id="itemCount">0 ملف</span>
+                    <span class="count" id="itemCount">فارغة</span>
                 </div>
 
                 <div id="pendingItems" class="items-grid">
@@ -184,7 +184,7 @@
                 <section class="settings-card">
                     <h3>إشعارات Telegram</h3>
                     <p class="settings-description">
-                        أدخل بيانات بوت Telegram ليتم تنبيهك عند وصول ملف جديد يتطلب المراجعة.
+                        يرسل لك بوت Telegram رسالة عند وصول ملف جديد إلى قائمة الانتظار.
                     </p>
 
                     <div id="telegramStatus" class="telegram-status" style="display: none;">
@@ -197,7 +197,7 @@
 
                     <form id="telegramSettingsForm" class="settings-form">
                         <div class="form-group">
-                            <label for="telegramBotToken">Bot Token</label>
+                            <label for="telegramBotToken">رمز البوت <span class="field-latin" dir="ltr">Bot Token</span></label>
                             <div class="token-input-wrapper">
                                 <input
                                     type="password"
@@ -211,42 +211,40 @@
                                     type="button"
                                     id="telegramTokenToggle"
                                     class="token-toggle-btn"
-                                    aria-label="إظهار/إخفاء الرمز"
-                                >
-                                    <span id="telegramTokenToggleIcon">👁</span>
-                                </button>
+                                    aria-pressed="false"
+                                >إظهار</button>
                             </div>
                             <small class="field-hint">
-                                اترك الحقل فارغاً للإبقاء على الرمز المحفوظ حالياً.
+                                اتركه فارغًا لتبقي الرمز المحفوظ. يعطيك إياه بوت <bdi>BotFather</bdi> في Telegram.
                             </small>
                         </div>
 
                         <div class="form-group">
-                            <label for="telegramChatId">Chat ID</label>
+                            <label for="telegramChatId">معرّف المحادثة <span class="field-latin" dir="ltr">Chat ID</span></label>
                             <input
                                 type="text"
                                 id="telegramChatId"
                                 dir="ltr"
                                 class="field-input"
                                 autocomplete="off"
-                                placeholder="مثال: 123456789 أو -1001234567890"
+                                placeholder="123456789"
                             >
                             <small class="field-hint">
-                                يدعم المحادثات الفردية والمجموعات الخارقة (تبدأ بـ <code>-100</code>).
+                                رقم محادثتك مع البوت، أو رقم مجموعة يبدأ بـ <code dir="ltr">-100</code>.
                             </small>
                         </div>
 
                         <div class="form-group">
-                            <label for="telegramThreadId">Topic ID <span class="field-optional">(اختياري)</span></label>
+                            <label for="telegramThreadId">معرّف الموضوع <span class="field-latin" dir="ltr">Topic ID</span> <span class="field-optional">(اختياري)</span></label>
                             <input
                                 type="number"
                                 id="telegramThreadId"
                                 class="field-input"
                                 autocomplete="off"
-                                placeholder="للمجموعات ذات المواضيع فقط"
+                                dir="ltr"
                             >
                             <small class="field-hint">
-                                استخدمه لإرسال الإشعارات إلى موضوع محدد داخل مجموعة خارقة.
+                                للمجموعات المقسّمة إلى مواضيع فقط: تصل الإشعارات إلى هذا الموضوع.
                             </small>
                         </div>
 

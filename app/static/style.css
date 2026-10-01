@@ -387,13 +387,18 @@ body {
 }
 
 .artist-suggestion-score {
+    flex-shrink: 0;
     font-size: 0.78rem;
-    color: var(--text-muted);
-    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.06);
     border-radius: 999px;
-    padding: 0.05rem 0.4rem;
-    min-width: 2rem;
-    text-align: center;
+    padding: 0.05rem 0.5rem;
+    white-space: nowrap;
+}
+
+/* Below the create threshold the name is probably a different artist */
+.artist-suggestion-score.far {
+    color: var(--warning);
 }
 
 .artist-suggestion-empty {
@@ -1577,17 +1582,20 @@ body {
 }
 
 .token-input-wrapper .field-input {
-    padding-inline-end: 2.6rem;
+    padding-inline-end: 4.25rem;
     letter-spacing: 0.05em;
 }
 
 .token-toggle-btn {
     position: absolute;
-    inset-inline-end: 0.4rem;
+    /* The token is typed LTR, so its free edge is the right one: RTL inline-start */
+    inset-inline-start: 0.25rem;
     top: 50%;
     transform: translateY(-50%);
-    width: 2rem;
-    height: 2rem;
+    min-width: 3.5rem;
+    height: 2.25rem;
+    padding: 0 var(--spacing-xs);
+    font-family: var(--font-family);
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -2138,3 +2146,85 @@ body {
     min-height: 44px;
 }
 
+
+/* Technical detail folded under a human message (alerts, problem cards) */
+.alert-technical {
+    margin-top: var(--spacing-xs);
+    font-weight: 400;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+
+.alert-technical summary {
+    cursor: pointer;
+    min-height: 32px;
+}
+
+.alert-technical code {
+    display: block;
+    margin-top: 0.25rem;
+    padding: var(--spacing-xs);
+    border-radius: var(--radius-sm);
+    background: var(--bg-primary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    text-align: left;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+/* Needs-review / error explanation at the top of a card */
+.item-problem {
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-sm);
+    border: 1px solid var(--warning);
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+}
+
+.item-problem.error {
+    border-color: var(--error);
+}
+
+.item-problem strong {
+    display: block;
+    color: var(--warning);
+}
+
+.item-problem.error strong {
+    color: var(--error);
+}
+
+.item-problem p {
+    color: var(--text-primary);
+    margin-top: 0.15rem;
+}
+
+.review-checklist {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs) var(--spacing-md);
+    margin-top: var(--spacing-xs);
+    color: var(--text-secondary);
+}
+
+.review-checklist li::before {
+    content: '○';
+    margin-inline-end: 0.35rem;
+}
+
+.review-checklist li.done {
+    color: var(--success);
+}
+
+.review-checklist li.done::before {
+    content: '✓';
+}
+
+/* Latin name beside an Arabic label, for people who know the Telegram term */
+.field-latin {
+    margin-inline-start: 0.35rem;
+    color: var(--text-secondary);
+    font-weight: 400;
+    font-size: 0.8rem;
+}
