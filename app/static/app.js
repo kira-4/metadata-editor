@@ -735,14 +735,12 @@ function createItemCard(item) {
             <div class="action-buttons">
                 ${debugEnabled ? `
                 <button class="btn-secondary dry-run-btn" data-id="${item.id}">
-                    معاينة (Dry Run)
+                    معاينة دون كتابة
                 </button>
                 ` : ''}
                 <button class="confirm-btn" data-id="${item.id}" disabled>${CONFIRM_LABEL}</button>
                 <div class="item-status" id="itemStatus-${item.id}"></div>
-                <button class="btn-secondary delete-btn" onclick="deleteItem(${Number(item.id)})">
-                    حذف الملف
-                </button>
+                <button type="button" class="btn-secondary btn-danger-quiet delete-btn" data-id="${item.id}">حذف الملف</button>
             </div>
         </div>
     `;
@@ -1276,6 +1274,11 @@ function attachItemListeners(itemId) {
         confirmBtn.addEventListener('click', () => confirmItem(itemId));
     }
 
+    const deleteBtn = card.querySelector('.delete-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => deleteItem(itemId));
+    }
+
     // Dry run button
     const dryRunBtn = card.querySelector('.dry-run-btn');
     if (dryRunBtn) {
@@ -1547,7 +1550,7 @@ function formatDryRunMessage(dryRun) {
     const move = dryRun.move_preview || {};
     const meta = dryRun.metadata_preview || {};
     return [
-        'معاينة العملية (Dry Run):',
+        'معاينة العملية (لا شيء يُكتب):',
         `- قابل للتأكيد: ${dryRun.can_confirm ? 'نعم' : 'لا'}`,
         `- الحقول الناقصة: ${missing}`,
         `- العنوان: ${meta.title || '-'}`,
@@ -1568,16 +1571,22 @@ async function previewItem(itemId) {
     const btn = document.querySelector(`.dry-run-btn[data-id="${itemId}"]`);
     if (btn) {
         btn.disabled = true;
-        btn.textContent = 'جاري إنشاء المعاينة...';
+        btn.textContent = 'جارٍ إنشاء المعاينة…';
     }
 
     try {
         const dryRun = await fetchDryRun(itemId);
         const message = formatDryRunMessage(dryRun);
         logEvent('info', 'Dry-run preview generated', {itemId, dryRun});
-        showAlert(dryRun.can_confirm ? 'تم إنشاء المعاينة بنجاح' : 'المعاينة تُظهر مشاكل يجب إصلاحها', dryRun.can_confirm ? 'success' : 'warn', 7000);
-        window.alert(message);
-        setItemStatus(itemId, dryRun.can_confirm ? 'المعاينة جاهزة للتأكيد' : 'المعاينة: هناك مشاكل', dryRun.can_confirm ? 'success' : 'warn');
+        // Shown in the card, not a native alert(): it stays readable next to the fields it describes
+        const statusEl = document.getElementById(`itemStatus-${itemId}`);
+        if (statusEl) {
+            statusEl.className = `item-status ${dryRun.can_confirm ? 'success' : 'warn'}`;
+            const pre = document.createElement('pre');
+            pre.className = 'dry-run-output';
+            pre.textContent = message;
+            statusEl.replaceChildren(pre);
+        }
     } catch (error) {
         logEvent('error', 'Dry-run preview failed', {itemId, error: error.message});
         showError('تعذّر إنشاء المعاينة', error);
@@ -1585,7 +1594,7 @@ async function previewItem(itemId) {
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.textContent = 'معاينة (Dry Run)';
+            btn.textContent = 'معاينة دون كتابة';
         }
     }
 }
@@ -1690,14 +1699,35 @@ function showDestinationChoice(itemId, existingPath) {
     });
 }
 
-// Delete item
+// Destructive actions take two taps instead of a native confirm(): the first arms the button
+// and says what will happen, a second tap within 4s does it. Returns true on the second tap.
+const armTimers = new WeakMap();
+
+function armTwoTap(btn, armedText) {
+    if (btn.classList.contains('armed')) {
+        clearTimeout(armTimers.get(btn));
+        btn.classList.remove('armed');
+        btn.textContent = btn.dataset.idleText;
+        return true;
+    }
+    btn.dataset.idleText = btn.textContent.trim();
+    btn.classList.add('armed');
+    btn.textContent = armedText;
+    armTimers.set(btn, setTimeout(() => {
+        btn.classList.remove('armed');
+        btn.textContent = btn.dataset.idleText;
+    }, 4000));
+    return false;
+}
+
+// Delete item (the original goes to the trash folder and can be restored from there)
 async function deleteItem(itemId) {
-    if (!confirm('سيُنقل الملف الأصلي إلى سلة المهملات، ويمكن استعادته قبل حذفه التلقائي. هل تريد المتابعة؟')) return;
-    
     const deleteBtn = document.querySelector(`.item-card[data-id="${itemId}"] .delete-btn`);
+    if (deleteBtn && !armTwoTap(deleteBtn, 'اضغط مجددًا لنقله إلى سلة المهملات')) return;
+
     if (deleteBtn) {
         deleteBtn.disabled = true;
-        deleteBtn.textContent = 'جاري الحذف...';
+        deleteBtn.textContent = 'جارٍ النقل إلى السلة…';
     }
     
     try {
@@ -1720,7 +1750,7 @@ async function deleteItem(itemId) {
         showError('لم يُحذف الملف', error);
         if (deleteBtn) {
             deleteBtn.disabled = false;
-            deleteBtn.textContent = 'فشل الحذف - حاول مرة أخرى';
+            deleteBtn.textContent = 'حذف الملف';
         }
     }
 }
@@ -3643,7 +3673,6 @@ function showSettingsError(what, error) {
 
 // Last saved settings, so the on/off switch can re-save without the form's unsaved edits
 let telegramSaved = null;
-let disconnectArmTimer = null;
 
 function renderTelegramStatus() {
     const box = document.getElementById('telegramStatus');
@@ -3684,21 +3713,9 @@ async function setTelegramEnabled(enabled) {
     }
 }
 
-// Two taps: the first arms the button, the second within 4s disconnects
 async function disconnectTelegram() {
     const btn = document.getElementById('telegramDisconnectBtn');
-    if (!btn.classList.contains('armed')) {
-        btn.classList.add('armed');
-        btn.textContent = 'اضغط مجددًا لحذف الرمز والمحادثة';
-        disconnectArmTimer = setTimeout(() => {
-            btn.classList.remove('armed');
-            btn.textContent = 'قطع الاتصال';
-        }, 4000);
-        return;
-    }
-    clearTimeout(disconnectArmTimer);
-    btn.classList.remove('armed');
-    btn.textContent = 'قطع الاتصال';
+    if (!armTwoTap(btn, 'اضغط مجددًا لحذف الرمز والمحادثة')) return;
     btn.disabled = true;
     try {
         const response = await fetch(`${API_BASE}/settings/telegram`, {method: 'DELETE'});
