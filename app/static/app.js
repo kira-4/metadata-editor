@@ -903,7 +903,7 @@ function createItemCard(item) {
                     معاينة دون كتابة
                 </button>
                 ` : ''}
-                <button class="confirm-btn" data-id="${item.id}" disabled>${CONFIRM_LABEL}</button>
+                <button class="confirm-btn" data-id="${item.id}" aria-disabled="true">${CONFIRM_LABEL}</button>
                 <div class="item-status" id="itemStatus-${item.id}"></div>
                 <button type="button" class="btn-secondary btn-danger-quiet delete-btn" data-id="${item.id}">حذف الملف</button>
             </div>
@@ -1428,7 +1428,10 @@ function attachItemListeners(itemId) {
     // Confirm button
     const confirmBtn = card.querySelector('.confirm-btn');
     if (confirmBtn) {
-        confirmBtn.addEventListener('click', () => confirmItem(itemId));
+        confirmBtn.addEventListener('click', () => {
+            if (confirmBtn.getAttribute('aria-disabled') === 'true') focusFirstMissing(itemId);
+            else confirmItem(itemId);
+        });
     }
 
     const deleteBtn = card.querySelector('.delete-btn');
@@ -1505,7 +1508,9 @@ function updateConfirmButton(itemId) {
     };
     const missing = Object.keys(MISSING_FIELD_ACTIONS).filter(key => !present[key]);
 
-    confirmBtn.disabled = missing.length > 0;
+    // Waiting is aria-disabled, not disabled: a tap still lands and leads to the missing field
+    confirmBtn.setAttribute('aria-disabled', String(missing.length > 0));
+    confirmBtn.dataset.missing = missing.join(' ');
     // A failed attempt keeps its "retry" look until the card stops being confirmable
     if (missing.length > 0) confirmBtn.classList.remove('is-failed');
     // A disabled confirm says what it is waiting for ("أضف فنانًا واختر النوع")
@@ -1530,6 +1535,20 @@ function updateConfirmButton(itemId) {
     }
     updateConfirmAllButton();
     queueDestinationPreview(itemId);
+}
+
+// A waiting confirm is not a dead end: a tap takes the operator to the first missing field
+function focusFirstMissing(itemId) {
+    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    const first = (card?.querySelector('.confirm-btn')?.dataset.missing || '').split(' ')[0];
+    const target = {
+        title: () => card.querySelector('.title-input'),
+        artist: () => Array.from(card.querySelectorAll('.artist-input')).find(input => !input.value.trim()),
+        genre: () => card.querySelector('.genre-btn'),
+    }[first]?.();
+    if (!target) return;
+    target.scrollIntoView({block: 'center', behavior: reducedMotion.matches ? 'auto' : 'smooth'});
+    target.focus({preventScroll: true});
 }
 
 // Album artist (the folder) and destination: the server resolves them from the draft,
@@ -1674,7 +1693,7 @@ async function confirmAllReady() {
 
     for (const itemId of readyIds) {
         // Re-check: the item may have left meanwhile (SSE from another tab, a failed earlier pass)
-        const stillExists = document.querySelector(`.item-card:not(.card-removing) .confirm-btn[data-id="${itemId}"]:not(:disabled)`);
+        const stillExists = document.querySelector(`.item-card:not(.card-removing) ${CONFIRMABLE}[data-id="${itemId}"]`);
         if (!stillExists) continue;
 
         if (await confirmItem(itemId)) {

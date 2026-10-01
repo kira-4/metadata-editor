@@ -604,20 +604,32 @@ body {
     letter-spacing: 0;
 }
 
-.confirm-btn:hover:not(:disabled) {
+.confirm-btn:hover:not(:disabled, [aria-disabled="true"]) {
     filter: brightness(1.08);
 }
 
-.confirm-btn:active:not(:disabled) {
+.confirm-btn:active:not(:disabled, [aria-disabled="true"]) {
     filter: brightness(0.94);
 }
 
-/* Waiting for input: the label says what is missing, so it must stay readable */
-.confirm-btn:disabled {
+/* Waiting for input: the label says what is missing, so it must stay readable.
+   A tap takes you to the missing field, so it answers hover like a control. */
+.confirm-btn:disabled,
+.confirm-btn[aria-disabled="true"] {
     background: var(--bg-tertiary);
     color: var(--text-secondary);
     border: 1px dashed var(--border-color);
     cursor: not-allowed;
+}
+
+.confirm-btn[aria-disabled="true"] {
+    cursor: pointer;
+    transition: border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.confirm-btn[aria-disabled="true"]:hover {
+    border-color: var(--text-muted);
+    color: var(--text-primary);
 }
 
 /* Saving: still teal (it is happening), dimmed, with a slow sweep instead of a spinner */
@@ -2221,18 +2233,6 @@ body {
 
     .confirm-btn {
         min-height: 48px;
-    }
-
-    /* Destructive action stays reachable but no longer competes with confirm */
-    .btn-secondary.delete-btn {
-        width: auto;
-        align-self: center;
-        min-height: 44px;
-        margin-top: 0;
-        padding: var(--spacing-xs) var(--spacing-lg);
-        border-color: transparent;
-        background: transparent;
-        font-size: var(--text-label);
     }
 }
 
