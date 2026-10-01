@@ -630,6 +630,7 @@ function updatePendingCountUI() {
     if (badge) {
         if (pendingItems.length > 0) {
             badge.textContent = pendingItems.length;
+            badge.setAttribute('aria-label', `${arabicCount(pendingItems.length, FILE_FORMS)} في الانتظار`);
             badge.style.display = 'inline-flex';
         } else {
             badge.style.display = 'none';
@@ -662,6 +663,7 @@ function renderItems(options = {}) {
     if (badge) {
         if (pendingItems.length > 0) {
             badge.textContent = pendingItems.length;
+            badge.setAttribute('aria-label', `${arabicCount(pendingItems.length, FILE_FORMS)} في الانتظار`);
             badge.style.display = 'inline-flex';
         } else {
             badge.style.display = 'none';
