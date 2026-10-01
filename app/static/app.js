@@ -2644,8 +2644,12 @@ async function runArtistMerge(groupEl, group, apply) {
         const r = body.results;
         libraryState.stale = true;
         if (r.failed) {
-            showAlert(`دُمجت ${arabicCount(r.successful, TRACK_FORMS)}، وتعذّر دمج ${arabicCount(r.failed, TRACK_FORMS)}. أعد المحاولة بعد مسح المكتبة.`,
-                'warn', 0, r.errors.map(e => e.error).join('\n'));
+            // A permission problem is fixed on the server, not by rescanning
+            const hint = r.errors.some(e => e.permission)
+                ? 'لا يملك التطبيق صلاحية الكتابة في مجلدها على الخادم؛ عدّل صلاحيات المجلد ثم أعد المحاولة.'
+                : 'أعد المحاولة بعد مسح المكتبة.';
+            showAlert(`دُمجت ${arabicCount(r.successful, TRACK_FORMS)}، وتعذّر دمج ${arabicCount(r.failed, TRACK_FORMS)}. ${hint}`,
+                'warn', 0, [...new Set(r.errors.map(e => e.error))].join('\n'));
         } else {
             showAlert(`تم توحيد ${arabicCount(r.successful, TRACK_FORMS)} باسم «${target}».`, 'success');
         }
