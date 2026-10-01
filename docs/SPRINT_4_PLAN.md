@@ -137,7 +137,7 @@ Same as before: one ticket = one branch = one PR, a failing test first for Track
 
 ## Progress
 
-- [ ] S4-1 batch edit keep/set/clear
+- [x] S4-1 batch edit keep/set/clear
 - [ ] S4-2 rescan progress and recovery
 - [ ] S4-3 visible, selectable album artist + destination preview
 - [ ] S4-4 Telegram disable/disconnect

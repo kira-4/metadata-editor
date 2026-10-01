@@ -1403,6 +1403,82 @@ body {
     line-height: 1.5;
 }
 
+/* Batch edit: per-field keep/set/clear state */
+.batch-field-state {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-xs);
+    margin-top: 0.35rem;
+    font-size: 0.8rem;
+}
+
+.batch-state {
+    color: var(--text-muted);
+}
+
+.batch-state.set {
+    color: var(--accent-primary);
+}
+
+.batch-state.clear {
+    color: var(--warning);
+}
+
+.batch-state-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font: inherit;
+    padding: 0.35rem 0.75rem;
+    min-height: 2rem;
+    cursor: pointer;
+}
+
+.batch-state-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
+}
+
+.form-group.batch-changed .field-input {
+    border-color: var(--accent-primary);
+}
+
+.form-group .field-input:disabled {
+    opacity: 0.5;
+}
+
+.batch-summary {
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.batch-summary-idle {
+    color: var(--text-muted);
+}
+
+.batch-failures {
+    margin-bottom: var(--spacing-xs);
+    color: var(--error);
+}
+
+.batch-failures ul {
+    margin: 0.25rem 1.25rem 0 0;
+    max-height: 8rem;
+    overflow-y: auto;
+}
+
+.modal-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .field-hint code {
     background: var(--bg-tertiary);
     border-radius: 0.25rem;

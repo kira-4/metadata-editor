@@ -3,7 +3,7 @@ import os
 import re
 import logging
 from pathlib import Path
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple, Any, Iterable
 import shutil
 
 from mutagen import File as MutagenFile
@@ -19,6 +19,17 @@ class MetadataProcessor:
     """Handles audio metadata operations."""
 
     MP4_ATOM_KEYS = ['\xa9nam', '\xa9ART', 'aART', '\xa9alb', '\xa9gen', 'gnre', '\xa9day', 'trkn', 'disk', 'covr']
+
+    # Fields that may be removed from a file, with their tag keys per format.
+    # Title and artist are required and can't be cleared.
+    CLEARABLE_TAGS = {
+        "album": {"mp4": ['\xa9alb'], "id3": ['TALB'], "vorbis": ['album']},
+        "album_artist": {"mp4": ['aART'], "id3": ['TPE2'], "vorbis": ['albumartist', 'album artist']},
+        "genre": {"mp4": ['\xa9gen', 'gnre'], "id3": ['TCON'], "vorbis": ['genre']},
+        "year": {"mp4": ['\xa9day'], "id3": ['TDRC', 'TYER'], "vorbis": ['date', 'year']},
+        "track_number": {"mp4": ['trkn'], "id3": ['TRCK'], "vorbis": ['tracknumber']},
+        "disc_number": {"mp4": ['disk'], "id3": ['TPOS'], "vorbis": ['discnumber']},
+    }
     
     @staticmethod
     def sanitize_filename(filename: str) -> str:
@@ -266,10 +277,10 @@ class MetadataProcessor:
             return metadata
 
     @staticmethod
-    def _verify_written_metadata(audio_path: Path, expected: dict) -> bool:
-        """Re-read metadata and ensure written fields match expected values."""
+    def _verify_written_metadata(audio_path: Path, expected: dict, cleared: Iterable[str] = ()) -> bool:
+        """Re-read metadata and ensure written fields match expected values and cleared fields are empty."""
         actual = MetadataProcessor.read_metadata(audio_path)
-        mismatches = []
+        mismatches = [(key, None, actual.get(key)) for key in cleared if actual.get(key)]
 
         for key, expected_value in expected.items():
             if expected_value is None:
@@ -468,14 +479,16 @@ class MetadataProcessor:
         genre: Optional[str] = None,
         year: Optional[int] = None,
         track_number: Optional[int] = None,
-        disc_number: Optional[int] = None
+        disc_number: Optional[int] = None,
+        clear: Iterable[str] = ()
     ) -> bool:
         """
         Update specific metadata fields atomically (temp file + rename).
         
         Args:
             audio_path: Path to audio file
-            Various optional metadata fields to update
+            Various optional metadata fields to update (None = leave as is)
+            clear: Field names (keys of CLEARABLE_TAGS) to remove from the file
             
         Returns:
             True if successful, False otherwise
@@ -564,6 +577,20 @@ class MetadataProcessor:
                             audio['tracknumber'] = str(track_number)
                         if disc_number is not None:
                             audio['discnumber'] = str(disc_number)
+
+                clear = list(clear)
+                for field in clear:
+                    if isinstance(audio, MP4):
+                        keys = MetadataProcessor.CLEARABLE_TAGS[field]["mp4"]
+                    elif isinstance(audio.tags, ID3):
+                        for key in MetadataProcessor.CLEARABLE_TAGS[field]["id3"]:
+                            audio.tags.delall(key)
+                        continue
+                    else:
+                        keys = MetadataProcessor.CLEARABLE_TAGS[field]["vorbis"]
+                    for key in keys:
+                        if key in audio:
+                            del audio[key]
                 
                 audio.save()
 
@@ -578,7 +605,7 @@ class MetadataProcessor:
                     "disc_number": disc_number
                 }
                 # Verify the temp copy BEFORE it replaces the original
-                verified = MetadataProcessor._verify_written_metadata(temp_path, expected)
+                verified = MetadataProcessor._verify_written_metadata(temp_path, expected, clear)
                 if not verified:
                     return False
 

@@ -1779,6 +1779,7 @@ function selectLibraryArtistOption(option) {
     const input = document.getElementById('batchArtist');
     if (!input || !option) return;
     input.value = option.name;
+    input.dispatchEvent(new Event('input', {bubbles: true}));
     closeLibraryArtistDropdown();
 }
 
@@ -2930,6 +2931,85 @@ function clearSelection() {
     rerenderActiveTrackContext();
 }
 
+// Batch edit: every field starts as 'keep'. Typing makes it 'set'; the clear button makes it 'clear'.
+const BATCH_FIELDS = [
+    {key: 'title', input: 'batchTitle', label: 'العنوان'},
+    {key: 'artist', input: 'batchArtist', label: 'الفنانون'},
+    {key: 'album_artist', input: 'batchAlbumArtist', label: 'فنان الألبوم', clearable: true},
+    {key: 'album', input: 'batchAlbum', label: 'الألبوم', clearable: true},
+    {key: 'genre', input: 'batchGenre', label: 'النوع', clearable: true},
+    {key: 'year', input: 'batchYear', label: 'السنة', clearable: true},
+];
+const batchEdit = {states: {}, failures: [], saving: false};
+const FILE_FORMS = ['ملف واحد', 'ملفان', 'ملفات', 'ملفًا', 'ملف'];
+
+function setupBatchFieldControls() {
+    if (window.batchFieldControlsAttached) return;
+    BATCH_FIELDS.forEach(field => {
+        const input = document.getElementById(field.input);
+        input.addEventListener('input', () => {
+            if (libraryState.editMode !== 'batch') return;
+            setBatchFieldState(field.key, input.value.trim() === '' ? 'keep' : 'set');
+        });
+    });
+    document.getElementById('batchEditForm').addEventListener('click', event => {
+        const btn = event.target.closest('.batch-field-state button');
+        if (!btn) return;
+        setBatchFieldState(btn.closest('.batch-field-state').dataset.field, btn.dataset.action);
+    });
+    window.batchFieldControlsAttached = true;
+}
+
+function setBatchFieldState(key, state) {
+    const field = BATCH_FIELDS.find(f => f.key === key);
+    const input = document.getElementById(field.input);
+    batchEdit.states[key] = state;
+    if (state !== 'set') input.value = '';
+    input.disabled = state === 'clear';
+    renderBatchFieldState(field);
+    renderBatchSummary();
+}
+
+function renderBatchFieldState(field) {
+    const el = document.querySelector(`.batch-field-state[data-field="${field.key}"]`);
+    const state = batchEdit.states[field.key];
+    el.closest('.form-group').classList.toggle('batch-changed', state !== 'keep');
+    if (state === 'keep') {
+        el.innerHTML = '<span class="batch-state">بدون تغيير</span>'
+            + (field.clearable ? '<button type="button" class="batch-state-btn" data-action="clear">مسح من الكل</button>' : '');
+    } else {
+        const text = state === 'set' ? 'ستتغير القيمة في كل الملفات' : 'سيُمسح من كل الملفات';
+        el.innerHTML = `<span class="batch-state ${state}">${text}</span>`
+            + '<button type="button" class="batch-state-btn" data-action="keep">تراجع</button>';
+    }
+}
+
+function batchChangedFields() {
+    return BATCH_FIELDS.filter(f => batchEdit.states[f.key] !== 'keep');
+}
+
+function renderBatchSummary() {
+    const summary = document.getElementById('batchSummary');
+    const saveBtn = document.getElementById('saveBatchEdit');
+    const changed = batchChangedFields();
+    const count = libraryState.selectedTracks.size;
+
+    let html = '';
+    if (batchEdit.failures.length > 0) {
+        html += `<div class="batch-failures"><strong>تعذّر تعديل ${arabicCount(batchEdit.failures.length, FILE_FORMS)}، وما زالت محددة لإعادة المحاولة:</strong><ul>`
+            + batchEdit.failures.map(e => `<li>${escapeHtml(e.title || `#${e.track_id}`)} — ${escapeHtml(e.error)}</li>`).join('')
+            + '</ul></div>';
+    }
+    if (changed.length === 0) {
+        html += '<span class="batch-summary-idle">لم يتغير أي حقل بعد</span>';
+    } else {
+        const names = changed.map(f => batchEdit.states[f.key] === 'clear' ? `${f.label} (مسح)` : f.label);
+        html += `سيُعدَّل ${arabicCount(count, FILE_FORMS)} · الحقول: ${escapeHtml(names.join('، '))}`;
+    }
+    summary.innerHTML = html;
+    saveBtn.disabled = batchEdit.saving || changed.length === 0;
+}
+
 // Show Edit Modal
 function showEditModal(mode, trackData = null) {
     libraryState.editMode = mode;
@@ -2941,7 +3021,15 @@ function showEditModal(mode, trackData = null) {
     
     const modal = document.getElementById('batchEditModal');
     const title = modal.querySelector('h3');
-    const keepCheckboxes = modal.querySelectorAll('input[type="checkbox"][id$="Keep"]');
+    const batchOnly = modal.querySelectorAll('.batch-field-state, #batchSummary');
+    batchOnly.forEach(el => { el.style.display = mode === 'batch' ? '' : 'none'; });
+    BATCH_FIELDS.forEach(f => {
+        const input = document.getElementById(f.input);
+        input.disabled = false;
+        input.placeholder = '';
+        input.closest('.form-group').classList.remove('batch-changed');
+    });
+    document.getElementById('saveBatchEdit').disabled = false;
     
     // Artwork UI Container (Dynamically added if missing)
     let artworkSection = document.getElementById('editArtworkSection');
@@ -2956,12 +3044,6 @@ function showEditModal(mode, trackData = null) {
     
     if (mode === 'single' && trackData) {
         title.textContent = 'تعديل الملف';
-        
-        // Hide "Keep" checkboxes
-        keepCheckboxes.forEach(cb => {
-            cb.checked = false;
-            cb.parentElement.style.display = 'none';
-        });
         
         // Show Artwork Section
         artworkSection.style.display = 'block';
@@ -3017,61 +3099,26 @@ function showEditModal(mode, trackData = null) {
         // Hide Artwork Section for batch
         artworkSection.style.display = 'none';
         
-        // Smart Batch Logic
-        const trackIds = Array.from(libraryState.selectedTracks);
-        const tracks = trackIds.map(id => libraryState.trackMap.get(id)).filter(t => t);
-        
-        // Initialize common values with the first track
-        const common = {
-            Title: tracks[0]?.title,
-            Artist: tracks[0]?.artist,
-            AlbumArtist: tracks[0]?.album_artist,
-            Album: tracks[0]?.album,
-            Genre: tracks[0]?.genre,
-            Year: tracks[0]?.year
-        };
-        
-        // Check for consistency across all tracks
-        // distinctNull means we found a conflict (different values)
-        const conflict = {Title: false, Artist: false, AlbumArtist: false, Album: false, Genre: false, Year: false};
-        
-        for (let i = 1; i < tracks.length; i++) {
-            if (tracks[i].title !== common.Title) conflict.Title = true;
-            if (tracks[i].artist !== common.Artist) conflict.Artist = true;
-            if (tracks[i].album_artist !== common.AlbumArtist) conflict.AlbumArtist = true;
-            if (tracks[i].album !== common.Album) conflict.Album = true;
-            if (tracks[i].genre !== common.Genre) conflict.Genre = true;
-            if (tracks[i].year !== common.Year) conflict.Year = true;
-        }
-        
-        // Apply to form
-        const applyField = (field, inputId) => {
-             const input = document.getElementById(inputId || ('batch' + field));
-             const keepCb = document.getElementById((inputId || ('batch' + field)) + 'Keep');
-             const hasConflict = conflict[field];
-             const val = common[field];
-             
-             if (!hasConflict && val !== undefined && val !== null) {
-                 // All tracks have same value
-                 input.value = val;
-                 input.placeholder = '';
-                 keepCb.checked = false; 
-             } else {
-                 // Multiple values or all empty
-                 input.value = '';
-                 input.placeholder = hasConflict ? 'قيم متعددة (لن يتم التغيير)' : '';
-                 keepCb.checked = true;
-             }
-             
-             keepCb.parentElement.style.display = 'inline-block';
-        };
+        // Every field starts as 'keep'; the current value is shown as a hint only
+        setupBatchFieldControls();
+        batchEdit.failures = [];
+        batchEdit.saving = false;
+        const tracks = Array.from(libraryState.selectedTracks)
+            .map(id => libraryState.trackMap.get(id)).filter(t => t);
 
-        applyField('Title');
-        applyField('Artist');
-        applyField('AlbumArtist', 'batchAlbumArtist');
-        applyField('Album');
-        applyField('Genre');
-        applyField('Year');
+        BATCH_FIELDS.forEach(field => {
+            const values = new Set(tracks.map(t => t[field.key] ?? ''));
+            const input = document.getElementById(field.input);
+            if (values.size > 1) {
+                input.placeholder = 'قيم متعددة';
+            } else {
+                const [value] = values;
+                input.placeholder = value === '' || value === undefined ? 'فارغ' : `الحالي: ${value}`;
+            }
+            batchEdit.states[field.key] = 'keep';
+            renderBatchFieldState(field);
+        });
+        renderBatchSummary();
     }
     
     modal.style.display = 'flex';
@@ -3151,30 +3198,23 @@ async function handleSingleEdit() {
 // Handle Batch Edit
 async function handleBatchEdit() {
     const trackIds = Array.from(libraryState.selectedTracks);
-    if (trackIds.length === 0) return;
-    
-    const payload = {track_ids: trackIds};
-    
-    // Only include fields that are not marked as "keep unchanged"
-    if (!document.getElementById('batchTitleKeep').checked) {
-        payload.title = document.getElementById('batchTitle').value;
-    }
-    if (!document.getElementById('batchArtistKeep').checked) {
-        payload.artist = document.getElementById('batchArtist').value;
-    }
-    if (!document.getElementById('batchAlbumArtistKeep').checked) {
-        payload.album_artist = document.getElementById('batchAlbumArtist').value;
-    }
-    if (!document.getElementById('batchAlbumKeep').checked) {
-        payload.album = document.getElementById('batchAlbum').value;
-    }
-    if (!document.getElementById('batchGenreKeep').checked) {
-        payload.genre = document.getElementById('batchGenre').value;
-    }
-    if (!document.getElementById('batchYearKeep').checked) {
-        payload.year = parseInt(document.getElementById('batchYear').value) || null;
-    }
-    
+    const changed = batchChangedFields();
+    if (trackIds.length === 0 || changed.length === 0 || batchEdit.saving) return;
+
+    const payload = {track_ids: trackIds, clear_fields: []};
+    changed.forEach(field => {
+        if (batchEdit.states[field.key] === 'clear') {
+            payload.clear_fields.push(field.key);
+            return;
+        }
+        const raw = document.getElementById(field.input).value.trim();
+        payload[field.key] = field.key === 'year' ? parseInt(raw, 10) : raw;
+    });
+
+    batchEdit.saving = true;
+    batchEdit.failures = [];
+    renderBatchSummary();
+
     try {
         const response = await fetch('/api/library/tracks/batch-update', {
             method: 'POST',
@@ -3182,19 +3222,35 @@ async function handleBatchEdit() {
             body: JSON.stringify(payload)
         });
         
-        if (!response.ok) throw new Error('Batch update failed');
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            throw new Error(typeof body.detail === 'string' ? body.detail : `HTTP ${response.status}`);
+        }
         
         const result = await response.json();
-        showAlert(`تم التحديث: ${result.successful} نجح، ${result.failed} فشل`, 'success');
         logEvent('info', 'Batch update completed', result);
-        
-        closeEditModal();
-        clearSelection();
+
+        if (result.failed === 0) {
+            showAlert(`تم تعديل ${arabicCount(result.successful, FILE_FORMS)}`, 'success');
+            closeEditModal();
+            clearSelection();
+        } else {
+            // Keep only the failed tracks selected so the same edit can be retried
+            batchEdit.failures = result.errors;
+            libraryState.selectedTracks = new Set(result.errors.map(e => e.track_id));
+            updateSelectionBar();
+            showAlert(`نجح ${result.successful} وتعذّر ${result.failed}`, 'error');
+            renderBatchSummary();
+            document.getElementById('batchSummary').scrollIntoView({block: 'center'});
+        }
         loadViewData();
         
     } catch (error) {
         logEvent('error', 'Error in batch update', {error: error.message});
-        showAlert('خطأ في تحديث الملفات', 'error');
+        showAlert(`خطأ في تعديل الملفات: ${error.message}`, 'error');
+    } finally {
+        batchEdit.saving = false;
+        if (libraryState.editMode === 'batch') renderBatchSummary();
     }
 }
 

@@ -254,36 +254,37 @@
                     <div class="form-group">
                         <label>العنوان</label>
                         <input type="text" id="batchTitle" class="field-input">
-                        <label><input type="checkbox" id="batchTitleKeep" checked> عدم التغيير</label>
+                        <div class="batch-field-state" data-field="title"></div>
                     </div>
                     <div class="form-group">
                         <label>الفنانون</label>
                         <input type="text" id="batchArtist" class="field-input">
                         <small class="field-hint">لإضافة فنانين متعددين، افصل بينهم بـ <code>;</code></small>
-                        <label><input type="checkbox" id="batchArtistKeep" checked> عدم التغيير</label>
+                        <div class="batch-field-state" data-field="artist"></div>
                     </div>
                     <div class="form-group">
                         <label>فنان الألبوم</label>
                         <input type="text" id="batchAlbumArtist" class="field-input">
-                        <label><input type="checkbox" id="batchAlbumArtistKeep" checked> عدم التغيير</label>
+                        <div class="batch-field-state" data-field="album_artist"></div>
                     </div>
                     <div class="form-group">
                         <label>الألبوم</label>
                         <input type="text" id="batchAlbum" class="field-input">
-                        <label><input type="checkbox" id="batchAlbumKeep" checked> عدم التغيير</label>
+                        <div class="batch-field-state" data-field="album"></div>
                     </div>
                     <div class="form-group">
                         <label>النوع</label>
                         <input type="text" id="batchGenre" class="field-input">
-                        <label><input type="checkbox" id="batchGenreKeep" checked> عدم التغيير</label>
+                        <div class="batch-field-state" data-field="genre"></div>
                     </div>
                     <div class="form-group">
                         <label>السنة</label>
                         <input type="number" id="batchYear" class="field-input">
-                        <label><input type="checkbox" id="batchYearKeep" checked> عدم التغيير</label>
+                        <div class="batch-field-state" data-field="year"></div>
                     </div>
+                    <div id="batchSummary" class="batch-summary" aria-live="polite"></div>
                     <div class="modal-actions">
-                        <button type="submit" class="btn-primary">حفظ</button>
+                        <button type="submit" id="saveBatchEdit" class="btn-primary">حفظ</button>
                         <button type="button" id="cancelBatchEdit" class="btn-secondary">إلغاء</button>
                     </div>
                 </form>
