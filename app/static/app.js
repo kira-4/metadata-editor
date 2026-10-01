@@ -460,7 +460,8 @@ function applyDebugUIState() {
 // Initialize app
 async function init() {
     setupGlobalUI();
-    await loadPendingItems({showLoading: true});
+    pendingLoadedOnce = await loadPendingItems({showLoading: true});
+    revealLinkedCard();
     setupSSE();
     if (pendingPollTimer) {
         clearInterval(pendingPollTimer);
@@ -468,6 +469,28 @@ async function init() {
     pendingPollTimer = setInterval(() => {
         loadPendingItems({silent: true, smartUpdate: true});
     }, 15000);
+}
+
+// A Telegram message links to #/pending/<id>. Once the queue is loaded, that card opens
+// (if collapsed), scrolls to the top and takes focus, with the arrival mark of a new file.
+let pendingLoadedOnce = false;
+
+function revealLinkedCard() {
+    const match = (window.location.hash || '').match(/^#\/pending\/(\d+)$/);
+    if (!match || !pendingLoadedOnce) return;
+    history.replaceState(null, '', '#/pending');  // a reload or back doesn't jump again
+    const card = document.querySelector(`.item-card[data-id="${match[1]}"]:not(.card-removing)`);
+    if (!card) {
+        showAlert('هذا الملف لم يعد في القائمة: أُكّد أو حُذف.', 'info', 8000);
+        return;
+    }
+    card.querySelector('.card-summary[aria-expanded="false"]')?.click();
+    card.scrollIntoView({block: 'start', behavior: reducedMotion.matches ? 'auto' : 'smooth'});
+    card.focus({preventScroll: true});
+    card.classList.remove('card-linked');
+    void card.offsetWidth;  // restart the mark if the same link is opened twice
+    card.classList.add('card-linked');
+    setTimeout(() => card.classList.remove('card-linked'), 1600);
 }
 
 // Load pending items from API
@@ -514,6 +537,7 @@ async function loadPendingItems(options = {}) {
         if (!silent) {
             logEvent('info', `تم تحميل قائمة الانتظار (${pendingItems.length}) عنصر`);
         }
+        return true;
     } catch (error) {
         logEvent('error', 'Loading the queue failed', {error: error.message});
         if (silent && error instanceof TypeError) {
@@ -2232,7 +2256,7 @@ function rerenderActiveTrackContext() {
 function initRouter() {
     function handleRoute() {
         const hash = window.location.hash || '#/pending';
-        const route = hash.replace('#/', '');
+        const route = hash.replace('#/', '').split('/')[0];  // "pending/12" is the queue
         
         // Update nav links
         document.querySelectorAll('.nav-link').forEach(link => {
@@ -2271,6 +2295,7 @@ function initRouter() {
             libraryPage.style.display = 'none';
             if (settingsPage) settingsPage.style.display = 'none';
             document.querySelectorAll('.title-input').forEach(autosizeTitle);
+            revealLinkedCard();
         }
     }
     
