@@ -524,6 +524,10 @@ function smartUpdatePendingList(freshItems, focusSnapshot = null) {
             const tmp = document.createElement('div');
             tmp.innerHTML = createItemCard(item); // createItemCard escapes all user-provided values
             const newCard = tmp.firstElementChild;
+            newCard.classList.add('card-arriving');
+            newCard.addEventListener('animationend', event => {
+                if (event.animationName === 'card-arrive-mark') newCard.classList.remove('card-arriving');
+            });
             if (needsReview(item)) {
                 container.insertBefore(newCard, container.querySelector('.item-card.needs-review, .item-card.has-error'));
             } else {
@@ -542,16 +546,50 @@ function smartUpdatePendingList(freshItems, focusSnapshot = null) {
     }
 }
 
-// Remove a single item card from the DOM with a fade-out, no API call needed
+// Motion (DESIGN.md → Motion). The exit matches --dur-base in style.css; the timer, not
+// animationend, removes the card, because a hidden page runs no animations.
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const CARD_EXIT_MS = 200;
+const CARD_SETTLE_MS = 240;
+const EASE_OUT = 'cubic-bezier(0.16, 1, 0.3, 1)';
+
+// Remove a card and slide the cards after it into the gap (FLIP: measure, remove, then
+// animate each card from its old spot with a transform, so nothing re-lays out per frame)
+function removeCardAndCloseGap(card) {
+    const parent = card.parentNode;
+    if (!parent) return;
+    const after = [];
+    for (let el = card.nextElementSibling; el; el = el.nextElementSibling) {
+        if (!el.classList.contains('card-removing')) after.push(el);
+    }
+    const before = after.map(el => el.getBoundingClientRect());
+    card.remove();
+    if (!reducedMotion.matches) {
+        after.forEach((el, i) => {
+            const now = el.getBoundingClientRect();
+            const dx = before[i].left - now.left;
+            const dy = before[i].top - now.top;
+            if (!dx && !dy) return;
+            el.animate(
+                [{transform: `translate(${dx}px, ${dy}px)`}, {transform: 'none'}],
+                {duration: CARD_SETTLE_MS, easing: EASE_OUT}
+            );
+        });
+    }
+    updatePendingCountUI();
+}
+
+// Remove a single item card from the DOM: it fades out, then the rest close the gap.
+// Safe to call twice (the confirm response and its SSE event both land here).
 function removeItemCardFromDOM(itemId, container) {
     const card = (container || document).querySelector(`.item-card[data-id="${itemId}"]`);
-    if (card) {
+    if (card && !card.classList.contains('card-removing')) {
         card.classList.add('card-removing');
-        setTimeout(() => {
-            if (card.parentNode) card.parentNode.removeChild(card);
-        }, 300);
+        setTimeout(() => removeCardAndCloseGap(card), CARD_EXIT_MS);
     }
     pendingItems = pendingItems.filter(i => i.id !== itemId);
+    albumArtistChoice.delete(itemId);
+    shownAlbumArtist.delete(itemId);
     artistComboboxState.delete(itemId);
     artistDraftValues.delete(itemId);
     titleDraftValues.delete(itemId);
@@ -577,13 +615,17 @@ function updatePendingCountUI() {
         }
     }
     if (pendingItems.length === 0) {
-        if (container) container.replaceChildren();
-        if (emptyState) emptyState.classList.add('show');
         if (itemCount) itemCount.textContent = 'فارغة';
+        // The last card is still leaving: the empty state appears once it is gone
+        if (!container?.querySelector('.card-removing')) {
+            if (container) container.replaceChildren();
+            if (emptyState) emptyState.classList.add('show');
+        }
     } else {
         if (emptyState) emptyState.classList.remove('show');
         if (itemCount) itemCount.textContent = arabicCount(pendingItems.length, FILE_FORMS);
     }
+    updateConfirmAllButton();
 }
 
 // Render all items
@@ -1229,6 +1271,8 @@ function attachItemListeners(itemId) {
         summary.addEventListener('click', () => {
             expandedCards.add(itemId);
             card.classList.remove('is-collapsed');
+            card.classList.add('card-expanding');
+            setTimeout(() => card.classList.remove('card-expanding'), CARD_SETTLE_MS);
             summary.setAttribute('aria-expanded', 'true');
             if (titleInput) autosizeTitle(titleInput);
             card.focus({preventScroll: true});  // the summary hides; keep focus on this card
@@ -1505,13 +1549,16 @@ function renderDestinationPreview(itemId, dryRun) {
     }
 }
 
+// A card on its way out still has its button for a moment; it is not "ready"
+const READY_CONFIRM_SELECTOR = '.item-card:not(.card-removing) .confirm-btn:not(:disabled)';
+
 // Show/hide the "confirm all ready" button based on how many cards are ready
 // (toolbar on wider screens, the sticky bar at the bottom on phones)
 function updateConfirmAllButton() {
     if (confirmAllRunning) return;
     const btn = document.getElementById('confirmAllReadyBtn');
     const bar = document.getElementById('readyBar');
-    const readyCount = document.querySelectorAll('.confirm-btn:not(:disabled)').length;
+    const readyCount = document.querySelectorAll(READY_CONFIRM_SELECTOR).length;
     if (btn) {
         btn.hidden = readyCount < 2;
         btn.disabled = false;
@@ -1537,7 +1584,7 @@ async function confirmAllReady() {
     });
 
     // Collect IDs of ready items at the moment the button is clicked
-    const readyIds = Array.from(document.querySelectorAll('.confirm-btn:not(:disabled)'))
+    const readyIds = Array.from(document.querySelectorAll(READY_CONFIRM_SELECTOR))
         .map(el => Number(el.dataset.id))
         .filter(Boolean);
 
@@ -1545,8 +1592,8 @@ async function confirmAllReady() {
     let failCount = 0;
 
     for (const itemId of readyIds) {
-        // Re-check: item may have been removed by a prior iteration's renderItems()
-        const stillExists = document.querySelector(`.confirm-btn[data-id="${itemId}"]:not(:disabled)`);
+        // Re-check: the item may have left meanwhile (SSE from another tab, a failed earlier pass)
+        const stillExists = document.querySelector(`.item-card:not(.card-removing) .confirm-btn[data-id="${itemId}"]:not(:disabled)`);
         if (!stillExists) continue;
 
         if (await confirmItem(itemId)) {
@@ -1743,15 +1790,8 @@ async function confirmItem(itemId, onConflict) {
             throw await apiError(response, 'الخادم لم يُكمل التأكيد.');
         }
         
-        // Remove item from list
-        pendingItems = pendingItems.filter(i => i.id !== itemId);
-        albumArtistChoice.delete(itemId);
-        shownAlbumArtist.delete(itemId);
-        delete selectedGenres[itemId];
-        delete customGenreVisible[itemId];
-        
-        // Re-render
-        renderItems();
+        // The file left the queue: its card leaves, the others close the gap
+        removeItemCardFromDOM(itemId);
         showAlert(`نُقل «${title}» إلى المكتبة.`, 'success');
         logEvent('info', 'Item confirmed and moved', {itemId});
         libraryState.stale = true;
@@ -1832,9 +1872,7 @@ async function deleteItem(itemId) {
             throw await apiError(response, 'الخادم لم يحذف الملف.');
         }
         
-        // Remove item from list (optimistic update)
-        pendingItems = pendingItems.filter(i => i.id !== itemId);
-        renderItems();
+        removeItemCardFromDOM(itemId);
         showAlert('نُقل الملف إلى سلة المهملات. يمكنك استعادته من مجلد السلة قبل حذفه التلقائي.', 'success');
         logEvent('info', 'Pending item deleted', {itemId});
         

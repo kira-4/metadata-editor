@@ -668,36 +668,40 @@ body {
     margin-top: var(--spacing-md);
 }
 
-/* Animations */
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+/* Queue motion. Cards are visible by default: only a file that just arrived animates in,
+   and a card animates out only when its file leaves the queue (confirmed, deleted, or gone
+   from the server). app.js then slides the cards below into the gap (FLIP, transform only). */
+@keyframes card-arrive {
+    from { opacity: 0; transform: translateY(8px); }
 }
 
-@keyframes fadeOut {
-    from {
-        opacity: 1;
-        transform: translateY(0);
-    }
-    to {
-        opacity: 0;
-        transform: translateY(-10px);
-    }
+/* Newly arrived: the Signal Blue border fades back to the seam over a second, so a new file
+   stays findable after the slide-in ends */
+@keyframes card-arrive-mark {
+    from { border-color: var(--accent-primary); }
 }
 
-.item-card {
-    animation: fadeIn 0.3s ease;
+@keyframes card-leave {
+    to { opacity: 0; transform: translateY(-8px) scale(0.98); }
+}
+
+.item-card.card-arriving {
+    animation: card-arrive var(--dur-enter) var(--ease-out),
+               card-arrive-mark 1.2s var(--ease-out);
 }
 
 .item-card.card-removing {
-    animation: fadeOut 0.28s ease forwards;
+    animation: card-leave var(--dur-base) var(--ease-in) forwards;
     pointer-events: none;
+}
+
+/* Opening a collapsed ready card: the fields fade in where they are; the height is not animated */
+@keyframes card-reveal {
+    from { opacity: 0; }
+}
+
+.item-card.card-expanding > :not(.card-summary) {
+    animation: card-reveal var(--dur-base) var(--ease-out);
 }
 
 /* Pagination */
@@ -2374,4 +2378,31 @@ textarea.title-input {
 .item-card:focus-visible {
     outline: 2px solid var(--accent-primary);
     outline-offset: 2px;
+}
+
+/* Reduced motion: keep the fades (they still say "this changed"), drop all movement and loops.
+   app.js reads the same query and skips the FLIP slide. */
+@media (prefers-reduced-motion: reduce) {
+    @keyframes card-arrive {
+        from { opacity: 0; }
+    }
+
+    @keyframes card-leave {
+        to { opacity: 0; }
+    }
+
+    .artist-dropdown-icon {
+        transition: none;
+    }
+
+    /* A still stripe instead of the sweep: the dimmed teal and the label already say "saving" */
+    .confirm-btn.is-saving,
+    .confirm-btn.is-saving:disabled {
+        animation: none;
+        background-position: 50% 0;
+    }
+
+    .spinning {
+        animation: none;
+    }
 }
