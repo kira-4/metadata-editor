@@ -931,12 +931,12 @@ function renderArtistSuggestions(rowId) {
     toggleBtn.classList.add('open');
 
     if (state.isLoading) {
-        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">جاري البحث...</div>';
+        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">جارٍ البحث…</div>';
         return;
     }
 
     if (options.length === 0) {
-        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">لا توجد نتائج مطابقة</div>';
+        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">لا يوجد اسم مشابه في المكتبة</div>';
         return;
     }
 
@@ -952,9 +952,9 @@ function renderArtistSuggestions(rowId) {
             data-index="${index}"
         >
             <span class="artist-suggestion-name">
-                ${option.type === 'create' ? `إضافة فنان جديد: ${escapeHtml(option.name)}` : escapeHtml(option.name)}
+                ${option.type === 'create' ? `اسم جديد غير موجود في المكتبة: ${escapeHtml(option.name)}` : escapeHtml(option.name)}
             </span>
-            ${option.type === 'existing' ? `<span class="artist-suggestion-score">${Math.round(option.score)}</span>` : ''}
+            ${option.type === 'existing' ? formatArtistScore(option.score) : ''}
         </div>
     `).join('');
 
@@ -971,6 +971,15 @@ function renderArtistSuggestions(rowId) {
             }
         });
     });
+}
+
+// The score is how close a library name is to what was typed (0–100). With an empty query
+// the list is "most used artists" and every score is 0, so nothing is shown.
+function formatArtistScore(score) {
+    const value = Math.round(Number(score) || 0);
+    if (value <= 0) return '';
+    const tone = value >= ARTIST_CREATE_THRESHOLD ? 'close' : 'far';
+    return `<span class="artist-suggestion-score ${tone}" title="مدى تشابه هذا الاسم مع ما كتبته">تشابه <bdi>${value}٪</bdi></span>`;
 }
 
 function closeArtistDropdown(itemId) {
@@ -1071,11 +1080,11 @@ function selectArtistOption(rowId, option) {
     if (option.type === 'existing') {
         state.createArtistOnSave = false;
         state.selectedExistingName = option.name;
-        setItemStatus(itemId, 'تم ربط الفنان باسم موجود', 'success');
+        setItemStatus(itemId, 'اخترت اسمًا موجودًا في المكتبة.', 'success');
     } else {
         state.createArtistOnSave = true;
         state.selectedExistingName = null;
-        setItemStatus(itemId, 'سيتم إنشاء فنان جديد عند الحفظ', 'info');
+        setItemStatus(itemId, 'سيظهر هذا الفنان في المكتبة لأول مرة بعد التأكيد.', 'info');
     }
 
     const joined = rebuildArtistValue(itemId);
@@ -1875,13 +1884,13 @@ function renderLibraryArtistSuggestions() {
     toggleBtn.classList.add('open');
 
     if (libraryArtistComboboxState.isLoading) {
-        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">جاري البحث...</div>';
+        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">جارٍ البحث…</div>';
         return;
     }
 
     const options = getLibraryArtistOptions(input.value);
     if (options.length === 0) {
-        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">لا توجد نتائج مطابقة</div>';
+        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">لا يوجد اسم مشابه في المكتبة</div>';
         return;
     }
 
@@ -1900,9 +1909,9 @@ function renderLibraryArtistSuggestions() {
             data-index="${index}"
         >
             <span class="artist-suggestion-name">
-                ${option.type === 'create' ? `استخدام اسم جديد: ${escapeHtml(option.name)}` : escapeHtml(option.name)}
+                ${option.type === 'create' ? `اسم جديد غير موجود في المكتبة: ${escapeHtml(option.name)}` : escapeHtml(option.name)}
             </span>
-            ${option.type === 'existing' ? `<span class="artist-suggestion-score">${Math.round(option.score)}</span>` : ''}
+            ${option.type === 'existing' ? formatArtistScore(option.score) : ''}
         </div>
     `).join('');
 
