@@ -5,6 +5,8 @@ services:
     build: .
     container_name: metadata-editor
     restart: unless-stopped
+    # Write files as the host user that owns /music (see PUID/PGID in .env)
+    user: "${PUID:-1000}:${PGID:-1000}"
 
     environment:
       - INCOMING_ROOT=/incoming
