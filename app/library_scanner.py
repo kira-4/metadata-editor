@@ -93,7 +93,7 @@ class LibraryScanner:
         Scan library directory and index all audio files.
 
         Args:
-            force_full: If True, re-scan all files and run cleanup for deleted files.
+            force_full: If True, re-read all files, even unchanged ones.
                         If False, only scan new/modified files (skips unchanged dirs).
             repair: If True, write path-inferred tags into files that lack them.
         """
@@ -152,11 +152,12 @@ class LibraryScanner:
                         logger.error(error_msg)
                         self.errors.append(error_msg)
 
-                # Cleanup: only when force_full=True (user explicitly requested)
-                # A partial walk would make unreadable files look deleted, so skip cleanup then
-                if force_full and unreadable:
+                # Drop index rows for files moved or deleted outside the app (any scan,
+                # so the rescan button can fix them). A partial walk would make
+                # unreadable files look deleted, so skip cleanup then
+                if unreadable:
                     logger.warning("Skipping missing-file cleanup: some folders could not be read")
-                elif force_full:
+                else:
                     self._cleanup_missing_files(db, scanned_paths)
 
                 logger.info(f"Library scan complete. Processed {self.processed_files}/{self.total_files} files")

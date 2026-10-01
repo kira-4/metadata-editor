@@ -91,3 +91,18 @@ def test_unreadable_directory_never_causes_index_deletion(make_audio, db):
     db.expire_all()
     assert LibraryManager.get_track_by_path(db, str(hidden)) is not None
     assert any("b" in e for e in scanner.get_status()["errors"])
+
+
+def test_quick_scan_drops_files_moved_outside_the_app(make_audio, db):
+    old = make_audio(".mp3", dir=config.NAVIDROME_ROOT / "audio" / "a" / "x", name="one")
+    assert metadata_processor.update_metadata_safe(old, title="one", artist="a")
+    LibraryScanner()._index_file(db, old, force=True)
+    new = config.NAVIDROME_ROOT / "a" / "x" / "one.mp3"
+    new.parent.mkdir(parents=True)
+    old.rename(new)
+
+    LibraryScanner()._scan_library()  # the rescan button: no force
+
+    db.expire_all()
+    assert LibraryManager.get_track_by_path(db, str(old)) is None
+    assert LibraryManager.get_track_by_path(db, str(new)) is not None
