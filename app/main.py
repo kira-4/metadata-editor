@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.config import config
 from app.database import init_db, SessionLocal, DatabaseManager
@@ -74,6 +75,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+class GZipExceptStreams:
+    """Gzip responses (app.js, style.css and the JSON lists shrink about 4x), except:
+    the SSE stream, because gzip buffers and would hold events back, and artwork and fonts,
+    which are already compressed."""
+
+    SKIP_SUFFIXES = (".woff2", ".png", ".jpg", ".jpeg")
+
+    def __init__(self, app, minimum_size: int = 1024):
+        self.app = app
+        self.gzip = GZipMiddleware(app, minimum_size=minimum_size)
+
+    async def __call__(self, scope, receive, send):
+        path = scope.get("path", "") if scope["type"] == "http" else ""
+        if not path or path == "/api/events" or "/artwork" in path or path.endswith(self.SKIP_SUFFIXES):
+            await self.app(scope, receive, send)
+        else:
+            await self.gzip(scope, receive, send)
+
+
+app.add_middleware(GZipExceptStreams)
 
 # Include API router
 app.include_router(router)
