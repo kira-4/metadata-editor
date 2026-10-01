@@ -239,6 +239,7 @@ class FileScanner:
                     video_title=file_path.stem,  # Fallback to stem
                     channel="Unknown",
                     extension=file_path.suffix,
+                    genre=existing_metadata.get("genre"),
                     inferred_title=inferred_title,
                     inferred_artist=inferred_artist,
                     artwork_path=artwork_path, # Include artwork if found
@@ -273,6 +274,7 @@ class FileScanner:
                     video_title=video_title,
                     channel=channel,
                     extension=file_path.suffix,
+                    genre=existing_metadata.get("genre"),
                     inferred_title=title or video_title,  # Fallback to video_title
                     inferred_artist=artists or channel,    # Fallback to channel
                     album_artist=album_artist or channel,
@@ -312,6 +314,7 @@ class FileScanner:
                         video_title=video_title,
                         channel=channel,
                         extension=file_path.suffix,
+                        genre=existing_metadata.get("genre"),
                         inferred_title=title,
                         inferred_artist=artists,
                         album_artist=album_artist,
@@ -336,6 +339,7 @@ class FileScanner:
                 video_title=video_title,
                 channel=channel,
                 extension=file_path.suffix,
+                genre=existing_metadata.get("genre"),
                 inferred_title=title,
                 inferred_artist=artists,
                 album_artist=album_artist,

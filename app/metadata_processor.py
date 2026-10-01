@@ -32,12 +32,14 @@ class MetadataProcessor:
     }
     
     @staticmethod
-    def sanitize_filename(filename: str) -> str:
+    def sanitize_filename(filename: str, max_bytes: int = 255) -> str:
         """
         Sanitize filename for filesystem while preserving Arabic characters.
         
         Args:
             filename: The filename to sanitize
+            max_bytes: Limit in UTF-8 bytes (filesystems count bytes, and Arabic
+                letters take two each), cut on a character boundary
             
         Returns:
             Sanitized filename
@@ -47,6 +49,7 @@ class MetadataProcessor:
         # Replace: / \ : * ? " < > |
         illegal_chars = r'[<>:"/\\|?*]'
         sanitized = re.sub(illegal_chars, '', filename)
+        sanitized = sanitized.encode('utf-8')[:max_bytes].decode('utf-8', errors='ignore')
         
         # Remove leading/trailing spaces and dots
         sanitized = sanitized.strip('. ')

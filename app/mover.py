@@ -29,8 +29,10 @@ class FileMover:
         With dedupe=False, returns the natural path even if a file already exists there.
         """
         safe_album_artist = metadata_processor.sanitize_filename(album_artist)
-        safe_title = metadata_processor.sanitize_filename(title)
-        safe_album = safe_title
+        safe_album = metadata_processor.sanitize_filename(title)
+        # The file name also holds the extension and a possible " (NNN)" collision suffix
+        name_budget = 255 - len(extension.encode("utf-8")) - len(" (999)")
+        safe_title = metadata_processor.sanitize_filename(title, max_bytes=name_budget)
 
         artist_dir = config.NAVIDROME_ROOT / safe_album_artist
         album_dir = artist_dir / safe_album
