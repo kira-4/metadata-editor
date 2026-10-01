@@ -38,7 +38,7 @@
             <main class="main-content">
                 <div class="pending-toolbar">
                     <button id="refreshPendingBtn" class="btn-secondary">تحديث القائمة</button>
-                    <button id="confirmAllReadyBtn" class="btn-confirm-all" style="display: none;">✓ تأكيد ونقل الجاهزة</button>
+                    <button id="confirmAllReadyBtn" class="btn-confirm-all" hidden>✓ تأكيد ونقل الجاهزة</button>
                 </div>
 
                 <div class="queue-header">
@@ -48,6 +48,12 @@
 
                 <div id="pendingItems" class="items-grid">
                     <!-- Items will be loaded here -->
+                </div>
+
+                <!-- Phones: confirm-all stays under the thumb through a long session -->
+                <div id="readyBar" class="ready-bar" hidden>
+                    <span id="readyBarCount" class="ready-bar-count" aria-live="polite"></span>
+                    <button type="button" id="readyBarConfirmBtn" class="ready-bar-btn">✓ تأكيد ونقل الجاهزة</button>
                 </div>
 
                 <div id="emptyState" class="empty-state">
