@@ -544,10 +544,10 @@ function createItemCard(item) {
 
     const artistRowsHtml = artistList.map((artist, index) => `
         <div class="artist-row" data-item-id="${item.id}" data-row-index="${index}">
-            <div class="artist-combobox ${index === 0 ? 'album-artist-row' : ''}" data-row-id="${item.id}_artist_${index}">
+            <div class="artist-combobox" data-row-id="${item.id}_artist_${index}">
                 <input
                     type="text"
-                    class="field-input artist-input ${index === 0 ? 'album-artist-input' : ''}"
+                    class="field-input artist-input"
                     value="${escapeHtml(artist)}"
                     data-row-id="${item.id}_artist_${index}"
                     data-item-id="${item.id}"
@@ -599,6 +599,8 @@ function createItemCard(item) {
                         </div>
                         <button type="button" class="btn-add-artist" data-id="${item.id}">+ إضافة فنان</button>
                     </div>
+
+                    <div class="destination-preview" id="destination-${item.id}" aria-live="polite"></div>
 
                     <div class="source-text">
                         المصدر: ${escapeHtml(item.video_title)} • ${escapeHtml(item.channel)}
@@ -1205,6 +1207,92 @@ function updateConfirmButton(itemId) {
 
     confirmBtn.disabled = !(hasGenre && hasTitle && hasArtist);
     updateConfirmAllButton();
+    queueDestinationPreview(itemId);
+}
+
+// Album artist (the folder) and destination: the server resolves them from the draft,
+// so the card shows exactly what confirm will do.
+const albumArtistChoice = new Map();      // itemId -> artist the user picked
+const shownAlbumArtist = new Map();       // itemId -> album artist in the last preview
+const destinationPreviewTimers = new Map();
+const destinationPreviewSeq = new Map();
+
+function draftArtists(itemId) {
+    return rebuildArtistValue(itemId).split(';').map(a => a.trim()).filter(Boolean);
+}
+
+function queueDestinationPreview(itemId) {
+    clearTimeout(destinationPreviewTimers.get(itemId));
+    destinationPreviewTimers.set(itemId, setTimeout(() => refreshDestinationPreview(itemId), 350));
+}
+
+async function refreshDestinationPreview(itemId) {
+    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    const el = document.getElementById(`destination-${itemId}`);
+    if (!card || !el) return;
+
+    const title = (card.querySelector('.title-input')?.value || '').trim();
+    const artist = rebuildArtistValue(itemId);
+    if (!title || !artist) {
+        el.innerHTML = '';
+        shownAlbumArtist.delete(itemId);
+        return;
+    }
+
+    const params = new URLSearchParams({title, artist});
+    const chosen = albumArtistChoice.get(itemId);
+    if (chosen) params.set('album_artist', chosen);
+    const seq = (destinationPreviewSeq.get(itemId) || 0) + 1;
+    destinationPreviewSeq.set(itemId, seq);
+
+    try {
+        const response = await fetch(`${API_BASE}/pending/${itemId}/dry-run?${params}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const dryRun = await response.json();
+        if (destinationPreviewSeq.get(itemId) !== seq) return;  // a newer draft is on its way
+        renderDestinationPreview(itemId, dryRun);
+    } catch (error) {
+        logEvent('warn', 'Destination preview failed', {itemId, error: error.message});
+    }
+}
+
+// Arabic path segments read right-to-left; each is isolated and the extension kept as one LTR unit
+function formatLibraryPath(relativePath) {
+    const parts = relativePath.split('/').filter(Boolean);
+    return parts.map((part, i) => {
+        const dot = i === parts.length - 1 ? part.lastIndexOf('.') : -1;
+        return dot > 0
+            ? `<bdi>${escapeHtml(part.slice(0, dot))}<bdi dir="ltr">${escapeHtml(part.slice(dot))}</bdi></bdi>`
+            : `<bdi>${escapeHtml(part)}</bdi>`;
+    }).join(' <span class="path-sep">/</span> ');
+}
+
+function renderDestinationPreview(itemId, dryRun) {
+    const el = document.getElementById(`destination-${itemId}`);
+    if (!el) return;
+    const albumArtist = dryRun.metadata_preview?.album_artist || '';
+    const move = dryRun.move_preview || {};
+    const artists = draftArtists(itemId);
+    shownAlbumArtist.set(itemId, albumArtist);
+
+    const folder = artists.length > 1
+        ? `<select class="album-artist-select" aria-label="فنان المجلد">${artists.map(a =>
+            `<option value="${escapeHtml(a)}" ${a === albumArtist ? 'selected' : ''}>${escapeHtml(a)}</option>`).join('')}</select>`
+        : `<strong>${escapeHtml(albumArtist)}</strong>`;
+
+    el.innerHTML = `
+        <div class="destination-row"><span class="destination-label">المجلد:</span> ${folder}</div>
+        <div class="destination-path" title="${escapeHtml(move.destination_path || '')}">${formatLibraryPath(move.relative_path || '')}</div>
+        ${move.destination_exists ? '<div class="destination-warning">يوجد ملف بهذا الاسم في المكتبة، وسيُطلب منك الاختيار عند التأكيد</div>' : ''}
+    `;
+
+    const select = el.querySelector('.album-artist-select');
+    if (select) {
+        select.addEventListener('change', () => {
+            albumArtistChoice.set(itemId, select.value);
+            refreshDestinationPreview(itemId);
+        });
+    }
 }
 
 // Show/hide the "confirm all ready" button based on how many cards are ready
@@ -1370,6 +1458,8 @@ async function confirmItem(itemId, onConflict) {
     const title = (card.querySelector('.title-input')?.value || '').trim();
     const artist = rebuildArtistValue(itemId);  // all artist rows, joined
     const genre = (selectedGenres[itemId] || '').trim();
+    const shown = shownAlbumArtist.get(itemId);
+    const albumArtist = shown && draftArtists(itemId).includes(shown) ? shown : null;
 
     if (!title || !artist || !genre) {
         showAlert('لا يمكن التأكيد: العنوان والفنان والنوع مطلوبة.', 'warn');
@@ -1387,7 +1477,11 @@ async function confirmItem(itemId, onConflict) {
         const response = await fetch(`${API_BASE}/pending/${itemId}/confirm`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, artist, genre, ...(onConflict ? { on_conflict: onConflict } : {}) })
+            body: JSON.stringify({
+                title, artist, genre,
+                ...(albumArtist ? { album_artist: albumArtist } : {}),
+                ...(onConflict ? { on_conflict: onConflict } : {})
+            })
         });
 
         if (response.status === 409) {
@@ -1408,6 +1502,8 @@ async function confirmItem(itemId, onConflict) {
         
         // Remove item from list
         pendingItems = pendingItems.filter(i => i.id !== itemId);
+        albumArtistChoice.delete(itemId);
+        shownAlbumArtist.delete(itemId);
         delete selectedGenres[itemId];
         delete customGenreVisible[itemId];
         
