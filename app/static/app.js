@@ -1924,6 +1924,8 @@ async function initLibrary() {
 
     // Load stats
     await loadLibraryStats();
+    // Reconnect to a scan started before this page load
+    pollRescanStatus(false);
     
     // Load current view data
     await loadViewData();
@@ -3254,42 +3256,85 @@ async function handleBatchEdit() {
     }
 }
 
+// Rescan: progress comes from /rescan/status; a failed poll never leaves the button stuck
+const ERROR_FORMS = ['خطأ واحد', 'خطآن', 'أخطاء', 'خطأً', 'خطأ'];
+let rescanPollTimer = null;
+
+function setRescanBusy(busy) {
+    document.getElementById('rescanBtn').disabled = busy;
+    document.getElementById('rescanIcon').classList.toggle('spinning', busy);
+}
+
+function renderRescanStatus(status, {failed = null} = {}) {
+    const el = document.getElementById('rescanStatus');
+    const errors = status?.errors || [];
+    let html;
+    if (failed) {
+        html = `<span class="rescan-error">تعذّرت متابعة المسح: ${escapeHtml(failed)}</span>`
+            + '<button type="button" class="batch-state-btn" id="rescanRetryBtn">تحقق مجددًا</button>';
+    } else if (status.is_scanning) {
+        html = status.total > 0
+            ? `جارٍ المسح: <bdi>${status.processed} / ${status.total}</bdi>`
+            : 'جارٍ البحث عن الملفات…';
+        if (errors.length) html += ` · <span class="rescan-error">${arabicCount(errors.length, ERROR_FORMS)}</span>`;
+    } else {
+        html = `اكتمل المسح: <bdi>${status.processed} / ${status.total}</bdi>`;
+        if (errors.length) {
+            html += ` · <details class="rescan-errors"><summary>${arabicCount(errors.length, ERROR_FORMS)}</summary><ul>`
+                + errors.map(e => `<li dir="ltr">${escapeHtml(e)}</li>`).join('') + '</ul></details>';
+        }
+    }
+    el.innerHTML = html;
+    el.style.display = '';
+    const retry = document.getElementById('rescanRetryBtn');
+    if (retry) retry.addEventListener('click', () => pollRescanStatus(true));
+}
+
+// watching=false: just check on page load whether a scan is already running
+async function pollRescanStatus(watching = true) {
+    clearTimeout(rescanPollTimer);
+    try {
+        const response = await fetch('/api/library/rescan/status');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const status = await response.json();
+
+        if (status.is_scanning) {
+            setRescanBusy(true);
+            renderRescanStatus(status);
+            rescanPollTimer = setTimeout(() => pollRescanStatus(true), 2000);
+            return;
+        }
+        setRescanBusy(false);
+        if (!watching) return;
+        renderRescanStatus(status);
+        if (!status.errors?.length) {
+            setTimeout(() => {
+                const el = document.getElementById('rescanStatus');
+                if (!document.getElementById('rescanBtn').disabled) el.style.display = 'none';
+            }, 8000);
+        }
+        await loadLibraryStats();
+        await loadViewData();
+    } catch (error) {
+        logEvent('error', 'Error polling rescan status', {error: error.message});
+        setRescanBusy(false);
+        renderRescanStatus(null, {failed: error.message});
+    }
+}
+
 // Start Rescan
 async function startRescan() {
-    const btn = document.getElementById('rescanBtn');
-    const icon = document.getElementById('rescanIcon');
-    
-    btn.disabled = true;
-    icon.classList.add('spinning');
-    
+    setRescanBusy(true);
+    renderRescanStatus({is_scanning: true, processed: 0, total: 0, errors: []});
     try {
         const response = await fetch('/api/library/rescan', {method: 'POST'});
-        if (!response.ok) throw new Error('Failed to start rescan');
-        
-        // Status is shown via spinning icon - no popup needed
-        
-        // Poll for status
-        const checkStatus = async () => {
-            const statusResponse = await fetch('/api/library/rescan/status');
-            const status = await statusResponse.json();
-            
-            if (status.is_scanning) {
-                setTimeout(checkStatus, 2000);
-            } else {
-                btn.disabled = false;
-                icon.classList.remove('spinning');
-                await loadLibraryStats();
-                await loadViewData();
-            }
-        };
-        
-        checkStatus();
-        
+        // 409 means a scan is already running: just follow it
+        if (!response.ok && response.status !== 409) throw new Error(`HTTP ${response.status}`);
+        pollRescanStatus(true);
     } catch (error) {
         logEvent('error', 'Error starting library rescan', {error: error.message});
-        showAlert('خطأ في بدء المسح', 'error');
-        btn.disabled = false;
-        icon.classList.remove('spinning');
+        setRescanBusy(false);
+        renderRescanStatus(null, {failed: error.message});
     }
 }
 

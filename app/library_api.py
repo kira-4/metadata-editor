@@ -451,13 +451,8 @@ def get_track_artwork(track_id: int, db: Session = Depends(get_db)):
 def rescan_library(force: bool = False, repair: bool = False):
     """Trigger library rescan. force=True re-indexes all files; repair=True also writes missing tags."""
     try:
-        if library_scanner.is_scanning:
+        if not library_scanner.start_scan(force_full=force, repair=repair):
             raise HTTPException(status_code=409, detail="Scan already in progress")
-        
-        success = library_scanner.start_scan(force_full=force, repair=repair)
-        
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to start scan")
         
         return {
             "success": True,

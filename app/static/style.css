@@ -1403,6 +1403,42 @@ body {
     line-height: 1.5;
 }
 
+/* Rescan progress line under the library header */
+.rescan-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.rescan-error {
+    color: var(--error);
+}
+
+.rescan-errors summary {
+    color: var(--error);
+    cursor: pointer;
+}
+
+.rescan-errors ul {
+    margin-top: 0.25rem;
+    max-height: 10rem;
+    overflow-y: auto;
+    font-size: 0.8rem;
+    list-style: none;
+}
+
+#rescanBtn:disabled {
+    opacity: 0.6;
+    cursor: progress;
+}
+
 /* Batch edit: per-field keep/set/clear state */
 .batch-field-state {
     display: flex;
