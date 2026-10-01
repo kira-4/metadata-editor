@@ -2252,11 +2252,11 @@ async function loadLibraryStats() {
         
         const stats = await response.json();
         const statsEl = document.getElementById('libraryStats');
-        statsEl.innerHTML = `
-            <span class="stat-item">${stats.total_tracks} صوتية</span>
-            <span class="stat-item">${stats.total_artists} فنان</span>
-            <span class="stat-item">${stats.total_albums} ألبوم</span>
-        `;
+        statsEl.textContent = [
+            arabicCount(stats.total_tracks, TRACK_FORMS),
+            arabicCount(stats.total_artists, ARTIST_FORMS),
+            arabicCount(stats.total_albums, ALBUM_FORMS),
+        ].join(' · ');
         loadArtistVariants();
     } catch (error) {
         logEvent('warn', 'Error loading library stats', {error: error.message});
@@ -2312,7 +2312,7 @@ function showArtistVariants() {
                 <label class="variant-option">
                     <input type="radio" name="variant-${gi}" value="${escapeHtml(v.name)}" ${v.name === group.suggested ? 'checked' : ''}>
                     <bdi>${escapeHtml(v.name)}</bdi>
-                    <span class="variant-count">${v.track_count} صوتية</span>
+                    <span class="variant-count">${arabicCount(v.track_count, TRACK_FORMS)}</span>
                 </label>
             `).join('')}
             <div class="variant-preview" aria-live="polite"></div>
@@ -2601,7 +2601,7 @@ function renderArtists(artists) {
         <div class="list-item" role="button" tabindex="0" data-nav="artist" data-name="${escapeHtml(artist.name)}">
             <div class="list-item-content">
                 <div class="list-item-title">${escapeHtml(artist.name)}</div>
-                <div class="list-item-meta">${artist.track_count} صوتية • ${artist.album_count} ألبوم</div>
+                <div class="list-item-meta">${arabicCount(artist.track_count, TRACK_FORMS)} · ${arabicCount(artist.album_count, ALBUM_FORMS)}</div>
             </div>
         </div>
     `).join('');
@@ -2625,7 +2625,7 @@ function renderAlbums(albums) {
             </div>
             <div class="album-name">${escapeHtml(album.name) || 'بدون اسم'}</div>
             <div class="album-artist">${escapeHtml(album.album_artist) || 'غير معروف'}</div>
-            <div class="list-item-meta">${album.track_count} صوتية${album.year ? ' • ' + album.year : ''}</div>
+            <div class="list-item-meta">${arabicCount(album.track_count, TRACK_FORMS)}${album.year ? ' · ' + album.year : ''}</div>
         </div>
     `).join('');
 }
@@ -2643,7 +2643,7 @@ function renderGenres(genres) {
         <div class="list-item" role="button" tabindex="0" data-nav="genre" data-name="${escapeHtml(genre.name)}">
             <div class="list-item-content">
                 <div class="list-item-title">${escapeHtml(genre.name)}</div>
-                <div class="list-item-meta">${genre.track_count} صوتية</div>
+                <div class="list-item-meta">${arabicCount(genre.track_count, TRACK_FORMS)}</div>
             </div>
         </div>
     `).join('');
@@ -2891,7 +2891,7 @@ async function viewArtistAlbums(artistName, pushToStack = true) {
                         : '<span class="artwork-missing" aria-hidden="true">♪</span>'}
                 </div>
                 <div class="album-name">${escapeHtml(album.name) || 'بدون اسم'}</div>
-                <div class="list-item-meta">${album.track_count} صوتية</div>
+                <div class="list-item-meta">${arabicCount(album.track_count, TRACK_FORMS)}</div>
             </div>
         `).join('');
     } catch (error) {
@@ -3105,6 +3105,8 @@ const batchEdit = {states: {}, failures: [], saving: false};
 // Queue items are ملفات (files waiting to move); library items are صوتيات (tracks)
 const TRACK_FORMS = ['صوتية واحدة', 'صوتيتان', 'صوتيات', 'صوتيةً', 'صوتية'];
 const FILE_FORMS = ['ملف واحد', 'ملفان', 'ملفات', 'ملفًا', 'ملف'];
+const ARTIST_FORMS = ['فنان واحد', 'فنانان', 'فنانين', 'فنانًا', 'فنان'];
+const ALBUM_FORMS = ['ألبوم واحد', 'ألبومان', 'ألبومات', 'ألبومًا', 'ألبوم'];
 
 function setupBatchFieldControls() {
     if (window.batchFieldControlsAttached) return;
