@@ -480,8 +480,12 @@ async function loadPendingItems(options = {}) {
             logEvent('info', `تم تحميل قائمة الانتظار (${pendingItems.length}) عنصر`);
         }
     } catch (error) {
-        logEvent('error', 'فشل تحميل قائمة الانتظار', {error: error.message});
-        showError('تعذّر تحميل قائمة الانتظار', error);
+        logEvent('error', 'Loading the queue failed', {error: error.message});
+        if (silent && error instanceof TypeError) {
+            setConnectionOffline(true);  // a background poll while offline: the banner already says it
+        } else {
+            showError('تعذّر تحميل قائمة الانتظار', error);
+        }
     }
 }
 
@@ -1765,6 +1769,7 @@ function setupSSE() {
     
     eventSource.onopen = () => {
         logEvent('info', 'SSE connected');
+        setConnectionOffline(false);
     };
     
     eventSource.onmessage = (event) => {
@@ -1786,10 +1791,48 @@ function setupSSE() {
     };
     
     eventSource.onerror = (error) => {
-        logEvent('warn', 'SSE error (browser will retry automatically)', {error: String(error)});
-        // Reconnect automatically handled by browser
+        logEvent('warn', 'SSE error', {error: String(error), readyState: eventSource.readyState});
+        // A short blip reconnects on its own; only a drop that lasts gets the banner
+        clearTimeout(connection.graceTimer);
+        connection.graceTimer = setTimeout(() => {
+            if (eventSource.readyState !== EventSource.OPEN) setConnectionOffline(true);
+        }, 3000);
+        // CLOSED means the browser gave up (e.g. the server answered with an error): retry ourselves
+        if (eventSource.readyState === EventSource.CLOSED) {
+            clearTimeout(connection.retryTimer);
+            connection.retryTimer = setTimeout(setupSSE, 10000);
+        }
     };
 }
+
+// Live-update connection: a banner while it is down, and a catch-up reload when it returns
+const connection = {offline: false, graceTimer: null, retryTimer: null};
+
+function setConnectionOffline(offline) {
+    const banner = document.getElementById('connectionStatus');
+    const wasOffline = connection.offline;
+    connection.offline = offline;
+    if (offline) clearTimeout(connection.graceTimer);
+    if (!banner) return;
+
+    if (offline) {
+        banner.innerHTML = `<span>انقطع الاتصال بالخادم. ما كتبته في البطاقات باقٍ، والقائمة لا تتحدث حتى يعود الاتصال.</span>
+            <button type="button" class="batch-state-btn" id="reconnectBtn">أعد الاتصال</button>`;
+        banner.hidden = false;
+        document.getElementById('reconnectBtn').addEventListener('click', () => {
+            setupSSE();
+            loadPendingItems({silent: true, smartUpdate: true});
+        });
+    } else {
+        banner.hidden = true;
+        banner.replaceChildren();
+        // Events may have been missed while away: pick up cards added or confirmed elsewhere
+        if (wasOffline) loadPendingItems({silent: true, smartUpdate: true});
+    }
+}
+
+window.addEventListener('offline', () => setConnectionOffline(true));
+window.addEventListener('online', () => setupSSE());
 
 //=============================================================================
 // Library Editor Features
