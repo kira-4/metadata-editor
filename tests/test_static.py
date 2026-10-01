@@ -30,3 +30,15 @@ def test_ci_checks_frontend_and_runs_audio_tests():
     assert any("node --check app/static/app.js" in r for r in steps)
     assert any("ffmpeg" in r for r in steps)
     assert any("pytest" in r for r in steps)
+
+
+def test_icons_are_small_and_linked(client):
+    """The 1024px favicon was 347 KB on every first load (plan S4-5, audit #34)."""
+    html = client.get("/").text
+    assert 'rel="icon"' in html and 'href="/favicon-32.png"' in html
+    assert 'rel="apple-touch-icon"' in html and 'href="/apple-touch-icon.png"' in html
+
+    for path in ("/favicon-32.png", "/apple-touch-icon.png"):
+        resp = client.get(path)
+        assert resp.status_code == 200
+        assert len(resp.content) < 10_000
