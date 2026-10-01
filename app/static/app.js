@@ -37,15 +37,6 @@ const artistComboboxState = new Map(); // rowId -> combobox state
 const artistRowsMap = new Map(); // itemId -> array of artist strings
 const artistDraftValues = new Map(); // itemId -> in-progress input value (joined artists)
 const titleDraftValues = new Map(); // itemId -> in-progress title input value
-const libraryArtistComboboxState = {
-    isOpen: false,
-    isLoading: false,
-    suggestions: [],
-    canCreate: false,
-    highlightedIndex: -1,
-    requestToken: 0,
-    debounceTimer: null
-};
 
 function timestampNow() {
     return new Date().toISOString();
@@ -1944,7 +1935,6 @@ const libraryState = {
     currentPage: 1,
     itemsPerPage: 50,
     isMobileViewport: false,
-    mobileFiltersOpen: false,
     totalItems: 0,
     selectedTracks: new Set(),
     expandedTrackCards: new Set(),
@@ -2011,270 +2001,6 @@ function rerenderActiveTrackContext() {
     }
 }
 
-function resetLibraryArtistComboboxState() {
-    clearTimeout(libraryArtistComboboxState.debounceTimer);
-    libraryArtistComboboxState.requestToken += 1;
-    libraryArtistComboboxState.isOpen = false;
-    libraryArtistComboboxState.isLoading = false;
-    libraryArtistComboboxState.suggestions = [];
-    libraryArtistComboboxState.canCreate = false;
-    libraryArtistComboboxState.highlightedIndex = -1;
-    renderLibraryArtistSuggestions();
-}
-
-function getLibraryArtistOptions(inputValue) {
-    const options = (libraryArtistComboboxState.suggestions || []).map(suggestion => ({
-        type: 'existing',
-        id: suggestion.id,
-        name: suggestion.name,
-        score: Number(suggestion.score || 0)
-    }));
-
-    const trimmedInput = String(inputValue || '').trim();
-    if (libraryArtistComboboxState.canCreate && trimmedInput.length > 0) {
-        const normalizedInput = normalizeArtistClient(trimmedInput);
-        const hasEquivalent = options.some(option => normalizeArtistClient(option.name) === normalizedInput);
-        if (!hasEquivalent) {
-            options.push({
-                type: 'create',
-                id: null,
-                name: trimmedInput,
-                score: 0
-            });
-        }
-    }
-
-    return options;
-}
-
-function renderLibraryArtistSuggestions() {
-    const input = document.getElementById('batchArtist');
-    const suggestionsEl = document.getElementById('libraryArtistSuggestions');
-    const toggleBtn = document.getElementById('libraryArtistDropdownToggle');
-    if (!input || !suggestionsEl || !toggleBtn) return;
-
-    if (!libraryArtistComboboxState.isOpen) {
-        suggestionsEl.classList.remove('show');
-        suggestionsEl.innerHTML = '';
-        input.setAttribute('aria-expanded', 'false');
-        toggleBtn.classList.remove('open');
-        return;
-    }
-
-    suggestionsEl.classList.add('show');
-    input.setAttribute('aria-expanded', 'true');
-    toggleBtn.classList.add('open');
-
-    if (libraryArtistComboboxState.isLoading) {
-        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">جارٍ البحث…</div>';
-        return;
-    }
-
-    const options = getLibraryArtistOptions(input.value);
-    if (options.length === 0) {
-        suggestionsEl.innerHTML = '<div class="artist-suggestion-empty">لا يوجد اسم مشابه في المكتبة</div>';
-        return;
-    }
-
-    if (
-        libraryArtistComboboxState.highlightedIndex < 0 ||
-        libraryArtistComboboxState.highlightedIndex >= options.length
-    ) {
-        libraryArtistComboboxState.highlightedIndex = 0;
-    }
-
-    suggestionsEl.innerHTML = options.map((option, index) => `
-        <div
-            class="artist-suggestion-item ${index === libraryArtistComboboxState.highlightedIndex ? 'active' : ''} ${option.type === 'create' ? 'create-option' : ''}"
-            role="option"
-            aria-selected="${index === libraryArtistComboboxState.highlightedIndex}"
-            data-index="${index}"
-        >
-            <span class="artist-suggestion-name">
-                ${option.type === 'create' ? `اسم جديد غير موجود في المكتبة: ${escapeHtml(option.name)}` : escapeHtml(option.name)}
-            </span>
-            ${option.type === 'existing' ? formatArtistScore(option.score) : ''}
-        </div>
-    `).join('');
-
-    suggestionsEl.querySelectorAll('.artist-suggestion-item').forEach(optionEl => {
-        optionEl.addEventListener('mousedown', event => {
-            event.preventDefault();
-        });
-        optionEl.addEventListener('click', () => {
-            const optionIndex = Number(optionEl.dataset.index);
-            const selectedOption = options[optionIndex];
-            if (selectedOption) {
-                selectLibraryArtistOption(selectedOption);
-            }
-        });
-    });
-}
-
-function closeLibraryArtistDropdown() {
-    libraryArtistComboboxState.isOpen = false;
-    libraryArtistComboboxState.highlightedIndex = -1;
-    renderLibraryArtistSuggestions();
-}
-
-async function requestLibraryArtistSuggestions(query) {
-    libraryArtistComboboxState.requestToken += 1;
-    const currentToken = libraryArtistComboboxState.requestToken;
-    libraryArtistComboboxState.isLoading = true;
-    renderLibraryArtistSuggestions();
-
-    try {
-        const data = await fetchArtistSuggestions(query, ARTIST_SUGGEST_LIMIT);
-        if (libraryArtistComboboxState.requestToken !== currentToken) return;
-
-        libraryArtistComboboxState.suggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
-        libraryArtistComboboxState.canCreate = Boolean(data.canCreate);
-
-        if (
-            query &&
-            libraryArtistComboboxState.suggestions.length > 0 &&
-            Number(libraryArtistComboboxState.suggestions[0].score || 0) < ARTIST_CREATE_THRESHOLD
-        ) {
-            libraryArtistComboboxState.canCreate = true;
-        }
-
-        libraryArtistComboboxState.highlightedIndex =
-            libraryArtistComboboxState.suggestions.length > 0 ? 0 : -1;
-    } catch (error) {
-        logEvent('warn', 'Library artist suggestion lookup failed', {error: error.message});
-        libraryArtistComboboxState.suggestions = [];
-        libraryArtistComboboxState.canCreate = false;
-        libraryArtistComboboxState.highlightedIndex = -1;
-    } finally {
-        if (libraryArtistComboboxState.requestToken === currentToken) {
-            libraryArtistComboboxState.isLoading = false;
-            renderLibraryArtistSuggestions();
-        }
-    }
-}
-
-function queueLibraryArtistSuggestions(query) {
-    clearTimeout(libraryArtistComboboxState.debounceTimer);
-    libraryArtistComboboxState.debounceTimer = setTimeout(() => {
-        requestLibraryArtistSuggestions(query);
-    }, ARTIST_SUGGEST_DEBOUNCE_MS);
-}
-
-function openLibraryArtistDropdown() {
-    const modal = document.getElementById('batchEditModal');
-    if (!modal || modal.style.display !== 'flex') return;
-    libraryArtistComboboxState.isOpen = true;
-    renderLibraryArtistSuggestions();
-    const input = document.getElementById('batchArtist');
-    queueLibraryArtistSuggestions(input ? input.value : '');
-}
-
-function navigateLibraryArtistSuggestions(direction) {
-    const input = document.getElementById('batchArtist');
-    if (!input) return;
-    const options = getLibraryArtistOptions(input.value);
-    if (options.length === 0) return;
-
-    if (libraryArtistComboboxState.highlightedIndex < 0) {
-        libraryArtistComboboxState.highlightedIndex = 0;
-    } else {
-        libraryArtistComboboxState.highlightedIndex =
-            (libraryArtistComboboxState.highlightedIndex + direction + options.length) % options.length;
-    }
-    renderLibraryArtistSuggestions();
-}
-
-function selectLibraryArtistOption(option) {
-    const input = document.getElementById('batchArtist');
-    if (!input || !option) return;
-    input.value = option.name;
-    input.dispatchEvent(new Event('input', {bubbles: true}));
-    closeLibraryArtistDropdown();
-}
-
-function handleLibraryArtistInputKeydown(event) {
-    const input = document.getElementById('batchArtist');
-    if (!input) return;
-    const options = getLibraryArtistOptions(input.value);
-
-    if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        if (!libraryArtistComboboxState.isOpen) {
-            openLibraryArtistDropdown();
-        } else {
-            navigateLibraryArtistSuggestions(1);
-        }
-        return;
-    }
-
-    if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        if (!libraryArtistComboboxState.isOpen) {
-            openLibraryArtistDropdown();
-        } else {
-            navigateLibraryArtistSuggestions(-1);
-        }
-        return;
-    }
-
-    if ((event.key === 'Enter' || event.key === 'Tab') && libraryArtistComboboxState.isOpen && options.length > 0) {
-        const optionIndex = libraryArtistComboboxState.highlightedIndex >= 0
-            ? libraryArtistComboboxState.highlightedIndex
-            : 0;
-        const option = options[optionIndex];
-        if (option) {
-            event.preventDefault();
-            selectLibraryArtistOption(option);
-        }
-        return;
-    }
-
-    if (event.key === 'Escape' && libraryArtistComboboxState.isOpen) {
-        event.preventDefault();
-        closeLibraryArtistDropdown();
-    }
-}
-
-function setupLibraryArtistCombobox() {
-    if (window.libraryArtistComboboxAttached) return;
-
-    const input = document.getElementById('batchArtist');
-    const toggleBtn = document.getElementById('libraryArtistDropdownToggle');
-    if (!input || !toggleBtn) return;
-
-    input.addEventListener('focus', () => {
-        openLibraryArtistDropdown();
-    });
-
-    input.addEventListener('click', () => {
-        openLibraryArtistDropdown();
-    });
-
-    input.addEventListener('input', () => {
-        queueLibraryArtistSuggestions(input.value);
-    });
-
-    input.addEventListener('keydown', handleLibraryArtistInputKeydown);
-
-    input.addEventListener('blur', () => {
-        setTimeout(() => {
-            closeLibraryArtistDropdown();
-        }, 120);
-    });
-
-    toggleBtn.addEventListener('click', event => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (libraryArtistComboboxState.isOpen) {
-            closeLibraryArtistDropdown();
-        } else {
-            openLibraryArtistDropdown();
-        }
-    });
-
-    window.libraryArtistComboboxAttached = true;
-}
-
 // Router
 function initRouter() {
     function handleRoute() {
@@ -2305,7 +2031,6 @@ function initRouter() {
                 loadLibraryStats();
                 loadViewData();
             } else {
-                updateMobileFilterControls();
                 updateSelectionBar();
                 rerenderActiveTrackContext();
             }
@@ -2330,7 +2055,6 @@ function initRouter() {
 async function initLibrary() {
     libraryState.isMobileViewport = isMobileLibraryViewport();
     libraryState.itemsPerPage = getLibraryItemsPerPage();
-    updateMobileFilterControls();
 
     // Load stats
     await loadLibraryStats();
@@ -2347,32 +2071,9 @@ async function initLibrary() {
     }
 }
 
-function updateMobileFilterControls() {
-    const toggleBtn = document.getElementById('mobileFiltersToggle');
-    const advancedControls = document.getElementById('libraryAdvancedControls');
-    if (!toggleBtn || !advancedControls) return;
-
-    if (isMobileLibraryViewport()) {
-        toggleBtn.style.display = 'inline-flex';
-        advancedControls.classList.toggle('open', libraryState.mobileFiltersOpen);
-        toggleBtn.setAttribute('aria-expanded', String(libraryState.mobileFiltersOpen));
-    } else {
-        toggleBtn.style.display = 'none';
-        advancedControls.classList.add('open');
-        toggleBtn.setAttribute('aria-expanded', 'true');
-    }
-}
 
 // Setup Library Event Listeners
 function setupLibraryListeners() {
-    const mobileFiltersToggle = document.getElementById('mobileFiltersToggle');
-    if (mobileFiltersToggle) {
-        mobileFiltersToggle.addEventListener('click', () => {
-            libraryState.mobileFiltersOpen = !libraryState.mobileFiltersOpen;
-            updateMobileFilterControls();
-        });
-    }
-
     // View tabs
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -2452,14 +2153,6 @@ function setupLibraryListeners() {
         cancelBatchEdit.addEventListener('click', closeEditModal);
     }
 
-    setupLibraryArtistCombobox();
-
-    document.addEventListener('click', event => {
-        if (!event.target.closest('#libraryEditArtistCombobox')) {
-            closeLibraryArtistDropdown();
-        }
-    });
-    
     // Back button
     const backBtn = document.getElementById('backBtn');
     if (backBtn) backBtn.addEventListener('click', () => {
@@ -2498,10 +2191,6 @@ function setupLibraryListeners() {
             libraryState.isMobileViewport = isMobile;
             libraryState.itemsPerPage = getLibraryItemsPerPage();
 
-            if (!isMobile) {
-                libraryState.mobileFiltersOpen = false;
-            }
-            updateMobileFilterControls();
             updateSelectionBar();
 
             if (wasMobile !== isMobile && document.getElementById('libraryPage')?.style.display === 'block') {
@@ -2516,17 +2205,13 @@ function setupLibraryListeners() {
     // Global Key Listener (Escape)
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (libraryArtistComboboxState.isOpen) {
-                closeLibraryArtistDropdown();
-            } else if (document.getElementById('batchEditModal').style.display === 'flex') {
+            if (document.getElementById('batchEditModal').style.display === 'flex') {
                 closeEditModal();
             } else if (document.getElementById('detailView').style.display === 'block') {
                 document.getElementById('backBtn').click();
             }
         }
     });
-
-    updateMobileFilterControls();
 }
 
 // Load Library Stats
@@ -2537,11 +2222,11 @@ async function loadLibraryStats() {
         
         const stats = await response.json();
         const statsEl = document.getElementById('libraryStats');
-        statsEl.innerHTML = `
-            <span class="stat-item">${stats.total_tracks} صوتية</span>
-            <span class="stat-item">${stats.total_artists} فنان</span>
-            <span class="stat-item">${stats.total_albums} ألبوم</span>
-        `;
+        statsEl.textContent = [
+            arabicCount(stats.total_tracks, TRACK_FORMS),
+            arabicCount(stats.total_artists, ARTIST_FORMS),
+            arabicCount(stats.total_albums, ALBUM_FORMS),
+        ].join(' · ');
         loadArtistVariants();
     } catch (error) {
         logEvent('warn', 'Error loading library stats', {error: error.message});
@@ -2597,7 +2282,7 @@ function showArtistVariants() {
                 <label class="variant-option">
                     <input type="radio" name="variant-${gi}" value="${escapeHtml(v.name)}" ${v.name === group.suggested ? 'checked' : ''}>
                     <bdi>${escapeHtml(v.name)}</bdi>
-                    <span class="variant-count">${v.track_count} صوتية</span>
+                    <span class="variant-count">${arabicCount(v.track_count, TRACK_FORMS)}</span>
                 </label>
             `).join('')}
             <div class="variant-preview" aria-live="polite"></div>
@@ -2886,7 +2571,7 @@ function renderArtists(artists) {
         <div class="list-item" role="button" tabindex="0" data-nav="artist" data-name="${escapeHtml(artist.name)}">
             <div class="list-item-content">
                 <div class="list-item-title">${escapeHtml(artist.name)}</div>
-                <div class="list-item-meta">${artist.track_count} صوتية • ${artist.album_count} ألبوم</div>
+                <div class="list-item-meta">${arabicCount(artist.track_count, TRACK_FORMS)} · ${arabicCount(artist.album_count, ALBUM_FORMS)}</div>
             </div>
         </div>
     `).join('');
@@ -2910,7 +2595,7 @@ function renderAlbums(albums) {
             </div>
             <div class="album-name">${escapeHtml(album.name) || 'بدون اسم'}</div>
             <div class="album-artist">${escapeHtml(album.album_artist) || 'غير معروف'}</div>
-            <div class="list-item-meta">${album.track_count} صوتية${album.year ? ' • ' + album.year : ''}</div>
+            <div class="list-item-meta">${arabicCount(album.track_count, TRACK_FORMS)}${album.year ? ' · ' + album.year : ''}</div>
         </div>
     `).join('');
 }
@@ -2928,7 +2613,7 @@ function renderGenres(genres) {
         <div class="list-item" role="button" tabindex="0" data-nav="genre" data-name="${escapeHtml(genre.name)}">
             <div class="list-item-content">
                 <div class="list-item-title">${escapeHtml(genre.name)}</div>
-                <div class="list-item-meta">${genre.track_count} صوتية</div>
+                <div class="list-item-meta">${arabicCount(genre.track_count, TRACK_FORMS)}</div>
             </div>
         </div>
     `).join('');
@@ -2948,7 +2633,6 @@ function renderDesktopTrackList(tracks) {
                     ${track.year ? ' • ' + track.year : ''}
                 </div>
             </div>
-            ${isSelected && libraryState.multiSelectMode ? '<span class="selection-check">✓</span>' : ''}
         </div>
         `;
     }).join('');
@@ -2978,17 +2662,13 @@ function renderMobileTrackCards(tracks) {
                 </div>
                 ` : ''}
             </div>
+            ${libraryState.multiSelectMode ? '' : `
             <div class="track-mobile-actions">
                 <button type="button" class="btn-secondary track-mobile-action" data-action="edit" data-track-id="${track.id}">
                     تعديل
                 </button>
-                ${
-                    libraryState.multiSelectMode
-                        ? `<button type="button" class="btn-secondary track-mobile-action" data-action="toggle-select" data-track-id="${track.id}">${isSelected ? 'إلغاء' : 'تحديد'}</button>`
-                        : `<button type="button" class="btn-secondary track-mobile-action" data-action="more" data-track-id="${track.id}">${isExpanded ? 'أقل' : 'المزيد'}</button>`
-                }
-            </div>
-            ${isSelected && libraryState.multiSelectMode ? '<span class="selection-check">✓</span>' : ''}
+                <button type="button" class="btn-secondary track-mobile-action" data-action="more" data-track-id="${track.id}">${isExpanded ? 'أقل' : 'المزيد'}</button>
+            </div>`}
         </div>
         `;
     }).join('');
@@ -3058,13 +2738,6 @@ function handleTrackMobileAction(event) {
         if (trackData) {
             showEditModal('single', trackData);
         }
-        return;
-    }
-
-    if (action === 'toggle-select') {
-        toggleTrackSelection(trackId);
-        updateSelectionBar();
-        rerenderActiveTrackContext();
         return;
     }
 
@@ -3176,7 +2849,7 @@ async function viewArtistAlbums(artistName, pushToStack = true) {
                         : '<span class="artwork-missing" aria-hidden="true">♪</span>'}
                 </div>
                 <div class="album-name">${escapeHtml(album.name) || 'بدون اسم'}</div>
-                <div class="list-item-meta">${album.track_count} صوتية</div>
+                <div class="list-item-meta">${arabicCount(album.track_count, TRACK_FORMS)}</div>
             </div>
         `).join('');
     } catch (error) {
@@ -3257,11 +2930,7 @@ function selectAllAlbumTracks(tracks) {
     // Enable multi-select mode if not already
     if (!libraryState.multiSelectMode) {
         libraryState.multiSelectMode = true;
-        const btn = document.getElementById('multiSelectBtn');
-        if (btn) {
-            btn.textContent = 'إلغاء التحديد';
-            btn.classList.add('active');
-        }
+        setMultiSelectButton(true);
     }
     
     // Clear previous selection and select all tracks in this album
@@ -3333,8 +3002,19 @@ function updateSelectionBar() {
     selectionBar.style.display = 'flex';
     // Add padding to prevent selection bar from overlaying content
     if (libraryPage) libraryPage.style.paddingBottom = isMobileLibraryViewport() ? '132px' : '80px';
-    document.getElementById('selectionCount').textContent = count > 0 ? `${count} محدد` : 'اختر العناصر';
+    document.getElementById('selectionCount').textContent = count > 0
+        ? `المحدد: ${arabicCount(count, TRACK_FORMS)}`
+        : 'اضغط على الصوتيات لتحديدها';
     document.getElementById('selectionDetails').textContent = '';
+}
+
+// One selection model: «تحديد متعدد» is a pressed/unpressed toggle with a fixed label,
+// and the selection bar's «إنهاء التحديد» is the one labelled way out
+function setMultiSelectButton(active) {
+    const btn = document.getElementById('multiSelectBtn');
+    if (!btn) return;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', String(active));
 }
 
 // Toggle Multi-Select Mode
@@ -3344,12 +3024,7 @@ function toggleMultiSelectMode() {
         libraryState.selectedTracks.clear();
     }
     
-    // Update button text
-    const btn = document.getElementById('multiSelectBtn');
-    if (btn) {
-        btn.textContent = libraryState.multiSelectMode ? 'إلغاء التحديد' : 'تحديد متعدد';
-        btn.classList.toggle('active', libraryState.multiSelectMode);
-    }
+    setMultiSelectButton(libraryState.multiSelectMode);
     
     // Update selection bar visibility
     updateSelectionBar();
@@ -3363,12 +3038,7 @@ function clearSelection() {
     libraryState.selectedTracks.clear();
     libraryState.multiSelectMode = false;
     
-    // Reset button text
-    const btn = document.getElementById('multiSelectBtn');
-    if (btn) {
-        btn.textContent = 'تحديد متعدد';
-        btn.classList.remove('active');
-    }
+    setMultiSelectButton(false);
     
     document.querySelectorAll('.list-item-checkbox').forEach(cb => cb.checked = false);
     updateSelectionBar();
@@ -3390,6 +3060,8 @@ const batchEdit = {states: {}, failures: [], saving: false};
 // Queue items are ملفات (files waiting to move); library items are صوتيات (tracks)
 const TRACK_FORMS = ['صوتية واحدة', 'صوتيتان', 'صوتيات', 'صوتيةً', 'صوتية'];
 const FILE_FORMS = ['ملف واحد', 'ملفان', 'ملفات', 'ملفًا', 'ملف'];
+const ARTIST_FORMS = ['فنان واحد', 'فنانان', 'فنانين', 'فنانًا', 'فنان'];
+const ALBUM_FORMS = ['ألبوم واحد', 'ألبومان', 'ألبومات', 'ألبومًا', 'ألبوم'];
 
 function setupBatchFieldControls() {
     if (window.batchFieldControlsAttached) return;
@@ -3463,7 +3135,6 @@ function renderBatchSummary() {
 function showEditModal(mode, trackData = null) {
     libraryState.editMode = mode;
     libraryState.editTrackData = trackData;
-    resetLibraryArtistComboboxState();
     
     // Reset form
     document.getElementById('batchEditForm').reset();
@@ -3577,7 +3248,6 @@ function showEditModal(mode, trackData = null) {
 
 // Close Edit Modal
 function closeEditModal() {
-    resetLibraryArtistComboboxState();
     document.getElementById('batchEditModal').style.display = 'none';
     libraryState.editMode = null;
     libraryState.editTrackData = null;

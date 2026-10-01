@@ -1,6 +1,6 @@
 # Sprint 4 handoff
 
-**Date:** 2026-09-30 · **Plan:** [SPRINT_4_PLAN.md](SPRINT_4_PLAN.md) · **Paused at:** Track B, step **B5 (layout)**: not started. B0–B4 are merged.
+**Date:** 2026-09-30 · **Plan:** [SPRINT_4_PLAN.md](SPRINT_4_PLAN.md) · **Paused at:** Track B, step **B6 (animate)**: not started. B0–B5 are merged.
 
 ## Done
 
@@ -60,6 +60,13 @@ Tests went from 123 to 161 (new: `test_batch_edit`, `test_rescan_status`, `test_
   - `tabular-nums` on counts, badge, pagination, library stats, selection info, rescan status, variant count and similarity score.
   - Dead `.header`/`.subtitle` rules were removed. `DESIGN.md` records the ramp, the glyph scale and the No Fake Italic / Steady Digits rules.
 
+- **B5, layout** (#51 queue, #52 library):
+  - **Queue:** needs-review/error cards sort last (`sortQueue`, stable; SSE arrivals go to the top of their group). On phones a complete scanner suggestion (`pending` + title + artist + genre) collapses to a `.card-summary` (title; artists · genre; destination path mirrored from the dry-run) plus the real confirm button. Tapping it opens the card for good (`expandedCards`). The sticky `#readyBar` («N من M جاهزة» + confirm-all) replaces the toolbar's confirm-all on phones. `confirmAllRunning` keeps the per-card re-renders from resetting its running state. The folder select is 44px.
+  - **Library:** the page header (title, stats line, select/rescan) and the variants notice scroll away. Only `.library-controls` (four equal tabs, search + sort on one row) is sticky, about 127px, at ≤768px. Content now starts at 424px on a 390px phone (was about 595px). The «الفرز» disclosure and `updateMobileFilterControls` are gone. «جميع الصوتيات» is now «الصوتيات».
+  - **Selection:** `setMultiSelectButton()` keeps «تحديد متعدد» as a pressed toggle with a fixed label. The bar's «إنهاء التحديد» is the labelled exit. In selection mode phone cards drop their action row (the card is the toggle) and the ✓ glyph is gone (the checkbox shows state).
+  - **Counts:** stats, list meta, variant counts and the selection bar use `arabicCount` (`ARTIST_FORMS`, `ALBUM_FORMS` added). The selection bar reads «المحدد: صوتيتان», nominative so every form is correct.
+  - The dead single-artist library combobox (about 290 lines JS + CSS) was removed. Its markup went in a8287fd when the batch artist field became `;`-separated.
+
 ### Behaviour changes worth knowing
 - Changing the artist (in batch or single edit) no longer silently changes the album artist, which is the folder.
 - A genre tag already embedded in a downloaded file is now preselected on its card.
@@ -67,26 +74,22 @@ Tests went from 123 to 161 (new: `test_batch_edit`, `test_rescan_status`, `test_
 
 ## Next (in order)
 
-1. **B5, layout:**
-   - Collapsed ready cards with a sticky "N ready" bar on phones. Sort needs-review cards last.
-   - On the library page: the header takes about 330px. Make the tabs fit (they clip "جميع ال"), put search and sort on one row, and use one selection model. There are two «إلغاء التحديد» today: the `#multiSelectBtn` label and the selection bar.
-   - Make the folder `<select>` 44px tall (currently 2.25rem).
-   - Tabs are at the label size on phones now and still clip «جميع الصوتيات».
-2. **B6, animate:**
+1. **B6, animate:**
    - Replace the ~12 `transition: all` rules and add `prefers-reduced-motion`. The new `.confirm-btn.is-saving` sweep animation must also stop under reduced motion.
    - Remove the card hover lift and the gradient top bar (`.item-card::before`).
    - Drop the `padding-bottom` transition on `#libraryPage`.
+   - Collapsed-card expand (B5) is instant; consider a short height/opacity reveal that respects reduced motion.
    - The `fadeIn` on `.item-card` replays on every render. Screenshots taken right after a load catch cards at partial opacity.
    - Card collapse-out after confirm, and new-card arrival from SSE.
-3. **B7, delight:** the empty queue and the confirm-all summary only (it already uses `FILE_FORMS`).
-4. **B8, optimize:** Cairo is loaded from Google Fonts (decide whether to self-host a subset). Also cut DOM work on SSE updates: `addArtistRow`/`removeArtistRow` re-render the whole card.
-5. **B9, audit + polish:**
+2. **B7, delight:** the empty queue and the confirm-all summary only (it already uses `FILE_FORMS`).
+3. **B8, optimize:** Cairo is loaded from Google Fonts (decide whether to self-host a subset). Also cut DOM work on SSE updates: `addArtistRow`/`removeArtistRow` re-render the whole card.
+4. **B9, audit + polish:**
    - Flatten all gradients to solid colours: title, nav pill, buttons, chips, `.btn-confirm-all`, `.artwork-placeholder`, `.album-artwork`.
    - Replace the 🎵 in the nav brand.
    - Re-run `/impeccable critique` and compare with 24/40.
 
 ### Known loose ends (not scheduled)
-- `setupLibraryArtistCombobox()` looks for `#libraryArtistDropdownToggle` / `#libraryEditArtistCombobox`, which don't exist in `index.html`, so the batch-edit artist field has no suggestions. It is dead code or a missing wrapper; decide during B5.
+- Batch-edit artist suggestions: the batch artist field is a plain `;`-separated input with no suggestions. A combobox that completes the segment after the last `;` would help «one spelling per artist». This is a feature, not scheduled.
 - `.impeccable/design.json` is stale relative to `DESIGN.md` (detector: `design-sidecar-stale`). `/impeccable document` refreshes it.
 
 ## Housekeeping

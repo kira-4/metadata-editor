@@ -66,54 +66,44 @@
 
         <!-- Library Page (new) -->
         <div id="libraryPage" class="page-content" style="display: none;">
-            <!-- Library Controls -->
-            <div class="library-controls">
-                <div class="library-header">
+            <!-- Page header: scrolls away -->
+            <div class="library-header">
+                <div class="library-title">
                     <h2>مكتبة الصوتيات</h2>
-                    <div class="library-actions">
-                        <button id="multiSelectBtn" class="btn-secondary">
-                            تحديد متعدد
-                        </button>
-                        <button id="rescanBtn" class="btn-secondary">
-                            <span id="rescanIcon">🔄</span>
-                            إعادة المسح
-                        </button>
-                        <div class="library-stats" id="libraryStats">
-                            <span class="stat-item">...</span>
-                        </div>
-                    </div>
+                    <p class="library-stats" id="libraryStats"></p>
                 </div>
-
-                <div id="rescanStatus" class="rescan-status" aria-live="polite" style="display: none;"></div>
-
-                <!-- Shown only when the library has artist spelling variants -->
-                <div id="artistVariantsNotice" class="variants-notice" style="display: none;">
-                    <span id="artistVariantsText"></span>
-                    <button id="reviewVariantsBtn" type="button" class="btn-secondary">مراجعة</button>
+                <div class="library-actions">
+                    <button id="multiSelectBtn" class="btn-secondary" aria-pressed="false">تحديد متعدد</button>
+                    <button id="rescanBtn" class="btn-secondary">
+                        <span id="rescanIcon">🔄</span>
+                        إعادة المسح
+                    </button>
                 </div>
+            </div>
 
-                <!-- View Mode Tabs -->
+            <div id="rescanStatus" class="rescan-status" aria-live="polite" style="display: none;"></div>
+
+            <!-- Shown only when the library has artist spelling variants -->
+            <div id="artistVariantsNotice" class="variants-notice" style="display: none;">
+                <span id="artistVariantsText"></span>
+                <button id="reviewVariantsBtn" type="button" class="btn-secondary">مراجعة</button>
+            </div>
+
+            <!-- Browse controls: views, search and sort stay in reach while scrolling -->
+            <div class="library-controls">
                 <div class="view-tabs">
                     <button class="tab-btn active" data-view="artists">الفنانون</button>
                     <button class="tab-btn" data-view="albums">الألبومات</button>
                     <button class="tab-btn" data-view="genres">الأنواع</button>
-                    <button class="tab-btn" data-view="tracks">جميع الصوتيات</button>
+                    <button class="tab-btn" data-view="tracks">الصوتيات</button>
                 </div>
 
-                <!-- Search and Sort -->
                 <div class="search-sort-bar">
-                    <div class="search-row">
-                        <input type="text" id="librarySearch" class="search-input" placeholder="بحث...">
-                        <button id="mobileFiltersToggle" class="btn-secondary mobile-filters-toggle" type="button" aria-expanded="false" aria-controls="libraryAdvancedControls">
-                            الفرز
-                        </button>
-                    </div>
-                    <div id="libraryAdvancedControls" class="library-advanced-controls">
-                        <select id="librarySort" class="sort-select">
-                            <option value="name-asc">الاسم (أ - ي)</option>
-                            <option value="name-desc">الاسم (ي - أ)</option>
-                        </select>
-                    </div>
+                    <input type="search" id="librarySearch" class="search-input" placeholder="بحث…" aria-label="بحث في المكتبة">
+                    <select id="librarySort" class="sort-select" aria-label="الترتيب">
+                        <option value="name-asc">الاسم (أ - ي)</option>
+                        <option value="name-desc">الاسم (ي - أ)</option>
+                    </select>
                 </div>
             </div>
 
@@ -156,7 +146,7 @@
                 </div>
                 <div class="selection-actions">
                     <button id="editSelectedBtn" class="btn-primary">تعديل البيانات الوصفية</button>
-                    <button id="clearSelectionBtn" class="btn-secondary">إلغاء التحديد</button>
+                    <button id="clearSelectionBtn" class="btn-secondary">إنهاء التحديد</button>
                 </div>
             </div>
         </div>
