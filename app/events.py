@@ -47,14 +47,14 @@ def publish_event(data: dict) -> None:
 
 
 async def event_stream() -> AsyncIterator[str]:
-    """Yield SSE-formatted events for one connected client."""
+    """Yield JSON event payloads for one connected client (framed by EventSourceResponse)."""
     set_loop(asyncio.get_running_loop())
     queue: asyncio.Queue = asyncio.Queue(maxsize=CLIENT_QUEUE_SIZE)
     _clients.append(queue)
     try:
         while True:
             data = await queue.get()
-            yield f"data: {json.dumps(data)}\n\n"
+            yield json.dumps(data)
     except asyncio.CancelledError:
         pass
     finally:

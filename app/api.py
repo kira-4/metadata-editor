@@ -4,8 +4,9 @@ import shutil
 from pathlib import Path
 from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -518,12 +519,9 @@ def delete_item(item_id: int, db: Session = Depends(get_db)):
 
 @router.get("/events")
 async def sse_endpoint():
-    """Server-Sent Events endpoint for real-time updates."""
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        }
-    )
+    """Server-Sent Events endpoint for real-time updates.
+
+    EventSourceResponse ends open streams on SIGTERM, so a connected browser no
+    longer blocks shutdown; it also sends keep-alive pings.
+    """
+    return EventSourceResponse(event_stream(), headers={"Cache-Control": "no-cache"})
