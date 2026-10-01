@@ -48,6 +48,13 @@
     --glyph-md: 1.5rem;
     --glyph-lg: 2rem;
     --glyph-xl: 3rem;
+
+    /* Motion (DESIGN.md → Motion). Motion reports a state change; it never decorates. */
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);  /* arrivals and settling */
+    --ease-in: cubic-bezier(0.4, 0, 1, 1);      /* exits: leave quickly */
+    --dur-fast: 150ms;    /* hover, focus, chip selection */
+    --dur-base: 200ms;    /* routine state change, card exit */
+    --dur-enter: 240ms;   /* a new card arriving, cards closing a gap */
 }
 
 @media (max-width: 600px) {
@@ -201,31 +208,9 @@ body {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
     padding: var(--spacing-lg);
-    transition: all 0.3s ease;
+    transition: border-color var(--dur-base) var(--ease-out);
     position: relative;
     overflow: hidden;
-}
-
-.item-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(90deg, var(--accent-primary), var(--success));
-    transform: scaleX(0);
-    transition: transform 0.3s ease;
-}
-
-.item-card:hover {
-    border-color: var(--accent-primary);
-    box-shadow: 0 8px 24px var(--shadow);
-    transform: translateY(-2px);
-}
-
-.item-card:hover::before {
-    transform: scaleX(1);
 }
 
 .item-header {
@@ -281,7 +266,7 @@ body {
     color: var(--text-primary);
     font-family: var(--font-family);
     font-size: var(--text-body);
-    transition: all 0.2s ease;
+    transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 
 .field-input:focus {
@@ -313,7 +298,7 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s ease;
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 
 .artist-dropdown-toggle:hover {
@@ -327,7 +312,7 @@ body {
 
 .artist-dropdown-icon {
     display: inline-block;
-    transition: transform 0.2s ease;
+    transition: transform var(--dur-base) var(--ease-out);
 }
 
 .artist-suggestions {
@@ -431,7 +416,7 @@ body {
     font-size: var(--text-label);
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
     text-align: center;
 }
 
@@ -483,19 +468,18 @@ body {
     font-size: var(--text-body);
     font-weight: 700;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: filter var(--dur-fast) var(--ease-out), background-color var(--dur-base) var(--ease-out), color var(--dur-base) var(--ease-out), opacity var(--dur-base) var(--ease-out);
     margin-top: var(--spacing-md);
     text-transform: none;
     letter-spacing: 0;
 }
 
 .confirm-btn:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0, 212, 170, 0.4);
+    filter: brightness(1.08);
 }
 
 .confirm-btn:active:not(:disabled) {
-    transform: translateY(0);
+    filter: brightness(0.94);
 }
 
 /* Waiting for input: the label says what is missing, so it must stay readable */
@@ -540,16 +524,15 @@ body {
     font-size: var(--text-label);
     font-weight: 700;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: filter var(--dur-fast) var(--ease-out), opacity var(--dur-base) var(--ease-out);
 }
 
-.btn-confirm-all:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(0, 212, 170, 0.4);
+.btn-confirm-all:hover:not(:disabled) {
+    filter: brightness(1.08);
 }
 
-.btn-confirm-all:active {
-    transform: translateY(0);
+.btn-confirm-all:active:not(:disabled) {
+    filter: brightness(0.94);
 }
 
 .btn-confirm-all:disabled {
@@ -831,7 +814,7 @@ body {
     color: var(--text-secondary);
     text-decoration: none;
     font-weight: 600;
-    transition: all 0.2s ease;
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
     border: 2px solid transparent;
 }
 
@@ -943,7 +926,7 @@ body {
     font-size: var(--text-body);
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
     margin-bottom: -2px;
 }
 
@@ -1026,7 +1009,7 @@ body {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     padding: var(--spacing-md);
-    transition: all 0.2s ease;
+    transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -1085,15 +1068,14 @@ body {
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     padding: var(--spacing-md);
-    transition: all 0.2s ease;
+    transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
     cursor: pointer;
     text-align: center;
 }
 
 .album-card:hover {
     border-color: var(--accent-primary);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px var(--shadow);
+    background: var(--bg-hover);
 }
 
 .album-artwork {
@@ -1173,7 +1155,7 @@ body {
     font-size: var(--text-body);
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), filter var(--dur-fast) var(--ease-out);
     border: none;
 }
 
@@ -1183,8 +1165,7 @@ body {
 }
 
 .btn-primary:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(74, 158, 255, 0.3);
+    filter: brightness(1.08);
 }
 
 .btn-primary:disabled {
@@ -1316,11 +1297,6 @@ body {
     background: var(--accent-primary);
     color: var(--bg-primary);
     border-color: var(--accent-primary);
-}
-
-/* Smooth transition for library page padding */
-#libraryPage {
-    transition: padding-bottom 0.2s ease;
 }
 
 .warning-badge {
@@ -1585,7 +1561,7 @@ body {
     align-items: center;
     justify-content: center;
     font-size: var(--text-body);
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 
 .token-toggle-btn:hover {
