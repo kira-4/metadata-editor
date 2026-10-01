@@ -2059,6 +2059,32 @@ body {
     opacity: 0.5;
 }
 
+/* One line: folder and extension stay whole, the file stem gives way with an ellipsis */
+.path-line {
+    display: flex;
+    gap: 0;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.path-line .path-folder {
+    flex-shrink: 0;
+    max-width: 50%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.path-line .path-sep {
+    flex-shrink: 0;
+    padding-inline: 0.375em;
+}
+
+.path-line .path-stem {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .destination-warning {
     margin-top: 0.25rem;
     color: var(--warning);

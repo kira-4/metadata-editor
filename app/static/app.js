@@ -1576,14 +1576,17 @@ async function refreshDestinationPreview(itemId) {
 // Arabic path segments read right-to-left; each is isolated and the extension kept as one LTR unit.
 // The dot stays outside the extension's isolate so it sits between name and extension
 // («mp3.العنوان»); inside it, the dot ended up on the far side («.mp3العنوان»).
+// Folder and file on one line: the title folder in between repeats the file name, and the
+// file name repeats the title above it, so its stem truncates while the extension stays
 function formatLibraryPath(relativePath) {
     const parts = relativePath.split('/').filter(Boolean);
-    return parts.map((part, i) => {
-        const dot = i === parts.length - 1 ? part.lastIndexOf('.') : -1;
-        return dot > 0
-            ? `<bdi>${escapeHtml(part.slice(0, dot))}.<bdi dir="ltr">${escapeHtml(part.slice(dot + 1))}</bdi></bdi>`
-            : `<bdi>${escapeHtml(part)}</bdi>`;
-    }).join(' <span class="path-sep">/</span> ');
+    if (!parts.length) return '';
+    const file = parts[parts.length - 1];
+    const dot = file.lastIndexOf('.');
+    const stem = dot > 0 ? file.slice(0, dot) : file;
+    const folder = parts.length > 1 ? `<bdi class="path-folder">${escapeHtml(parts[0])}</bdi><span class="path-sep">/</span>` : '';
+    const ext = dot > 0 ? `<span>.</span><bdi dir="ltr">${escapeHtml(file.slice(dot + 1))}</bdi>` : '';
+    return `<span class="path-line">${folder}<bdi class="path-stem">${escapeHtml(stem)}</bdi>${ext}</span>`;
 }
 
 function renderDestinationPreview(itemId, dryRun) {
