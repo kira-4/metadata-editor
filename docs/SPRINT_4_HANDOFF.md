@@ -122,7 +122,7 @@ Sprint 4 is done. These come from the closing critique.
 5. **[P2] Throughput for 50-card sessions:** ~~focus the next card after confirm/delete~~ and ~~genre carry-over~~ are done. Still open: deep-link from the Telegram ping to its card, and applying a genre to the rest of a channel (`/impeccable shape`).
 6. **[P3]:** ~~enlarge the «تعديل» chip~~ and ~~the 44px token toggle~~ are done; the queue header now shows «N من M جاهزة». Still open: the debug checkbox is 15×20px, and the settings pipeline steps aren't explained (`/impeccable polish`).
 7. ~~**[P2] Confirm-all in one tap**~~ **done** (`feature/confirm-all-arm`): two taps; the first names the count and turns the button to a teal outline; a change in the ready count disarms it. Check script: `.playwright-mcp/ca1check.cjs`.
-8. **[P2] Needs-review card is ~1000px tall at 390px** (`/impeccable distill`): fold the groups that are already complete.
+8. ~~**[P2] Needs-review card is ~1000px tall at 390px**~~ **done** (`feature/distill-fold-groups`): about 950 → 715–900px. The operator chose to keep title/artists open (✓ means filled, not checked); instead, the technical fold joins the banner when there's no artwork, «+ إضافة فنان» moves into the label row, the empty status line takes no space, and a genre set before review folds to one line with «تغيير». Check script: `.playwright-mcp/fg1check.cjs`.
 
 ### Known loose ends (not scheduled)
 - Batch-edit artist suggestions: the batch artist field is a plain `;`-separated input with no suggestions. A combobox that completes the segment after the last `;` would help «one spelling per artist». This is a feature, not scheduled.
