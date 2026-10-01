@@ -86,7 +86,11 @@ class RevalidatingStaticFiles(StaticFiles):
 
     async def get_response(self, path, scope):
         response = await super().get_response(path, scope)
-        response.headers["Cache-Control"] = "no-cache"
+        if path.startswith("fonts/") and path.endswith(".woff2"):
+            # Versioned file names (cairo-*-v31): a new font gets a new name, so cache for good
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache"
         return response
 
 
