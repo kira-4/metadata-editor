@@ -180,7 +180,7 @@ Roles differ on more than size: Title is 600 in Parchment Text, Label is 600 in 
 
 ## Layout
 
-A single centred column (max 1400px, 2rem padding; 1rem on phones). The review queue is a grid of cards (min 400px columns) that collapses to one column on phones, ready cards first and needs-review cards last. The library has an unboxed page header (title, a stats line, select and rescan), then one browse panel (four tabs, then search and sort on one row), then a list or album grid. A fixed selection bar appears at the bottom in multi-select mode.
+A single centred column (max 1400px, 2rem padding; 1rem on phones). The queue header is one row: the heading with its count («2 من 4 جاهزة», the ready bar's words), and the queue actions (refresh, confirm-all) at the other end; on phones the actions wrap under it at their own width. The review queue is a grid of cards (min 400px columns) that collapses to one column on phones, ready cards first and needs-review cards last. The library has an unboxed page header (title, a stats line, select and rescan), then one browse panel (four tabs, then search and sort on one row), then a list or album grid. A fixed selection bar appears at the bottom in multi-select mode.
 
 **The Sticky Minimum Rule.** Only what you need while scrolling sticks: the library's browse panel (about 130px) and, on phones, the queue's ready bar. Page headers, stats and notices scroll away.
 
@@ -247,7 +247,8 @@ Gently rounded throughout: 0.5rem for controls (inputs, buttons, chips), 0.75rem
 - **Primary:** solid Signal Blue fill, Night Ink text, 600 weight; hover brightens.
 - **Confirm:** solid Settled Teal fill, Night Ink text, 700 weight, full width at the bottom of the card.
 - **Secondary:** Shelf Navy fill, Seam border, Parchment text; hover Lamp Navy with a Signal Blue border.
-- **Quiet danger:** secondary button with Fault Red text; two-tap arm state gets a red border and a faint red wash.
+- **Quiet danger:** borderless text action in Fault Red, centred under confirm at Label size, 44px tall, on every screen size; two-tap arm state gets a red border and a faint red wash.
+- **Waiting confirm:** while a field is missing, confirm is `aria-disabled` (not `disabled`): dashed Seam border, Faded text naming what is missing. A tap moves focus to the first missing field, so the button is never a dead end.
 - **Disabled:** Shelf Navy fill, Margin text, reduced opacity.
 
 ### Chips (genre presets)
@@ -269,7 +270,7 @@ Gently rounded throughout: 0.5rem for controls (inputs, buttons, chips), 0.75rem
 - **Library tabs:** text tabs with a 3px Signal Blue underline when active.
 
 ### Review Card (signature)
-Artwork and source line, then three groups separated by a 1px Seam and 1.5rem (1rem on phones) above and below it: **the name** (title input; one row per artist with a combobox of suggestions and a remove ×; "+ add artist"), **الوجهة** (the shelf label, below), and **النوع** (genre chips). The full-width confirm button, a status line and a quiet delete follow.
+Artwork and source line, then three groups separated by a 1px Seam and 1.5rem (1rem on phones) above and below it: **the name** (title input; one row per artist with a combobox of suggestions and a remove ×; "+ add artist"), **الوجهة** (the shelf label, below), and **النوع** (genre chips). The full-width confirm button, a status line and a quiet delete follow. When a card leaves the queue and focus was on it, focus moves to the card that takes its place, so a keyboard session carries on.
 
 **Shelf label (the card's signature):** the destination is drawn as a catalogue label in its holder. The holder is a slot recessed below the card (Night Ink, 1px Seam, 0.5rem corners, 0.25rem inset). The plate inside it is one step up (Shelf Navy, 0.25rem corners, concentric). On the plate, the folder (album artist) is printed at Title size and weight in Parchment Text. With several artists the folder is a transparent-fill picker printed on the plate. The file name sits beneath it in Caption, Margin Text; its stem gives way with an ellipsis and the extension stays. The full path is in the label's `title`. Until title and artist exist, the holder is empty: the same slot, dashed, with the hint. The exists-warning sits in the slot under the plate. It uses only existing tonal steps: no colour, stripe or ornament. It appears on the queue card only.
 
