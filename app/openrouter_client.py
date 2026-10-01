@@ -125,6 +125,10 @@ class OpenRouterClient:
             - If failed, fields may be None or partial
             - raw_response always contains the raw text from the model
         """
+        # An empty Bearer token is an illegal header; skip straight to the fallback
+        if not config.OPENROUTER_API_KEY:
+            return None, None, None, "OPENROUTER_API_KEY not set - skipped inference", ""
+
         try:
             # Untrusted values live in the structured user message, never in the
             # system instructions.
