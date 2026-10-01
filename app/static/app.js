@@ -600,6 +600,25 @@ function removeItemCardFromDOM(itemId, container) {
     updatePendingCountUI();
 }
 
+// The empty queue says what happened: nothing yet, or the files reviewed since the page loaded
+// went to the library. `arriving` plays the one-time fade and check draw (the last card just left).
+function showEmptyState({arriving = false} = {}) {
+    const emptyState = document.getElementById('emptyState');
+    if (!emptyState) return;
+    const cleared = confirmedFolders.length > 0;
+    emptyState.classList.toggle('is-cleared', cleared);
+    document.getElementById('emptyTitle').textContent = cleared ? 'اكتملت المراجعة' : 'لا ملفات في الانتظار';
+    document.getElementById('emptyText').textContent = cleared
+        ? `نُقل ${arabicCount(confirmedFolders.length, FILE_FORMS)} إلى المكتبة منذ فتح الصفحة. تظهر الملفات الجديدة هنا تلقائيًا بعد تنزيلها.`
+        : 'تظهر الملفات الجديدة هنا تلقائيًا بعد تنزيلها.';
+    document.getElementById('emptyLibraryLink').hidden = !cleared;
+    if (arriving && !emptyState.classList.contains('show')) {
+        emptyState.classList.add('is-arriving');
+        setTimeout(() => emptyState.classList.remove('is-arriving'), 600);
+    }
+    emptyState.classList.add('show');
+}
+
 // Update badge, count, and empty-state without touching item cards
 function updatePendingCountUI() {
     const badge = document.getElementById('pendingBadge');
@@ -620,7 +639,7 @@ function updatePendingCountUI() {
         // The last card is still leaving: the empty state appears once it is gone
         if (!container?.querySelector('.card-removing')) {
             if (container) container.replaceChildren();
-            if (emptyState) emptyState.classList.add('show');
+            showEmptyState({arriving: true});
         }
     } else {
         if (emptyState) emptyState.classList.remove('show');
@@ -650,7 +669,7 @@ function renderItems(options = {}) {
     
     if (pendingItems.length === 0) {
         container.innerHTML = '';
-        emptyState.classList.add('show');
+        showEmptyState();
         itemCount.textContent = 'فارغة';
         updateConfirmAllButton();
         return;

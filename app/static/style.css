@@ -648,10 +648,61 @@ body {
     display: block;
 }
 
-.empty-icon {
-    font-size: var(--glyph-xl);
+.empty-mark {
+    width: var(--glyph-xl);
+    height: var(--glyph-xl);
     margin-bottom: var(--spacing-md);
-    opacity: 0.5;
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.empty-tray {
+    stroke: var(--text-muted);
+}
+
+/* The check exists only once the operator has emptied the queue this session (teal = done) */
+.empty-check {
+    stroke: var(--success);
+    stroke-width: 2.5;
+    display: none;
+}
+
+.empty-state.is-cleared .empty-check {
+    display: inline;
+}
+
+.empty-state.is-cleared h3 {
+    color: var(--text-primary);
+}
+
+.empty-library-link {
+    display: inline-block;
+    text-decoration: none;
+}
+
+.empty-library-link[hidden] {
+    display: none;
+}
+
+/* The moment the last card leaves: the state fades in and the check draws once. Revisiting
+   the page later shows it still, without replaying. */
+@keyframes empty-arrive {
+    from { opacity: 0; }
+}
+
+@keyframes check-draw {
+    from { stroke-dashoffset: 1; }
+}
+
+.empty-state.is-arriving {
+    animation: empty-arrive var(--dur-enter) var(--ease-out);
+}
+
+.empty-state.is-arriving .empty-check {
+    stroke-dasharray: 1;
+    animation: check-draw 420ms var(--ease-out) 120ms backwards;
 }
 
 .empty-state h3 {
@@ -662,6 +713,8 @@ body {
 
 .empty-state p {
     color: var(--text-muted);
+    max-width: 38ch;
+    margin-inline: auto;
 }
 
 .empty-state .btn-secondary {
@@ -2403,6 +2456,10 @@ textarea.title-input {
     }
 
     .spinning {
+        animation: none;
+    }
+
+    .empty-state.is-arriving .empty-check {
         animation: none;
     }
 }

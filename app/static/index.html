@@ -56,10 +56,15 @@
                     <button type="button" id="readyBarConfirmBtn" class="ready-bar-btn">✓ تأكيد ونقل الجاهزة</button>
                 </div>
 
-                <div id="emptyState" class="empty-state">
-                    <div class="empty-icon">📂</div>
-                    <h3>لا توجد ملفات في الانتظار</h3>
-                    <p>سيتم عرض الملفات الجديدة تلقائياً عند اكتشافها</p>
+                <div id="emptyState" class="empty-state" role="status">
+                    <!-- An empty tray; once files were confirmed this session, a teal check settles in it -->
+                    <svg class="empty-mark" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+                        <path class="empty-tray" d="M8 27v11a2 2 0 0 0 2 2h28a2 2 0 0 0 2-2V27l-5-15a2 2 0 0 0-1.9-1.4H14.9A2 2 0 0 0 13 12L8 27h9l3 5h8l3-5h9"/>
+                        <path class="empty-check" pathLength="1" d="M18 20.5l4 4 8-8.5"/>
+                    </svg>
+                    <h3 id="emptyTitle">لا ملفات في الانتظار</h3>
+                    <p id="emptyText">تظهر الملفات الجديدة هنا تلقائيًا بعد تنزيلها.</p>
+                    <a id="emptyLibraryLink" class="btn-secondary empty-library-link" href="#/library" hidden>افتح المكتبة</a>
                 </div>
             </main>
         </div>
