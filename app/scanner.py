@@ -32,6 +32,7 @@ class FileScanner:
         """Initialize scanner."""
         self.running = False
         self.thread = None
+        self._wake = threading.Event()  # set by stop() to cut the interval sleep short
         self._last_trash_purge = None  # monotonic time of the last purge
     
     @staticmethod
@@ -418,11 +419,11 @@ class FileScanner:
                 self.purge_trash_if_due()
 
                 # Wait before next scan
-                time.sleep(config.SCAN_INTERVAL_SECONDS)
+                self._wake.wait(config.SCAN_INTERVAL_SECONDS)
                 
             except Exception as e:
                 logger.error(f"Error in scan loop: {e}", exc_info=True)
-                time.sleep(5)  # Wait a bit before retrying
+                self._wake.wait(5)  # Wait a bit before retrying
     
     def start(self):
         """Start the scanner in a background thread."""
@@ -431,6 +432,7 @@ class FileScanner:
             return
         
         self.running = True
+        self._wake.clear()
         self.thread = threading.Thread(target=self.scan_loop, daemon=True)
         self.thread.start()
         logger.info("File scanner started")
@@ -438,6 +440,7 @@ class FileScanner:
     def stop(self):
         """Stop the scanner."""
         self.running = False
+        self._wake.set()
         if self.thread:
             self.thread.join(timeout=5)
         logger.info("File scanner stopped")
