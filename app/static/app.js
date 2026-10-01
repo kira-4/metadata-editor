@@ -1935,7 +1935,6 @@ const libraryState = {
     currentPage: 1,
     itemsPerPage: 50,
     isMobileViewport: false,
-    mobileFiltersOpen: false,
     totalItems: 0,
     selectedTracks: new Set(),
     expandedTrackCards: new Set(),
@@ -2032,7 +2031,6 @@ function initRouter() {
                 loadLibraryStats();
                 loadViewData();
             } else {
-                updateMobileFilterControls();
                 updateSelectionBar();
                 rerenderActiveTrackContext();
             }
@@ -2057,7 +2055,6 @@ function initRouter() {
 async function initLibrary() {
     libraryState.isMobileViewport = isMobileLibraryViewport();
     libraryState.itemsPerPage = getLibraryItemsPerPage();
-    updateMobileFilterControls();
 
     // Load stats
     await loadLibraryStats();
@@ -2074,32 +2071,9 @@ async function initLibrary() {
     }
 }
 
-function updateMobileFilterControls() {
-    const toggleBtn = document.getElementById('mobileFiltersToggle');
-    const advancedControls = document.getElementById('libraryAdvancedControls');
-    if (!toggleBtn || !advancedControls) return;
-
-    if (isMobileLibraryViewport()) {
-        toggleBtn.style.display = 'inline-flex';
-        advancedControls.classList.toggle('open', libraryState.mobileFiltersOpen);
-        toggleBtn.setAttribute('aria-expanded', String(libraryState.mobileFiltersOpen));
-    } else {
-        toggleBtn.style.display = 'none';
-        advancedControls.classList.add('open');
-        toggleBtn.setAttribute('aria-expanded', 'true');
-    }
-}
 
 // Setup Library Event Listeners
 function setupLibraryListeners() {
-    const mobileFiltersToggle = document.getElementById('mobileFiltersToggle');
-    if (mobileFiltersToggle) {
-        mobileFiltersToggle.addEventListener('click', () => {
-            libraryState.mobileFiltersOpen = !libraryState.mobileFiltersOpen;
-            updateMobileFilterControls();
-        });
-    }
-
     // View tabs
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -2217,10 +2191,6 @@ function setupLibraryListeners() {
             libraryState.isMobileViewport = isMobile;
             libraryState.itemsPerPage = getLibraryItemsPerPage();
 
-            if (!isMobile) {
-                libraryState.mobileFiltersOpen = false;
-            }
-            updateMobileFilterControls();
             updateSelectionBar();
 
             if (wasMobile !== isMobile && document.getElementById('libraryPage')?.style.display === 'block') {

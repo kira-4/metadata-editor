@@ -885,19 +885,23 @@ body {
     }
 }
 
-/* Library Editor */
+/* Library Editor: an unboxed page header (like the queue's) above one compact browse panel */
 .library-controls {
+    display: grid;
+    gap: var(--spacing-md);
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
-    padding: var(--spacing-lg);
+    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
     margin-bottom: var(--spacing-lg);
 }
 
 .library-header {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
+    gap: var(--spacing-sm) var(--spacing-md);
     margin-bottom: var(--spacing-lg);
 }
 
@@ -913,22 +917,18 @@ body {
 }
 
 .library-stats {
-    background: var(--bg-tertiary);
-    padding: var(--spacing-sm) var(--spacing-md);
-    border-radius: var(--radius-sm);
     font-size: var(--text-label);
     color: var(--text-secondary);
 }
 
-.stat-item {
-    margin: 0 var(--spacing-xs);
+.library-stats:empty {
+    display: none;
 }
 
 /* View Tabs */
 .view-tabs {
     display: flex;
     gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-lg);
     border-bottom: 2px solid var(--border-color);
     padding-bottom: 0;
 }
@@ -957,37 +957,16 @@ body {
     border-bottom-color: var(--accent-primary);
 }
 
-/* Search and Sort */
+/* Search and Sort: one row at every width */
 .search-sort-bar {
     display: flex;
-    gap: var(--spacing-md);
-    align-items: center;
-}
-
-.search-row {
-    display: flex;
-    gap: var(--spacing-md);
-    flex: 1;
-    align-items: center;
-}
-
-.mobile-filters-toggle {
-    display: none;
-    white-space: nowrap;
-}
-
-.library-advanced-controls {
-    display: flex;
-    align-items: center;
-    min-width: 180px;
-}
-
-.library-advanced-controls .sort-select {
-    width: 100%;
+    gap: var(--spacing-sm);
+    align-items: stretch;
 }
 
 .search-input {
     flex: 1;
+    min-width: 0;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
@@ -1012,6 +991,8 @@ body {
     font-family: var(--font-family);
     font-size: var(--text-body);
     cursor: pointer;
+    flex: 0 0 auto;
+    max-width: 45%;
 }
 
 .sort-select:focus {
@@ -1630,18 +1611,18 @@ body {
 }
 
 @media (max-width: 768px) {
+    /* Only the browse panel (~130px) sticks; the page header scrolls away */
     .library-controls {
         position: sticky;
         top: 0.5rem;
         z-index: 90;
-        padding: var(--spacing-md);
+        gap: var(--spacing-sm);
+        padding: var(--spacing-xs) var(--spacing-sm) var(--spacing-sm);
         margin-bottom: var(--spacing-md);
+        box-shadow: 0 6px 16px var(--shadow);
     }
 
     .library-header {
-        flex-direction: column;
-        align-items: stretch;
-        gap: var(--spacing-sm);
         margin-bottom: var(--spacing-md);
     }
 
@@ -1649,65 +1630,38 @@ body {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: var(--spacing-sm);
+        width: 100%;
     }
 
     .library-actions .btn-secondary {
         min-height: 44px;
-    }
-
-    .library-stats {
-        grid-column: 1 / -1;
-        text-align: center;
-    }
-
-    .view-tabs {
-        overflow-x: auto;
-        white-space: nowrap;
-        gap: var(--spacing-xs);
-        -webkit-overflow-scrolling: touch;
-    }
-
-    .tab-btn {
-        flex: 0 0 auto;
-        min-height: 44px;
-        padding: 0.5rem 0.9rem;
+        padding: var(--spacing-xs) var(--spacing-sm);
         font-size: var(--text-label);
     }
 
-    .search-sort-bar {
-        flex-direction: column;
-        gap: var(--spacing-sm);
+    /* Four equal tabs that always fit, no sideways scrolling */
+    .view-tabs {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0;
     }
 
-    .search-row {
-        width: 100%;
-        gap: var(--spacing-sm);
-    }
-
-    .search-input {
+    .tab-btn {
+        min-width: 0;
         min-height: 44px;
+        padding: var(--spacing-xs) 0.25rem;
+        font-size: var(--text-label);
+        white-space: nowrap;
     }
 
-    .mobile-filters-toggle {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
+    .search-input,
+    .sort-select {
         min-height: 44px;
-        padding-inline: var(--spacing-md);
+        padding: var(--spacing-xs) var(--spacing-sm);
     }
 
-    .library-advanced-controls {
-        display: none;
-        width: 100%;
-    }
-
-    .library-advanced-controls.open {
-        display: block;
-    }
-
-    .library-advanced-controls .sort-select {
-        width: 100%;
-        min-height: 44px;
+    .sort-select {
+        font-size: var(--text-label);
     }
 
     .albums-grid {
@@ -2055,14 +2009,6 @@ body {
         border-color: transparent;
         background: transparent;
         font-size: var(--text-label);
-    }
-}
-
-/* Phones: the library controls are ~340px tall; sticky would cover half the
-   screen, so they scroll away (tablets keep the sticky behavior above). */
-@media (max-width: 600px) {
-    .library-controls {
-        position: static;
     }
 }
 
