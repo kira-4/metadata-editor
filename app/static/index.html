@@ -35,14 +35,15 @@
         <!-- Pending Page (existing) -->
         <div id="pendingPage" class="page-content">
             <main class="main-content">
-                <div class="pending-toolbar">
-                    <button id="refreshPendingBtn" class="btn-secondary">تحديث القائمة</button>
-                    <button id="confirmAllReadyBtn" class="btn-confirm-all" hidden>✓ تأكيد ونقل الجاهزة</button>
-                </div>
-
                 <div class="queue-header">
-                    <h2>قائمة الانتظار</h2>
-                    <span class="count" id="itemCount">فارغة</span>
+                    <div class="queue-title">
+                        <h2>قائمة الانتظار</h2>
+                        <span class="count" id="itemCount" title="الجاهزة: اقتراح مكتمل يكفيه التأكيد">فارغة</span>
+                    </div>
+                    <div class="pending-toolbar">
+                        <button id="refreshPendingBtn" class="btn-secondary">تحديث القائمة</button>
+                        <button id="confirmAllReadyBtn" class="btn-confirm-all" hidden>✓ تأكيد ونقل الجاهزة</button>
+                    </div>
                 </div>
 
                 <div id="pendingItems" class="items-grid">

@@ -1666,15 +1666,23 @@ function renderDestinationPreview(itemId, dryRun) {
 }
 
 // A card on its way out still has its button for a moment; it is not "ready"
-const READY_CONFIRM_SELECTOR = '.item-card:not(.card-removing) .confirm-btn:not(:disabled)';
+const CONFIRMABLE = '.confirm-btn:not(:disabled):not([aria-disabled="true"])';
+const READY_CONFIRM_SELECTOR = `.item-card:not(.card-removing) ${CONFIRMABLE}`;
 
 // Show/hide the "confirm all ready" button based on how many cards are ready
 // (toolbar on wider screens, the sticky bar at the bottom on phones)
 function updateConfirmAllButton() {
+    const readyCount = document.querySelectorAll(READY_CONFIRM_SELECTOR).length;
+    // The header count says how many are ready, in the same words as the phone's ready bar
+    const itemCount = document.getElementById('itemCount');
+    if (itemCount && pendingItems.length > 0) {
+        itemCount.textContent = readyCount > 0
+            ? `${readyCount} من ${pendingItems.length} جاهزة`
+            : arabicCount(pendingItems.length, FILE_FORMS);
+    }
     if (confirmAllRunning) return;
     const btn = document.getElementById('confirmAllReadyBtn');
     const bar = document.getElementById('readyBar');
-    const readyCount = document.querySelectorAll(READY_CONFIRM_SELECTOR).length;
     if (btn) {
         btn.hidden = readyCount < 2;
         btn.disabled = false;
