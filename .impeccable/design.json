@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-01T01:28:06.175957+00:00",
+  "generatedAt": "2026-10-01T21:32:02.727650+00:00",
   "title": "Design System: محرر الأصوات الولائية",
   "extensions": {
     "colorMeta": {
@@ -255,25 +255,55 @@
     "shadows": [
       {
         "name": "overlay",
-        "value": "0 12px 24px rgba(0,0,0,0.35)",
-        "purpose": "Modals and floating panels."
+        "value": "0 12px 24px rgba(0, 0, 0, 0.35)",
+        "purpose": "Modals and the selection bar: the only things that float."
       },
       {
         "name": "dropdown",
-        "value": "0 4px 16px rgba(0,0,0,0.35)",
-        "purpose": "Suggestion lists."
+        "value": "0 4px 16px rgba(0, 0, 0, 0.35)",
+        "purpose": "Suggestion lists, sticky library controls, the global alert."
       },
       {
         "name": "focus-ring",
-        "value": "0 0 0 3px rgba(74,158,255,0.1)",
-        "purpose": "Input focus with a Signal Blue border."
+        "value": "0 0 0 3px rgba(74, 158, 255, 0.35)",
+        "purpose": "Input focus with a Signal Blue border (0.1 was invisible on navy)."
+      },
+      {
+        "name": "scrim",
+        "value": "rgba(0, 0, 0, 0.7)",
+        "purpose": "Behind modals."
       }
     ],
     "motion": [
       {
-        "name": "state",
-        "value": "0.2s ease",
-        "purpose": "Hover/focus colour and border changes."
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Arrivals and settling."
+      },
+      {
+        "name": "ease-in",
+        "value": "cubic-bezier(0.4, 0, 1, 1)",
+        "purpose": "Exits: leave quickly."
+      },
+      {
+        "name": "dur-fast",
+        "value": "150ms",
+        "purpose": "Hover, focus, chip selection, the switch thumb."
+      },
+      {
+        "name": "dur-base",
+        "value": "200ms",
+        "purpose": "Routine state change, card exit."
+      },
+      {
+        "name": "dur-enter",
+        "value": "240ms",
+        "purpose": "A new card arriving, cards closing a gap."
+      },
+      {
+        "name": "arrival-mark",
+        "value": "1.2s ease-out (1.6s from a Telegram link)",
+        "purpose": "Signal Blue border fading back to the seam on a new or linked card."
       },
       {
         "name": "spin",
@@ -318,12 +348,36 @@
       "css": ".ds-btn-confirm { width: 100%; font-family: Cairo, sans-serif; font-size: 1rem; font-weight: 700; border: none; border-radius: 0.75rem; padding: 1rem; background: #00d4aa; color: #0f0f23; cursor: pointer; transition: background-color 0.2s; } .ds-btn-confirm:hover { background: #00b894; } .ds-btn-confirm:focus-visible { outline: 2px solid #00d4aa; outline-offset: 2px; }"
     },
     {
+      "name": "Confirm All (armed)",
+      "kind": "button",
+      "refersTo": "button-confirm",
+      "description": "Moves every ready file, so it takes two taps. Armed: the solid teal gives way to a teal outline on the teal wash, naming the count; an inset ring keeps the size.",
+      "html": "<div class=\"ds-row\"><button class=\"ds-all\">✓ تأكيد ونقل الجاهزة (3)</button><button class=\"ds-all ds-all-armed\">اضغط مجددًا لنقل 3 ملفات</button></div>",
+      "css": ".ds-row { display: flex; gap: 1rem; } .ds-all { min-height: 44px; padding: 0.75rem 1.5rem; background: #00d4aa; color: #0f0f23; border: none; border-radius: 0.5rem; font-family: Cairo, sans-serif; font-size: 0.875rem; font-weight: 700; cursor: pointer; transition: filter 150ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-all:hover { filter: brightness(1.08); } .ds-all:focus-visible { outline: 2px solid #4a9eff; outline-offset: 2px; } .ds-all-armed { background: #0f2b2e; color: #00d4aa; box-shadow: inset 0 0 0 2px #00d4aa; }"
+    },
+    {
+      "name": "Quiet Delete",
+      "kind": "button",
+      "refersTo": null,
+      "description": "Destructive but recoverable (trash): a borderless Fault Red text action under confirm. The first tap arms it (red edge, faint red wash) and says what will happen.",
+      "html": "<div class=\"ds-row\"><button class=\"ds-quiet\">حذف الملف</button><button class=\"ds-quiet ds-armed\">اضغط مجددًا لنقله إلى سلة المهملات</button></div>",
+      "css": ".ds-row { display: flex; gap: 1rem; } .ds-quiet { min-height: 44px; padding: 0.5rem 1.5rem; background: transparent; border: 1px solid transparent; border-radius: 0.5rem; color: #ff5757; font-family: Cairo, sans-serif; font-size: 0.875rem; cursor: pointer; transition: background-color 150ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-quiet:hover { background: rgba(255, 87, 87, 0.12); } .ds-quiet:focus-visible { outline: 2px solid #4a9eff; outline-offset: 2px; } .ds-armed { border-color: #ff5757; background: rgba(255, 87, 87, 0.12); }"
+    },
+    {
       "name": "Text Field",
       "kind": "input",
       "refersTo": "input-field",
       "description": "Title, artist and edit fields.",
       "html": "<input class=\"ds-input\" dir=\"rtl\" value=\"زيارة الحسين\">",
       "css": ".ds-input { width: 100%; background: #16213e; border: 1px solid #2a2a3e; border-radius: 0.5rem; padding: 0.5rem 0.75rem; color: #e8e8e8; font-family: Cairo, sans-serif; font-size: 1rem; transition: border-color 0.2s, box-shadow 0.2s; } .ds-input:focus { outline: none; border-color: #4a9eff; box-shadow: 0 0 0 3px rgba(74,158,255,0.1); }"
+    },
+    {
+      "name": "Switch",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "role=\"switch\" checkboxes (notifications, debug mode). Off: Shelf Navy track, Faded Text thumb at the start. On: Signal Blue track, Night Ink thumb at the end (inset-inline-start, so RTL needs no flip).",
+      "html": "<div dir=\"rtl\" class=\"ds-row\"><label class=\"ds-switch\"><input type=\"checkbox\" role=\"switch\"> إرسال الإشعارات</label><label class=\"ds-switch\"><input type=\"checkbox\" role=\"switch\" checked> وضع التصحيح</label></div>",
+      "css": ".ds-row { display: flex; gap: 1.5rem; } .ds-switch { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; color: #e8e8e8; font-family: Cairo, sans-serif; cursor: pointer; } .ds-switch input { appearance: none; position: relative; width: 2.75rem; height: 1.5rem; margin: 0; border: 1px solid #2a2a3e; border-radius: 999px; background: #16213e; cursor: pointer; transition: background-color 150ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-switch input::before { content: ''; position: absolute; top: 50%; inset-inline-start: 0.1875rem; width: 1.0625rem; height: 1.0625rem; border-radius: 50%; background: #a0a0a0; transform: translateY(-50%); transition: inset-inline-start 150ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-switch input:checked { border-color: #4a9eff; background: #4a9eff; } .ds-switch input:checked::before { inset-inline-start: calc(100% - 1.25rem); background: #0f0f23; } .ds-switch input:focus-visible { outline: 2px solid #4a9eff; outline-offset: 3px; }"
     },
     {
       "name": "Genre Chip",
@@ -345,14 +399,14 @@
       "name": "Review Card",
       "kind": "card",
       "refersTo": "card-review",
-      "description": "Signature: one pending file under review.",
-      "html": "<article class=\"ds-card\" dir=\"rtl\"><label class=\"ds-card-label\">العنوان</label><div class=\"ds-card-value\">زيارة الحسين</div><div class=\"ds-card-panel\">المجلد: <strong>باسم الكربلائي</strong></div></article>",
-      "css": ".ds-card { background: #1a1a2e; border: 1px solid #2a2a3e; border-radius: 1rem; padding: 1.5rem; font-family: Cairo, sans-serif; color: #e8e8e8; } .ds-card-label { display: block; font-size: 0.85rem; color: #a0a0a0; } .ds-card-value { font-weight: 600; margin-bottom: 0.75rem; } .ds-card-panel { background: #16213e; border-radius: 0.5rem; padding: 0.5rem 0.75rem; font-size: 0.85rem; color: #a0a0a0; } .ds-card-panel strong { color: #e8e8e8; }"
+      "description": "Signature: one pending file. Seam-separated groups (name, الوجهة, النوع); the destination is the shelf label: a recessed Night Ink holder with a Shelf Navy plate.",
+      "html": "<article class=\"ds-card\" dir=\"rtl\"><span class=\"ds-card-label\">العنوان <span class=\"ds-check\">✓</span></span><div class=\"ds-card-value\">زيارة الحسين</div><div class=\"ds-card-group\"><span class=\"ds-card-label\">الوجهة</span><div class=\"ds-shelf\"><div class=\"ds-shelf-plate\"><strong>باسم الكربلائي</strong><span><bdi dir=\"ltr\">.mp3</bdi>زيارة الحسين</span></div></div></div></article>",
+      "css": ".ds-card { background: #1a1a2e; border: 1px solid #2a2a3e; border-radius: 1rem; padding: 1.5rem; font-family: Cairo, sans-serif; color: #e8e8e8; } .ds-card-label { display: block; font-size: 0.875rem; color: #a0a0a0; } .ds-check { color: #00d4aa; } .ds-card-value { font-weight: 600; margin: 0.25rem 0 0; } .ds-card-group { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #2a2a3e; } .ds-shelf { margin-top: 0.5rem; padding: 0.375rem; background: #0f0f23; border: 1px solid #2a2a3e; border-radius: 0.75rem; } .ds-shelf-plate { display: grid; gap: 0.125rem; padding: 0.75rem 1rem; background: #16213e; border-radius: 0.5rem; } .ds-shelf-plate strong { font-size: 1.0625rem; font-weight: 600; } .ds-shelf-plate span { font-size: 0.8125rem; color: #a0a0a0; }"
     }
   ],
   "narrative": {
     "northStar": "The Night Archive",
-    "overview": "A quiet late-night workroom for cataloguing recordings. The room is deep navy, and the surfaces step up in small tonal increments the way shelves sit in low light. One cool blue marks the thing you can act on. Teal appears only when something is settled: a file confirmed, a save done. Amber and red stay rare and mean exactly one thing each.\n\nThe tool serves devotional content, so it stays calm. Density favours the review card: fields are full width, labels sit above inputs, and the primary action spans the card. Arabic RTL is the native direction. Latin fragments (paths, tokens, IDs, file extensions) are isolated islands inside it, never the other way round.\n\nToday the system mixes this calm base with a few louder habits inherited from earlier iterations: gradient fills on actions, gradient title text, hover lift on cards. They are recorded below as they are and flagged; the design pass decides each case.",
+    "overview": "A quiet late-night workroom for cataloguing recordings. The room is deep navy, and the surfaces step up in small tonal increments the way shelves sit in low light. One cool blue marks the thing you can act on. Teal appears only when something is settled: a file confirmed, a save done. Amber and red stay rare and mean exactly one thing each.\n\nThe tool serves devotional content, so it stays calm. Density favours the review card: fields are full width, labels sit above inputs, and the primary action spans the card. Arabic RTL is the native direction. Latin fragments (paths, tokens, IDs, file extensions) are isolated islands inside it, never the other way round.\n\nEvery fill is solid. Teal confirm is the one saturated action on a card. The only gradient left is the brand mark, the app icon itself, beside the title. Nothing lifts or glows on hover. Sprint 4's design pass (B5–B9) removed the louder habits it inherited: gradient fills, gradient title text, hover lift, emoji icons.",
     "keyCharacteristics": [
       "Dark only, navy not black; depth from tonal steps and 1px seams.",
       "One action colour (signal blue), one completion colour (settled teal).",
@@ -371,19 +425,54 @@
         "section": "colors"
       },
       {
-        "name": "The Isolated Latin Rule",
-        "body": "Paths, file extensions, tokens and chat IDs are wrapped in <bdi> or set dir=\"ltr\", so the bidi algorithm never reorders them inside Arabic prose.",
+        "name": "The No Fake Italic Rule",
+        "body": "Cairo has no italic, so `font-style: italic` renders a synthesized oblique. Mark secondary text with tone or size instead.",
         "section": "typography"
+      },
+      {
+        "name": "The Steady Digits Rule",
+        "body": "Digits stay Western (they sit next to Latin paths and IDs). Counts, the nav badge, pagination, library stats, rescan progress and similarity scores use `font-variant-numeric: tabular-nums`, so they don't jitter while updating.",
+        "section": "typography"
+      },
+      {
+        "name": "The Isolated Latin Rule",
+        "body": "Paths, file extensions, tokens and chat IDs are wrapped in `<bdi>` or set `dir=\"ltr\"`, so the bidi algorithm never reorders them inside Arabic prose.",
+        "section": "typography"
+      },
+      {
+        "name": "The Sticky Minimum Rule",
+        "body": "Only what you need while scrolling sticks: the library's browse panel (about 130px) and, on phones, the queue's ready bar. Page headers, stats and notices scroll away.",
+        "section": "layout"
+      },
+      {
+        "name": "The One Way In, One Way Out Rule",
+        "body": "Multi-select has one entry (the «تحديد متعدد» toggle, `aria-pressed`, fixed label) and one labelled exit («إنهاء التحديد» in the selection bar). In selection mode the whole track card is the toggle and the checkbox shows its state; no per-card select buttons.",
+        "section": "layout"
       },
       {
         "name": "The Flat-At-Rest Rule",
         "body": "Surfaces don't cast shadows at rest. Only overlays float.",
         "section": "elevation"
+      },
+      {
+        "name": "The Explained Change Rule",
+        "body": "Every animation names a change of state: arrived, left, opened, saving. A card that didn't change doesn't move. Rebuilding the list must never replay an entrance.",
+        "section": "motion"
+      },
+      {
+        "name": "The Named Property Rule",
+        "body": "Transitions list their properties. No `transition: all`, and no animation of layout properties (width, height, padding, margins, top/left).",
+        "section": "motion"
+      },
+      {
+        "name": "The Still Under Reduced Motion Rule",
+        "body": "With `prefers-reduced-motion: reduce`, the fades stay (they still say \"this changed\") and all movement goes: no translate, no FLIP slide, no sweep, no spin. `app.js` reads the same media query.",
+        "section": "motion"
       }
     ],
     "dos": [
       "Do keep text on Signal Blue or Settled Teal fills in Night Ink.",
-      "Do isolate every Latin fragment (path, extension, token, ID) with <bdi> or dir=\"ltr\".",
+      "Do isolate every Latin fragment (path, extension, token, ID) with `<bdi>` or `dir=\"ltr\"`.",
       "Do give phone touch targets at least 44px and keep primary actions full width.",
       "Do use Shelf Navy panels with 0.5rem corners for status and preview blocks inside a card."
     ],
@@ -391,6 +480,7 @@
       "Don't add a light theme. The product is dark only.",
       "Don't use religious imagery (calligraphy, domes, geometric patterns) as decoration.",
       "Don't introduce playful motion or celebration effects (no confetti).",
+      "Don't animate a card that didn't change state, and don't lift anything on hover (see The Explained Change Rule).",
       "Don't give a signal colour a second meaning (see The One Meaning Rule).",
       "Don't add shadows to surfaces at rest (see The Flat-At-Rest Rule)."
     ]
