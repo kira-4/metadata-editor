@@ -149,4 +149,4 @@ Same as before: one ticket = one branch = one PR, a failing test first for Track
 - [x] S4-5 favicon
 - [x] S4-6 detail-view refresh
 - [x] S4-7 clear-field semantics, byte-safe filenames
-- [x] B0 init + document · [x] B1 critique (24/40) · [x] B2 clarify · B3 harden · B4 typeset · B5 layout · B6 animate · B7 delight · B8 optimize · B9 audit + polish
+- [x] B0 init + document · [x] B1 critique (24/40) · [x] B2 clarify · [x] B3 harden · B4 typeset · B5 layout · B6 animate · B7 delight · B8 optimize · B9 audit + polish

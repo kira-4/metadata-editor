@@ -92,7 +92,14 @@ body {
     margin-bottom: var(--spacing-md);
 }
 
+.workflow-steps {
+    list-style: none;
+    counter-reset: step;
+    margin-top: var(--spacing-sm);
+}
+
 .workflow-step {
+    counter-increment: step;
     background: var(--bg-tertiary);
     color: var(--text-secondary);
     border: 1px solid var(--border-color);
@@ -102,10 +109,8 @@ body {
     font-weight: 600;
 }
 
-.workflow-step.active {
-    color: var(--bg-primary);
-    background: linear-gradient(135deg, var(--accent-primary), var(--accent-hover));
-    border-color: var(--accent-primary);
+.workflow-step::before {
+    content: counter(step) ". ";
 }
 
 .pending-toolbar {
@@ -153,20 +158,10 @@ body {
 }
 
 .log-panel {
-    margin-bottom: var(--spacing-md);
+    margin-top: var(--spacing-md);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     background: var(--bg-secondary);
-}
-
-.log-panel-header {
-    padding: var(--spacing-sm) var(--spacing-md);
-    border-bottom: 1px solid var(--border-color);
-}
-
-.log-panel-header h3 {
-    color: var(--text-secondary);
-    font-size: 0.95rem;
 }
 
 .log-output {
@@ -181,8 +176,7 @@ body {
     direction: ltr;
     text-align: left;
     background: var(--bg-primary);
-    border-bottom-left-radius: var(--radius-md);
-    border-bottom-right-radius: var(--radius-md);
+    border-radius: var(--radius-md);
 }
 
 .queue-header h2 {
@@ -508,11 +502,36 @@ body {
     transform: translateY(0);
 }
 
+/* Waiting for input: the label says what is missing, so it must stay readable */
 .confirm-btn:disabled {
     background: var(--bg-tertiary);
-    color: var(--text-muted);
+    color: var(--text-secondary);
+    border: 1px dashed var(--border-color);
     cursor: not-allowed;
-    opacity: 0.6;
+}
+
+/* Saving: still teal (it is happening), dimmed, with a slow sweep instead of a spinner */
+.confirm-btn.is-saving,
+.confirm-btn.is-saving:disabled {
+    background: var(--success) linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.25) 50%, transparent 100%) no-repeat;
+    background-size: 40% 100%;
+    color: var(--bg-primary);
+    border: none;
+    opacity: 0.75;
+    cursor: progress;
+    animation: confirm-sweep 1.2s linear infinite;
+}
+
+@keyframes confirm-sweep {
+    from { background-position: -40% 0; }
+    to { background-position: 140% 0; }
+}
+
+/* Failed: not a red fill (that reads as "delete"), an outline that asks for a retry */
+.confirm-btn.is-failed {
+    background: var(--bg-tertiary);
+    color: var(--error);
+    border: 2px solid var(--error);
 }
 
 .btn-confirm-all {
@@ -616,6 +635,20 @@ body {
 
 .item-status.success {
     color: var(--success);
+}
+
+.item-status.saving {
+    color: var(--text-secondary);
+}
+
+.dry-run-output {
+    white-space: pre-wrap;
+    font-family: var(--font-family);
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
 }
 
 .item-status.warn {
@@ -1041,9 +1074,11 @@ body {
 
 .list-item-content {
     flex: 1;
+    min-width: 0;
 }
 
 .list-item-title {
+    overflow-wrap: anywhere;
     font-weight: 600;
     color: var(--text-primary);
     margin-bottom: 0.25rem;
@@ -1139,6 +1174,11 @@ body {
 }
 
 .album-name {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
     font-weight: 600;
     margin-bottom: 0.25rem;
 }
@@ -2227,4 +2267,75 @@ body {
     color: var(--text-secondary);
     font-weight: 400;
     font-size: 0.8rem;
+}
+
+/* Long Arabic titles and channel names must wrap, never widen the card */
+.item-card,
+.item-info {
+    min-width: 0;
+}
+
+.source-text {
+    overflow-wrap: anywhere;
+}
+
+.artist-hint:empty {
+    display: none;
+}
+
+.artist-hint {
+    margin-top: var(--spacing-xs);
+    color: var(--warning);
+    font-size: 0.82rem;
+}
+
+/* Missing or unreadable artwork */
+.artwork-missing {
+    color: var(--text-secondary);
+    font-size: 2rem;
+}
+
+.artwork-placeholder {
+    color: var(--text-secondary);
+}
+
+/* Live updates are down: amber, because nothing failed yet, but the list may be stale */
+.connection-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--warning);
+    border-radius: var(--radius-sm);
+    background: #2e2716;
+    color: var(--warning);
+    font-size: 0.9rem;
+}
+
+.connection-status[hidden] {
+    display: none;
+}
+
+.connection-status .batch-state-btn {
+    min-height: 44px;
+    color: var(--text-primary);
+}
+
+/* The armed (second-tap) state of quiet danger buttons, on every screen size */
+.btn-secondary.delete-btn.armed,
+.btn-danger-quiet.armed {
+    border-color: var(--error);
+    background: rgba(255, 87, 87, 0.12);
+}
+
+/* The card title is a textarea that grows, so long Arabic titles are read in full */
+textarea.title-input {
+    display: block;
+    resize: none;
+    overflow: hidden;
+    line-height: 1.6;
+    min-height: 44px;
 }

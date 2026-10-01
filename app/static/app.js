@@ -338,6 +338,27 @@ function restoreFocusSnapshot(snapshot) {
     }
 }
 
+const DEBUG_STORAGE_KEY = 'metadataEditor.debug';
+
+function readDebugPreference() {
+    try {
+        return localStorage.getItem(DEBUG_STORAGE_KEY) === '1';
+    } catch {
+        return false;  // private mode or blocked storage: debug simply starts off
+    }
+}
+
+function setDebugEnabled(enabled) {
+    debugEnabled = enabled;
+    try {
+        localStorage.setItem(DEBUG_STORAGE_KEY, enabled ? '1' : '0');
+    } catch {
+        // Not persisted; the toggle still works for this page load
+    }
+    applyDebugUIState();
+    renderItems();
+}
+
 function setupGlobalUI() {
     const refreshBtn = document.getElementById('refreshPendingBtn');
     if (refreshBtn) {
@@ -349,27 +370,21 @@ function setupGlobalUI() {
         confirmAllReadyBtn.addEventListener('click', confirmAllReady);
     }
 
-    const debugModeBtn = document.getElementById('debugModeBtn');
-    if (debugModeBtn) {
-        debugModeBtn.addEventListener('click', () => {
-            debugEnabled = !debugEnabled;
-            applyDebugUIState();
-            renderItems();
-            showAlert(
-                debugEnabled ? 'تم تفعيل وضع التصحيح.' : 'تم تعطيل وضع التصحيح.',
-                debugEnabled ? 'info' : 'success'
-            );
-        });
+    // Diagnostics live in Settings; the queue only shows their effect (the per-card preview button)
+    debugEnabled = readDebugPreference();
+    const debugToggle = document.getElementById('debugModeToggle');
+    if (debugToggle) {
+        debugToggle.addEventListener('change', () => setDebugEnabled(debugToggle.checked));
     }
 
     const toggleLogsBtn = document.getElementById('toggleLogsBtn');
     const logPanel = document.getElementById('logPanel');
     if (toggleLogsBtn && logPanel) {
         toggleLogsBtn.addEventListener('click', () => {
-            const visible = logPanel.style.display === 'block';
-            logPanel.style.display = visible ? 'none' : 'block';
-            toggleLogsBtn.textContent = visible ? 'إظهار السجلات' : 'إخفاء السجلات';
-            if (!visible) {
+            logPanel.hidden = !logPanel.hidden;
+            toggleLogsBtn.textContent = logPanel.hidden ? 'إظهار سجل العمليات' : 'إخفاء سجل العمليات';
+            toggleLogsBtn.setAttribute('aria-expanded', String(!logPanel.hidden));
+            if (!logPanel.hidden) {
                 renderLogPanel();
             }
         });
@@ -386,39 +401,25 @@ function setupGlobalUI() {
         }
     });
 
+    // Artwork that fails to load (file moved, unreadable) falls back to the placeholder
+    document.addEventListener('error', event => {
+        const img = event.target;
+        if (!(img instanceof HTMLImageElement) || !img.closest('.item-card, .album-artwork, .artwork-preview')) return;
+        const placeholder = document.createElement(img.classList.contains('artwork') ? 'div' : 'span');
+        placeholder.className = img.classList.contains('artwork') ? 'artwork-placeholder' : 'artwork-missing';
+        placeholder.setAttribute('aria-hidden', 'true');
+        placeholder.textContent = '♪';
+        img.replaceWith(placeholder);
+    }, true);
+
     applyDebugUIState();
 }
 
 function applyDebugUIState() {
-    const debugModeBtn = document.getElementById('debugModeBtn');
+    const debugToggle = document.getElementById('debugModeToggle');
     const workflowSteps = document.getElementById('workflowSteps');
-    const toggleLogsBtn = document.getElementById('toggleLogsBtn');
-    const downloadLogsBtn = document.getElementById('downloadLogsBtn');
-    const logPanel = document.getElementById('logPanel');
-
-    if (debugModeBtn) {
-        debugModeBtn.textContent = debugEnabled ? 'تعطيل وضع التصحيح' : 'تفعيل وضع التصحيح';
-        debugModeBtn.classList.toggle('active', debugEnabled);
-    }
-
-    if (workflowSteps) {
-        workflowSteps.style.display = debugEnabled ? 'flex' : 'none';
-    }
-
-    if (toggleLogsBtn) {
-        toggleLogsBtn.style.display = debugEnabled ? 'inline-flex' : 'none';
-        if (!debugEnabled) {
-            toggleLogsBtn.textContent = 'إظهار السجلات';
-        }
-    }
-
-    if (downloadLogsBtn) {
-        downloadLogsBtn.style.display = debugEnabled ? 'inline-flex' : 'none';
-    }
-
-    if (logPanel && !debugEnabled) {
-        logPanel.style.display = 'none';
-    }
+    if (debugToggle) debugToggle.checked = debugEnabled;
+    if (workflowSteps) workflowSteps.hidden = !debugEnabled;
 }
 
 // Initialize app
@@ -479,8 +480,12 @@ async function loadPendingItems(options = {}) {
             logEvent('info', `تم تحميل قائمة الانتظار (${pendingItems.length}) عنصر`);
         }
     } catch (error) {
-        logEvent('error', 'فشل تحميل قائمة الانتظار', {error: error.message});
-        showError('تعذّر تحميل قائمة الانتظار', error);
+        logEvent('error', 'Loading the queue failed', {error: error.message});
+        if (silent && error instanceof TypeError) {
+            setConnectionOffline(true);  // a background poll while offline: the banner already says it
+        } else {
+            showError('تعذّر تحميل قائمة الانتظار', error);
+        }
     }
 }
 
@@ -679,19 +684,19 @@ function createItemCard(item) {
             <div class="item-header">
                 ${artworkUrl
                     ? `<img src="${artworkUrl}" alt="" class="artwork">`
-                    : '<div class="artwork-placeholder">🎵</div>'
+                    : '<div class="artwork-placeholder" aria-hidden="true">♪</div>'
                 }
 
                 <div class="item-info">
                     <div class="field-group">
-                        <label class="field-label">العنوان</label>
-                        <input
-                            type="text"
+                        <label class="field-label" for="title-${item.id}">العنوان</label>
+                        <textarea
+                            id="title-${item.id}"
                             class="field-input title-input"
-                            value="${escapeHtml(titleValue)}"
+                            rows="1"
                             data-id="${item.id}"
                             placeholder="العنوان (مطلوب)"
-                        >
+                        >${escapeHtml(titleValue)}</textarea>
                     </div>
 
                     <div class="field-group">
@@ -700,6 +705,7 @@ function createItemCard(item) {
                             ${artistRowsHtml}
                         </div>
                         <button type="button" class="btn-add-artist" data-id="${item.id}">+ إضافة فنان</button>
+                        <p class="artist-hint" aria-live="polite"></p>
                     </div>
 
                     <div class="destination-preview" id="destination-${item.id}" aria-live="polite"></div>
@@ -734,14 +740,12 @@ function createItemCard(item) {
             <div class="action-buttons">
                 ${debugEnabled ? `
                 <button class="btn-secondary dry-run-btn" data-id="${item.id}">
-                    معاينة (Dry Run)
+                    معاينة دون كتابة
                 </button>
                 ` : ''}
                 <button class="confirm-btn" data-id="${item.id}" disabled>${CONFIRM_LABEL}</button>
                 <div class="item-status" id="itemStatus-${item.id}"></div>
-                <button class="btn-secondary delete-btn" onclick="deleteItem(${Number(item.id)})">
-                    حذف الملف
-                </button>
+                <button type="button" class="btn-secondary btn-danger-quiet delete-btn" data-id="${item.id}">حذف الملف</button>
             </div>
         </div>
     `;
@@ -1199,7 +1203,14 @@ function attachItemListeners(itemId) {
     const titleInput = card.querySelector('.title-input');
 
     if (titleInput) {
+        // A title is one line of metadata: Enter must not add a newline, and the box grows to show it all
+        autosizeTitle(titleInput);
+        titleInput.addEventListener('keydown', event => {
+            if (event.key === 'Enter') event.preventDefault();
+        });
         titleInput.addEventListener('input', () => {
+            if (titleInput.value.includes('\n')) titleInput.value = titleInput.value.replace(/\s*\n\s*/g, ' ');
+            autosizeTitle(titleInput);
             titleDraftValues.set(itemId, titleInput.value);
             const item = pendingItems.find(entry => entry.id === itemId);
             if (item) {
@@ -1275,6 +1286,11 @@ function attachItemListeners(itemId) {
         confirmBtn.addEventListener('click', () => confirmItem(itemId));
     }
 
+    const deleteBtn = card.querySelector('.delete-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => deleteItem(itemId));
+    }
+
     // Dry run button
     const dryRunBtn = card.querySelector('.dry-run-btn');
     if (dryRunBtn) {
@@ -1284,6 +1300,12 @@ function attachItemListeners(itemId) {
     if (item && item.genre && item.genre.trim()) {
         selectedGenres[itemId] = item.genre.trim();
     }
+}
+
+function autosizeTitle(textarea) {
+    if (!textarea.offsetParent) return;  // hidden page: measured again when the queue is shown
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight + 2}px`;
 }
 
 // Handle genre button click
@@ -1338,8 +1360,10 @@ function updateConfirmButton(itemId) {
     const missing = Object.keys(MISSING_FIELD_ACTIONS).filter(key => !present[key]);
 
     confirmBtn.disabled = missing.length > 0;
+    // A failed attempt keeps its "retry" look until the card stops being confirmable
+    if (missing.length > 0) confirmBtn.classList.remove('is-failed');
     // A disabled confirm says what it is waiting for ("أضف فنانًا واختر النوع")
-    if (!confirmBtn.dataset.busy) {
+    if (!confirmBtn.dataset.busy && !confirmBtn.classList.contains('is-failed')) {
         confirmBtn.textContent = missing.length
             ? missing.map(key => MISSING_FIELD_ACTIONS[key]).join(' و')
             : CONFIRM_LABEL;
@@ -1347,6 +1371,15 @@ function updateConfirmButton(itemId) {
     card.querySelectorAll('.review-checklist [data-check]').forEach(li => {
         li.classList.toggle('done', present[li.dataset.check]);
     });
+
+    // Many artists usually means the suggestion split one name (or a title) into several
+    const artistCount = Array.from(artistInputs).filter(input => input.value.trim()).length;
+    const artistHint = card.querySelector('.artist-hint');
+    if (artistHint) {
+        artistHint.textContent = artistCount >= 4
+            ? `في هذه البطاقة ${artistCount} فنانين. تأكد أن الاقتراح لم يقسم اسمًا واحدًا إلى عدة أسماء.`
+            : '';
+    }
     updateConfirmAllButton();
     queueDestinationPreview(itemId);
 }
@@ -1486,6 +1519,8 @@ async function confirmAllReady() {
 
 // Update field via API
 async function updateField(itemId, field, value) {
+    const label = FIELD_LABELS[field] || field;
+    setItemStatus(itemId, `جارٍ حفظ ${label}…`, 'saving');
     try {
         const payload = {};
         payload[field] = typeof value === 'string' ? value.trim() : value;
@@ -1516,21 +1551,29 @@ async function updateField(itemId, field, value) {
         }
         
         updateConfirmButton(itemId);
-        setItemStatus(itemId, 'تم حفظ التعديل', 'success');
+        setItemStatus(itemId, `حُفظ ${label}`, 'success', 3000);
         
     } catch (error) {
-        const label = FIELD_LABELS[field] || field;
         logEvent('error', `Update ${field} failed`, {itemId, error: error.message});
         showError(`لم يُحفظ ${label}`, error);
         setItemStatus(itemId, `لم يُحفظ ${label}. عدّله مجددًا أو أكّد مباشرة.`, 'error');
     }
 }
 
-function setItemStatus(itemId, message, type = 'info') {
+// fadeAfter (ms): routine confirmations clear themselves; errors and warnings stay
+function setItemStatus(itemId, message, type = 'info', fadeAfter = 0) {
     const statusEl = document.getElementById(`itemStatus-${itemId}`);
     if (!statusEl) return;
     statusEl.textContent = message;
     statusEl.className = `item-status ${type}`;
+    if (fadeAfter > 0) {
+        setTimeout(() => {
+            if (statusEl.textContent === message) {
+                statusEl.textContent = '';
+                statusEl.className = 'item-status';
+            }
+        }, fadeAfter);
+    }
 }
 
 async function fetchDryRun(itemId) {
@@ -1546,7 +1589,7 @@ function formatDryRunMessage(dryRun) {
     const move = dryRun.move_preview || {};
     const meta = dryRun.metadata_preview || {};
     return [
-        'معاينة العملية (Dry Run):',
+        'معاينة العملية (لا شيء يُكتب):',
         `- قابل للتأكيد: ${dryRun.can_confirm ? 'نعم' : 'لا'}`,
         `- الحقول الناقصة: ${missing}`,
         `- العنوان: ${meta.title || '-'}`,
@@ -1567,16 +1610,22 @@ async function previewItem(itemId) {
     const btn = document.querySelector(`.dry-run-btn[data-id="${itemId}"]`);
     if (btn) {
         btn.disabled = true;
-        btn.textContent = 'جاري إنشاء المعاينة...';
+        btn.textContent = 'جارٍ إنشاء المعاينة…';
     }
 
     try {
         const dryRun = await fetchDryRun(itemId);
         const message = formatDryRunMessage(dryRun);
         logEvent('info', 'Dry-run preview generated', {itemId, dryRun});
-        showAlert(dryRun.can_confirm ? 'تم إنشاء المعاينة بنجاح' : 'المعاينة تُظهر مشاكل يجب إصلاحها', dryRun.can_confirm ? 'success' : 'warn', 7000);
-        window.alert(message);
-        setItemStatus(itemId, dryRun.can_confirm ? 'المعاينة جاهزة للتأكيد' : 'المعاينة: هناك مشاكل', dryRun.can_confirm ? 'success' : 'warn');
+        // Shown in the card, not a native alert(): it stays readable next to the fields it describes
+        const statusEl = document.getElementById(`itemStatus-${itemId}`);
+        if (statusEl) {
+            statusEl.className = `item-status ${dryRun.can_confirm ? 'success' : 'warn'}`;
+            const pre = document.createElement('pre');
+            pre.className = 'dry-run-output';
+            pre.textContent = message;
+            statusEl.replaceChildren(pre);
+        }
     } catch (error) {
         logEvent('error', 'Dry-run preview failed', {itemId, error: error.message});
         showError('تعذّر إنشاء المعاينة', error);
@@ -1584,7 +1633,7 @@ async function previewItem(itemId) {
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.textContent = 'معاينة (Dry Run)';
+            btn.textContent = 'معاينة دون كتابة';
         }
     }
 }
@@ -1609,6 +1658,8 @@ async function confirmItem(itemId, onConflict) {
     // Disable button
     confirmBtn.disabled = true;
     confirmBtn.dataset.busy = '1';
+    confirmBtn.classList.remove('is-failed');
+    confirmBtn.classList.add('is-saving');
     confirmBtn.textContent = 'جارٍ الحفظ والنقل…';
     setItemStatus(itemId, 'تُكتب البيانات الوصفية ثم يُنقل الملف…', 'info');
 
@@ -1629,6 +1680,7 @@ async function confirmItem(itemId, onConflict) {
             if (body.detail?.code === 'destination_exists') {
                 showDestinationChoice(itemId, body.detail.existing_path);
                 delete confirmBtn.dataset.busy;
+                confirmBtn.classList.remove('is-saving');
                 confirmBtn.disabled = false;
                 confirmBtn.textContent = CONFIRM_LABEL;
                 return false;
@@ -1659,9 +1711,10 @@ async function confirmItem(itemId, onConflict) {
         logEvent('error', 'Error confirming item', {itemId, error: error.message});
         showError('لم يُنقل الملف', error);
         delete confirmBtn.dataset.busy;
+        confirmBtn.classList.remove('is-saving');
+        confirmBtn.classList.add('is-failed');
         confirmBtn.disabled = false;
         confirmBtn.textContent = 'أعد محاولة النقل';
-        confirmBtn.style.background = 'var(--error)';
         setItemStatus(itemId, `لم يُنقل: ${describeError(error).message}`, 'error');
         return false;
     }
@@ -1689,14 +1742,35 @@ function showDestinationChoice(itemId, existingPath) {
     });
 }
 
-// Delete item
+// Destructive actions take two taps instead of a native confirm(): the first arms the button
+// and says what will happen, a second tap within 4s does it. Returns true on the second tap.
+const armTimers = new WeakMap();
+
+function armTwoTap(btn, armedText) {
+    if (btn.classList.contains('armed')) {
+        clearTimeout(armTimers.get(btn));
+        btn.classList.remove('armed');
+        btn.textContent = btn.dataset.idleText;
+        return true;
+    }
+    btn.dataset.idleText = btn.textContent.trim();
+    btn.classList.add('armed');
+    btn.textContent = armedText;
+    armTimers.set(btn, setTimeout(() => {
+        btn.classList.remove('armed');
+        btn.textContent = btn.dataset.idleText;
+    }, 4000));
+    return false;
+}
+
+// Delete item (the original goes to the trash folder and can be restored from there)
 async function deleteItem(itemId) {
-    if (!confirm('سيُنقل الملف الأصلي إلى سلة المهملات، ويمكن استعادته قبل حذفه التلقائي. هل تريد المتابعة؟')) return;
-    
     const deleteBtn = document.querySelector(`.item-card[data-id="${itemId}"] .delete-btn`);
+    if (deleteBtn && !armTwoTap(deleteBtn, 'اضغط مجددًا لنقله إلى سلة المهملات')) return;
+
     if (deleteBtn) {
         deleteBtn.disabled = true;
-        deleteBtn.textContent = 'جاري الحذف...';
+        deleteBtn.textContent = 'جارٍ النقل إلى السلة…';
     }
     
     try {
@@ -1711,7 +1785,7 @@ async function deleteItem(itemId) {
         // Remove item from list (optimistic update)
         pendingItems = pendingItems.filter(i => i.id !== itemId);
         renderItems();
-        showAlert('نُقل الملف إلى سلة المهملات.', 'success');
+        showAlert('نُقل الملف إلى سلة المهملات. يمكنك استعادته من مجلد السلة قبل حذفه التلقائي.', 'success');
         logEvent('info', 'Pending item deleted', {itemId});
         
     } catch (error) {
@@ -1719,7 +1793,7 @@ async function deleteItem(itemId) {
         showError('لم يُحذف الملف', error);
         if (deleteBtn) {
             deleteBtn.disabled = false;
-            deleteBtn.textContent = 'فشل الحذف - حاول مرة أخرى';
+            deleteBtn.textContent = 'حذف الملف';
         }
     }
 }
@@ -1734,6 +1808,7 @@ function setupSSE() {
     
     eventSource.onopen = () => {
         logEvent('info', 'SSE connected');
+        setConnectionOffline(false);
     };
     
     eventSource.onmessage = (event) => {
@@ -1755,10 +1830,48 @@ function setupSSE() {
     };
     
     eventSource.onerror = (error) => {
-        logEvent('warn', 'SSE error (browser will retry automatically)', {error: String(error)});
-        // Reconnect automatically handled by browser
+        logEvent('warn', 'SSE error', {error: String(error), readyState: eventSource.readyState});
+        // A short blip reconnects on its own; only a drop that lasts gets the banner
+        clearTimeout(connection.graceTimer);
+        connection.graceTimer = setTimeout(() => {
+            if (eventSource.readyState !== EventSource.OPEN) setConnectionOffline(true);
+        }, 3000);
+        // CLOSED means the browser gave up (e.g. the server answered with an error): retry ourselves
+        if (eventSource.readyState === EventSource.CLOSED) {
+            clearTimeout(connection.retryTimer);
+            connection.retryTimer = setTimeout(setupSSE, 10000);
+        }
     };
 }
+
+// Live-update connection: a banner while it is down, and a catch-up reload when it returns
+const connection = {offline: false, graceTimer: null, retryTimer: null};
+
+function setConnectionOffline(offline) {
+    const banner = document.getElementById('connectionStatus');
+    const wasOffline = connection.offline;
+    connection.offline = offline;
+    if (offline) clearTimeout(connection.graceTimer);
+    if (!banner) return;
+
+    if (offline) {
+        banner.innerHTML = `<span>انقطع الاتصال بالخادم. ما كتبته في البطاقات باقٍ، والقائمة لا تتحدث حتى يعود الاتصال.</span>
+            <button type="button" class="batch-state-btn" id="reconnectBtn">أعد الاتصال</button>`;
+        banner.hidden = false;
+        document.getElementById('reconnectBtn').addEventListener('click', () => {
+            setupSSE();
+            loadPendingItems({silent: true, smartUpdate: true});
+        });
+    } else {
+        banner.hidden = true;
+        banner.replaceChildren();
+        // Events may have been missed while away: pick up cards added or confirmed elsewhere
+        if (wasOffline) loadPendingItems({silent: true, smartUpdate: true});
+    }
+}
+
+window.addEventListener('offline', () => setConnectionOffline(true));
+window.addEventListener('online', () => setupSSE());
 
 //=============================================================================
 // Library Editor Features
@@ -2146,6 +2259,7 @@ function initRouter() {
             pendingPage.style.display = 'block';
             libraryPage.style.display = 'none';
             if (settingsPage) settingsPage.style.display = 'none';
+            document.querySelectorAll('.title-input').forEach(autosizeTitle);
         }
     }
     
@@ -2733,7 +2847,7 @@ function renderAlbums(albums) {
             <div class="album-artwork">
                 ${album.artwork_id 
                     ? `<img src="/api/library/tracks/${album.artwork_id}/artwork?t=${Date.now()}" alt="">` 
-                    : '🎵'}
+                    : '<span class="artwork-missing" aria-hidden="true">♪</span>'}
             </div>
             <div class="album-name">${escapeHtml(album.name) || 'بدون اسم'}</div>
             <div class="album-artist">${escapeHtml(album.album_artist) || 'غير معروف'}</div>
@@ -3000,7 +3114,7 @@ async function viewArtistAlbums(artistName, pushToStack = true) {
                 <div class="album-artwork">
                     ${album.artwork_id 
                         ? `<img src="/api/library/tracks/${album.artwork_id}/artwork?t=${Date.now()}" alt="">` 
-                        : '🎵'}
+                        : '<span class="artwork-missing" aria-hidden="true">♪</span>'}
                 </div>
                 <div class="album-name">${escapeHtml(album.name) || 'بدون اسم'}</div>
                 <div class="list-item-meta">${album.track_count} صوتية</div>
@@ -3283,6 +3397,7 @@ function renderBatchSummary() {
     }
     summary.innerHTML = html;
     saveBtn.disabled = batchEdit.saving || changed.length === 0;
+    saveBtn.textContent = batchEdit.saving ? 'جارٍ الحفظ…' : 'حفظ';
 }
 
 // Show Edit Modal
@@ -3304,7 +3419,9 @@ function showEditModal(mode, trackData = null) {
         input.placeholder = '';
         input.closest('.form-group').classList.remove('batch-changed');
     });
-    document.getElementById('saveBatchEdit').disabled = false;
+    const saveBtn = document.getElementById('saveBatchEdit');
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'حفظ';
     
     // Artwork UI Container (Dynamically added if missing)
     let artworkSection = document.getElementById('editArtworkSection');
@@ -3328,7 +3445,7 @@ function showEditModal(mode, trackData = null) {
                 <div class="artwork-preview">
                     ${trackData.has_artwork 
                         ? `<img src="/api/library/tracks/${trackData.id}/artwork?t=${Date.now()}" alt="">` 
-                        : '<span class="artwork-placeholder">🎵</span>'}
+                        : '<span class="artwork-missing" aria-hidden="true">♪</span>'}
                 </div>
                 <div class="artwork-upload-controls">
                     <input type="file" id="artworkUpload" accept="image/jpeg,image/png" style="display: none;">
@@ -3421,6 +3538,19 @@ async function handleEditSubmit(event) {
 // Handle Single Edit
 async function handleSingleEdit() {
     const trackId = libraryState.editTrackData.id;
+    const saveBtn = document.getElementById('saveBatchEdit');
+    if (saveBtn.disabled) return;  // a save is already running
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'جارٍ الحفظ…';
+    try {
+        await saveSingleTrack(trackId);
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'حفظ';
+    }
+}
+
+async function saveSingleTrack(trackId) {
     
     // 1. Upload Artwork if selected
     const fileInput = document.getElementById('artworkUpload');
@@ -3453,7 +3583,7 @@ async function handleSingleEdit() {
         year: parseInt(document.getElementById('batchYear').value, 10) || null
     };
     if (!payload.title || !payload.artist) {
-        showAlert('العنوان والفنان مطلوبان', 'warn');
+        showAlert('أضف العنوان والفنان قبل الحفظ.', 'warn');
         return;
     }
     
@@ -3467,8 +3597,9 @@ async function handleSingleEdit() {
         if (!response.ok) throw await apiError(response, 'الخادم لم يحفظ التعديل.');
         
         closeEditModal();
+        showAlert('حُفظت الصوتية.', 'success');
         refreshLibraryContext();
-        
+
     } catch (error) {
         logEvent('error', 'Error updating track', {trackId, error: error.message});
         showError('تعذّر حفظ الصوتية', error);
@@ -3642,7 +3773,6 @@ function showSettingsError(what, error) {
 
 // Last saved settings, so the on/off switch can re-save without the form's unsaved edits
 let telegramSaved = null;
-let disconnectArmTimer = null;
 
 function renderTelegramStatus() {
     const box = document.getElementById('telegramStatus');
@@ -3683,21 +3813,9 @@ async function setTelegramEnabled(enabled) {
     }
 }
 
-// Two taps: the first arms the button, the second within 4s disconnects
 async function disconnectTelegram() {
     const btn = document.getElementById('telegramDisconnectBtn');
-    if (!btn.classList.contains('armed')) {
-        btn.classList.add('armed');
-        btn.textContent = 'اضغط مجددًا لحذف الرمز والمحادثة';
-        disconnectArmTimer = setTimeout(() => {
-            btn.classList.remove('armed');
-            btn.textContent = 'قطع الاتصال';
-        }, 4000);
-        return;
-    }
-    clearTimeout(disconnectArmTimer);
-    btn.classList.remove('armed');
-    btn.textContent = 'قطع الاتصال';
+    if (!armTwoTap(btn, 'اضغط مجددًا لحذف الرمز والمحادثة')) return;
     btn.disabled = true;
     try {
         const response = await fetch(`${API_BASE}/settings/telegram`, {method: 'DELETE'});

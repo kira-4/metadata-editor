@@ -30,32 +30,15 @@
 
         <!-- Shared feedback: visible on every page, announced to screen readers -->
         <div id="globalAlert" class="global-alert" role="status" aria-live="polite" style="display: none;"></div>
+        <!-- Live updates (SSE) dropped: the queue falls back to polling until it reconnects -->
+        <div id="connectionStatus" class="connection-status" role="status" aria-live="polite" hidden></div>
 
         <!-- Pending Page (existing) -->
         <div id="pendingPage" class="page-content">
             <main class="main-content">
-                <div id="workflowSteps" class="workflow-steps" style="display: none;">
-                    <div class="workflow-step active">1) الاستيراد</div>
-                    <div class="workflow-step active">2) اكتشاف العنوان/الفنان</div>
-                    <div class="workflow-step active">3) المراجعة والتعديل</div>
-                    <div class="workflow-step">4) حفظ البيانات الوصفية</div>
-                    <div class="workflow-step">5) الإرسال إلى Navidrome</div>
-                </div>
-
                 <div class="pending-toolbar">
-                    <button id="debugModeBtn" class="btn-secondary">تفعيل وضع التصحيح</button>
                     <button id="refreshPendingBtn" class="btn-secondary">تحديث القائمة</button>
                     <button id="confirmAllReadyBtn" class="btn-confirm-all" style="display: none;">✓ تأكيد ونقل الجاهزة</button>
-                    <button id="toggleLogsBtn" class="btn-secondary" style="display: none;">إظهار السجلات</button>
-                    <button id="downloadLogsBtn" class="btn-secondary" style="display: none;">تنزيل السجلات</button>
-                </div>
-
-
-                <div id="logPanel" class="log-panel" style="display: none;">
-                    <div class="log-panel-header">
-                        <h3>سجل العمليات</h3>
-                    </div>
-                    <pre id="logOutput" class="log-output"></pre>
                 </div>
 
                 <div class="queue-header">
@@ -254,6 +237,31 @@
                             <button type="button" id="telegramDisconnectBtn" class="btn-secondary btn-danger-quiet" style="display: none;">قطع الاتصال</button>
                         </div>
                     </form>
+                </section>
+
+                <section class="settings-card">
+                    <h3>أدوات التشخيص</h3>
+                    <p class="settings-description">
+                        لتتبّع مشكلة في الاستيراد أو النقل. لا تغيّر شيئًا في الملفات.
+                    </p>
+                    <label class="switch-label">
+                        <input type="checkbox" id="debugModeToggle" role="switch">
+                        وضع التصحيح: زر «معاينة» في كل بطاقة ومراحل المعالجة
+                    </label>
+                    <ol id="workflowSteps" class="workflow-steps" hidden>
+                        <li class="workflow-step">الاستيراد من Pinchflat</li>
+                        <li class="workflow-step">اقتراح العنوان والفنان</li>
+                        <li class="workflow-step">المراجعة في قائمة الانتظار</li>
+                        <li class="workflow-step">كتابة البيانات الوصفية</li>
+                        <li class="workflow-step">النقل إلى مكتبة Navidrome</li>
+                    </ol>
+                    <div class="settings-actions">
+                        <button type="button" id="toggleLogsBtn" class="btn-secondary" aria-expanded="false" aria-controls="logPanel">إظهار سجل العمليات</button>
+                        <button type="button" id="downloadLogsBtn" class="btn-secondary">تنزيل السجل</button>
+                    </div>
+                    <div id="logPanel" class="log-panel" hidden>
+                        <pre id="logOutput" class="log-output" dir="ltr"></pre>
+                    </div>
                 </section>
             </main>
         </div>
