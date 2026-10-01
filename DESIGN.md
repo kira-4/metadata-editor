@@ -218,6 +218,13 @@ Nothing lifts on hover. Cards, album cards and buttons answer hover with a tonal
 - **A file arrives** (SSE or poll, never on page load): the card fades up 8px (`card-arrive`). Its border starts Signal Blue and fades to Seam over 1.2s (`card-arrive-mark`), so a new file can still be found after the slide ends.
 - **A ready card opens** (phone): the fields fade in where they are (`card-reveal`). The height is not animated.
 - **Saving:** the confirm button's slow sweep (`confirm-sweep`). The rescan icon spins.
+- **The queue empties** after the last card leaves: the empty state fades in and a Settled Teal check draws once inside the tray (`check-draw`, 420ms). Revisiting the page shows it still.
+
+### Delight, kept to outcomes
+The only two "moments" report what really happened, in the product's words:
+- **Queue cleared:** «اكتملت المراجعة», with how many files went to the library since the page was opened, and «افتح المكتبة». With nothing confirmed yet it stays neutral: «لا ملفات في الانتظار», an empty muted tray, and no check.
+- **Confirm-all summary:** names where the files went: one folder «إلى مجلد «…»», two or three by name, more as a count («إلى 5 مجلدات في المكتبة»). A single confirm names its folder too. The folder is read from the server's `new_path`.
+No celebration beyond this: no confetti, no sound, no streaks.
 
 ### Named Rules
 **The Explained Change Rule.** Every animation names a change of state: arrived, left, opened, saving. A card that didn't change doesn't move. Rebuilding the list must never replay an entrance.

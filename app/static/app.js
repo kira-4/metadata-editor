@@ -22,6 +22,7 @@ let selectedGenres = {}; // itemId -> genre
 let customGenreVisible = {}; // itemId -> boolean
 const expandedCards = new Set(); // ready cards the user opened on a phone; they stay open
 let confirmAllRunning = false;
+const confirmedFolders = []; // the folder of every file confirmed since this page loaded, in order
 let sseConnection = null;
 let pendingPollTimer = null;
 let debugEnabled = false;
@@ -599,6 +600,25 @@ function removeItemCardFromDOM(itemId, container) {
     updatePendingCountUI();
 }
 
+// The empty queue says what happened: nothing yet, or the files reviewed since the page loaded
+// went to the library. `arriving` plays the one-time fade and check draw (the last card just left).
+function showEmptyState({arriving = false} = {}) {
+    const emptyState = document.getElementById('emptyState');
+    if (!emptyState) return;
+    const cleared = confirmedFolders.length > 0;
+    emptyState.classList.toggle('is-cleared', cleared);
+    document.getElementById('emptyTitle').textContent = cleared ? 'اكتملت المراجعة' : 'لا ملفات في الانتظار';
+    document.getElementById('emptyText').textContent = cleared
+        ? `نُقل ${arabicCount(confirmedFolders.length, FILE_FORMS)} إلى المكتبة منذ فتح الصفحة. تظهر الملفات الجديدة هنا تلقائيًا بعد تنزيلها.`
+        : 'تظهر الملفات الجديدة هنا تلقائيًا بعد تنزيلها.';
+    document.getElementById('emptyLibraryLink').hidden = !cleared;
+    if (arriving && !emptyState.classList.contains('show')) {
+        emptyState.classList.add('is-arriving');
+        setTimeout(() => emptyState.classList.remove('is-arriving'), 600);
+    }
+    emptyState.classList.add('show');
+}
+
 // Update badge, count, and empty-state without touching item cards
 function updatePendingCountUI() {
     const badge = document.getElementById('pendingBadge');
@@ -619,7 +639,7 @@ function updatePendingCountUI() {
         // The last card is still leaving: the empty state appears once it is gone
         if (!container?.querySelector('.card-removing')) {
             if (container) container.replaceChildren();
-            if (emptyState) emptyState.classList.add('show');
+            showEmptyState({arriving: true});
         }
     } else {
         if (emptyState) emptyState.classList.remove('show');
@@ -649,7 +669,7 @@ function renderItems(options = {}) {
     
     if (pendingItems.length === 0) {
         container.innerHTML = '';
-        emptyState.classList.add('show');
+        showEmptyState();
         itemCount.textContent = 'فارغة';
         updateConfirmAllButton();
         return;
@@ -1588,6 +1608,7 @@ async function confirmAllReady() {
         .map(el => Number(el.dataset.id))
         .filter(Boolean);
 
+    const firstConfirmed = confirmedFolders.length;
     let successCount = 0;
     let failCount = 0;
 
@@ -1605,13 +1626,24 @@ async function confirmAllReady() {
 
     confirmAllRunning = false;
 
+    const moved = `نُقل ${arabicCount(successCount, FILE_FORMS)}${describeFolders(confirmedFolders.slice(firstConfirmed))}`;
     if (failCount === 0) {
-        showAlert(`نُقل ${arabicCount(successCount, FILE_FORMS)} إلى المكتبة.`, 'success');
+        showAlert(`${moved}.`, 'success', 8000);
     } else {
-        showAlert(`نُقل ${arabicCount(successCount, FILE_FORMS)}، وبقي ${arabicCount(failCount, FILE_FORMS)} في القائمة بسبب خطأ.`, 'warn');
+        showAlert(`${moved}، وبقي ${arabicCount(failCount, FILE_FORMS)} في القائمة بسبب خطأ.`, 'warn');
     }
 
     updateConfirmAllButton();
+}
+
+// Where a batch went: up to three folders by name, more as a count
+function describeFolders(folders) {
+    const names = [...new Set(folders.filter(Boolean))];
+    if (!names.length) return ' إلى المكتبة';
+    if (names.length > 3) return ` إلى ${arabicCount(names.length, FOLDER_FORMS_GENITIVE)} في المكتبة`;
+    const quoted = names.map(name => `«${name}»`);
+    const list = quoted.length === 1 ? quoted[0] : `${quoted.slice(0, -1).join('، ')} و${quoted.at(-1)}`;
+    return names.length === 1 ? ` إلى مجلد ${list}` : ` إلى ${list}`;  // 2–3 folders: the names say it
 }
 
 // Update field via API
@@ -1789,10 +1821,13 @@ async function confirmItem(itemId, onConflict) {
         if (!response.ok) {
             throw await apiError(response, 'الخادم لم يُكمل التأكيد.');
         }
+        const {new_path: newPath} = await response.json().catch(() => ({}));
+        // {album artist}/{title}/{file}: the folder is the third part from the end
+        confirmedFolders.push(String(newPath || '').split('/').slice(-3)[0] || shown || '');
         
         // The file left the queue: its card leaves, the others close the gap
         removeItemCardFromDOM(itemId);
-        showAlert(`نُقل «${title}» إلى المكتبة.`, 'success');
+        showAlert(`نُقل «${title}»${describeFolders(confirmedFolders.slice(-1))}.`, 'success');
         logEvent('info', 'Item confirmed and moved', {itemId});
         libraryState.stale = true;
         return true;
@@ -3100,6 +3135,7 @@ const TRACK_FORMS = ['صوتية واحدة', 'صوتيتان', 'صوتيات', 
 const FILE_FORMS = ['ملف واحد', 'ملفان', 'ملفات', 'ملفًا', 'ملف'];
 const ARTIST_FORMS = ['فنان واحد', 'فنانان', 'فنانين', 'فنانًا', 'فنان'];
 const ALBUM_FORMS = ['ألبوم واحد', 'ألبومان', 'ألبومات', 'ألبومًا', 'ألبوم'];
+const FOLDER_FORMS_GENITIVE = ['مجلد واحد', 'مجلدين', 'مجلدات', 'مجلدًا', 'مجلد'];  // after «إلى»
 
 function setupBatchFieldControls() {
     if (window.batchFieldControlsAttached) return;

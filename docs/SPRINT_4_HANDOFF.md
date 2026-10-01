@@ -1,6 +1,6 @@
 # Sprint 4 handoff
 
-**Date:** 2026-09-30 · **Plan:** [SPRINT_4_PLAN.md](SPRINT_4_PLAN.md) · **Paused at:** Track B, step **B7 (delight)**: not started. B0–B6 are merged.
+**Date:** 2026-09-30 · **Plan:** [SPRINT_4_PLAN.md](SPRINT_4_PLAN.md) · **Paused at:** Track B, step **B8 (optimize)**: not started. B0–B7 are merged.
 
 ## Done
 
@@ -76,6 +76,10 @@ Tests went from 123 to 161 (new: `test_batch_edit`, `test_rescan_status`, `test_
   - **CSS:** motion tokens (`--dur-fast/base/enter`, `--ease-out/in`). All 11 `transition: all` now name their properties. Hover lifts, glows and the card's hover top bar are gone (filled buttons brighten instead). The `#libraryPage` padding transition is gone. There is one `prefers-reduced-motion` block: fades stay; translate, FLIP, sweep and spin go. The detector went from 17 to 15 (`layout-transition`, `side-tab` cleared).
   - `DESIGN.md` gained a **Motion** section (tokens, the four moments, three named rules) and an updated Elevation note.
 
+- **B7, delight** (#55): only the two planned moments, both reporting real outcomes.
+  - **Empty queue:** `showEmptyState()` (used by `renderItems` and `updatePendingCountUI`) has two states. **Idle**: «لا ملفات في الانتظار», an inline SVG tray in muted grey (it replaced the 📂). **Cleared** (`.is-cleared`, once `confirmedFolders` is non-empty): «اكتملت المراجعة», how many files went to the library since the page was opened, an «افتح المكتبة» link, and a Settled Teal check in the tray. When the last card's exit finishes, the state fades in and the check draws once (`.is-arriving`, removed after 600ms). It does not replay on route changes. Under reduced motion: fade only. `role="status"`.
+  - **Confirm-all summary:** `describeFolders()` names the destination folders: «نُقل 3 ملفات إلى «هيئة الزهراء» و«قناة المواليد».» It shows one folder as «إلى مجلد «…»», 4+ as a count (`FOLDER_FORMS_GENITIVE`, since it follows «إلى»). The alert stays 8s. A single confirm names its folder too. `confirmItem` reads `new_path` from the confirm response (`{album artist}/{title}/{file}`) into `confirmedFolders`. No backend change.
+
 ### Behaviour changes worth knowing
 - Changing the artist (in batch or single edit) no longer silently changes the album artist, which is the folder.
 - A genre tag already embedded in a downloaded file is now preselected on its card.
@@ -83,9 +87,8 @@ Tests went from 123 to 161 (new: `test_batch_edit`, `test_rescan_status`, `test_
 
 ## Next (in order)
 
-1. **B7, delight:** the empty queue and the confirm-all summary only (it already uses `FILE_FORMS`). The empty state now appears only after the last card's exit (`updatePendingCountUI`), so a delight moment there can build on that beat. The plan says calm: no confetti (DESIGN.md Don'ts).
-2. **B8, optimize:** Cairo is loaded from Google Fonts (decide whether to self-host a subset). Also cut DOM work on SSE updates: `addArtistRow`/`removeArtistRow` re-render the whole card.
-3. **B9, audit + polish:**
+1. **B8, optimize:** Cairo is loaded from Google Fonts (decide whether to self-host a subset). Also cut DOM work on SSE updates: `addArtistRow`/`removeArtistRow` re-render the whole card.
+2. **B9, audit + polish:**
    - Flatten all gradients to solid colours: title, nav pill, buttons, chips, `.btn-confirm-all`, `.artwork-placeholder`, `.album-artwork`.
    - Replace the 🎵 in the nav brand.
    - `.settings-card` still has a resting `box-shadow` (Flat-At-Rest Rule).
@@ -120,6 +123,8 @@ Tests went from 123 to 161 (new: `test_batch_edit`, `test_rescan_status`, `test_
   With no OpenRouter key every item is needs-review. To get **ready** cards (collapsed summary, ready bar), mark two as complete scanner suggestions:
   `sqlite3 $S/data/metadata_editor.db "update pending_items set status='pending', error_message=NULL, genre='لطميات' where id in (3,4);"`
   Run `curl -X POST localhost:8091/api/library/rescan` to index the library (the الاكرف / الأكرف pair triggers the variants notice). Confirm-all really moves files, so regenerate the env if you need ready cards again.
+- **Scratch location:** the session scratchpad can disappear mid-session. B7 built the env under `.playwright-mcp/env` (untracked, inside the repo); `S=$PWD/.playwright-mcp/env` works with the recipe above.
+- **Playwright MCP locked:** if the MCP says "Browser is already in use for …mcp-chrome-…", another session's `playwright-mcp` owns the profile. Don't kill it. Run a standalone script with its own Chrome instead: `require('/Users/akbaralhashim/.npm/_npx/9833c18b2d85bc59/node_modules/playwright')`, `chromium.launch({channel: 'chrome'})`, `newPage({viewport, reducedMotion})`. B7's checks were `.playwright-mcp/b7check.cjs` and `b7rm.cjs`.
 - **Browser:** changing only the `#/route` doesn't reload the page, so call `location.reload()` after editing static files (the server sends `no-cache`). Screenshots go to `.playwright-mcp/` (untracked; the MCP only writes inside the repo). Don't commit it. Debug mode may be on in that browser's `localStorage`, which shows «معاينة دون كتابة» on cards. A synthetic `keydown` dispatched on `document` throws in `handleLibraryNav` (`event.target.closest`). That's a test artefact, since real keys target an element.
 - **Shell:** `ls` is aliased to eza and rejects some args, so use `/bin/ls`. BSD `sed -i ''`.
 - **Micro commits:** per concern, squash-merged per step. For `app.js`/`style.css`, where one file holds several concerns, stage hunks by regex with this helper (save it to the scratchpad):
