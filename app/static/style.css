@@ -555,6 +555,36 @@ body {
     margin-bottom: var(--spacing-lg);
 }
 
+/* «طبّق «…» على 3 بطاقات أخرى من القناة»: a text action under the chips, and its result line */
+.channel-genre-offer {
+    display: block;
+    min-height: 44px;
+    margin-top: var(--spacing-xs);
+    padding: 0 var(--spacing-sm);
+    margin-inline-start: calc(-1 * var(--spacing-sm));
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--accent-primary);
+    font-family: var(--font-family);
+    font-size: var(--text-label);
+    text-align: start;
+    cursor: pointer;
+}
+
+.channel-genre-offer:hover {
+    background: var(--bg-tertiary);
+}
+
+.channel-genre-done {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    margin-top: var(--spacing-xs);
+    color: var(--success);
+    font-size: var(--text-label);
+}
+
 /* A genre decided before review, folded to its head line until «تغيير» */
 .genre-section.is-folded .genre-buttons,
 .genre-section.is-folded .custom-genre-wrapper {
