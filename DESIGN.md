@@ -178,7 +178,11 @@ Roles differ on more than size: Title is 600 in Parchment Text, Label is 600 in 
 
 ## Layout
 
-A single centred column (max 1400px, 2rem padding; 1rem on phones). The review queue is a grid of cards (min 400px columns) that collapses to one column on phones. The library has tabs (artists, albums, genres, all tracks), a search/sort bar, then a list or album grid. A fixed selection bar appears at the bottom in multi-select mode.
+A single centred column (max 1400px, 2rem padding; 1rem on phones). The review queue is a grid of cards (min 400px columns) that collapses to one column on phones, ready cards first and needs-review cards last. The library has an unboxed page header (title, a stats line, select and rescan), then one browse panel (four tabs, then search and sort on one row), then a list or album grid. A fixed selection bar appears at the bottom in multi-select mode.
+
+**The Sticky Minimum Rule.** Only what you need while scrolling sticks: the library's browse panel (about 130px) and, on phones, the queue's ready bar. Page headers, stats and notices scroll away.
+
+**The One Way In, One Way Out Rule.** Multi-select has one entry (the «تحديد متعدد» toggle, `aria-pressed`, fixed label) and one labelled exit («إنهاء التحديد» in the selection bar). In selection mode the whole track card is the toggle and the checkbox shows its state; no per-card select buttons.
 
 Breakpoints: 768px (tablet adjustments) and 600px (phone: stacked nav, full-width fields, genre chips in rows of three, small artwork beside the source line, 44px touch targets).
 
@@ -232,6 +236,8 @@ Gently rounded throughout: 0.5rem for controls (inputs, buttons, chips), 0.75rem
 
 ### Review Card (signature)
 Artwork and source line, title input, one row per artist (combobox with suggestions, remove ×), "+ add artist", the folder line ("المجلد:" with a select when there are several artists, and an RTL destination path), genre chips, then the full-width confirm button, a status line and a quiet delete.
+
+**Collapsed (phones, ≤600px):** a complete scanner suggestion (`pending`, with title, artist and genre) shows only a summary (title; artists · genre; destination path) with an «تعديل» tag, plus the real confirm button. Tapping the summary opens the full card for good. Cards that need review, or that the operator has opened, never collapse. A sticky ready bar («N من M جاهزة» + confirm-all) sits at the bottom of the queue on phones and replaces the toolbar's confirm-all.
 
 ## Do's and Don'ts
 
