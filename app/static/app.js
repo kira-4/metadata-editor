@@ -2663,7 +2663,6 @@ function renderDesktopTrackList(tracks) {
                     ${track.year ? ' • ' + track.year : ''}
                 </div>
             </div>
-            ${isSelected && libraryState.multiSelectMode ? '<span class="selection-check">✓</span>' : ''}
         </div>
         `;
     }).join('');
@@ -2693,17 +2692,13 @@ function renderMobileTrackCards(tracks) {
                 </div>
                 ` : ''}
             </div>
+            ${libraryState.multiSelectMode ? '' : `
             <div class="track-mobile-actions">
                 <button type="button" class="btn-secondary track-mobile-action" data-action="edit" data-track-id="${track.id}">
                     تعديل
                 </button>
-                ${
-                    libraryState.multiSelectMode
-                        ? `<button type="button" class="btn-secondary track-mobile-action" data-action="toggle-select" data-track-id="${track.id}">${isSelected ? 'إلغاء' : 'تحديد'}</button>`
-                        : `<button type="button" class="btn-secondary track-mobile-action" data-action="more" data-track-id="${track.id}">${isExpanded ? 'أقل' : 'المزيد'}</button>`
-                }
-            </div>
-            ${isSelected && libraryState.multiSelectMode ? '<span class="selection-check">✓</span>' : ''}
+                <button type="button" class="btn-secondary track-mobile-action" data-action="more" data-track-id="${track.id}">${isExpanded ? 'أقل' : 'المزيد'}</button>
+            </div>`}
         </div>
         `;
     }).join('');
@@ -2773,13 +2768,6 @@ function handleTrackMobileAction(event) {
         if (trackData) {
             showEditModal('single', trackData);
         }
-        return;
-    }
-
-    if (action === 'toggle-select') {
-        toggleTrackSelection(trackId);
-        updateSelectionBar();
-        rerenderActiveTrackContext();
         return;
     }
 
@@ -2972,11 +2960,7 @@ function selectAllAlbumTracks(tracks) {
     // Enable multi-select mode if not already
     if (!libraryState.multiSelectMode) {
         libraryState.multiSelectMode = true;
-        const btn = document.getElementById('multiSelectBtn');
-        if (btn) {
-            btn.textContent = 'إلغاء التحديد';
-            btn.classList.add('active');
-        }
+        setMultiSelectButton(true);
     }
     
     // Clear previous selection and select all tracks in this album
@@ -3048,8 +3032,19 @@ function updateSelectionBar() {
     selectionBar.style.display = 'flex';
     // Add padding to prevent selection bar from overlaying content
     if (libraryPage) libraryPage.style.paddingBottom = isMobileLibraryViewport() ? '132px' : '80px';
-    document.getElementById('selectionCount').textContent = count > 0 ? `${count} محدد` : 'اختر العناصر';
+    document.getElementById('selectionCount').textContent = count > 0
+        ? `المحدد: ${arabicCount(count, TRACK_FORMS)}`
+        : 'اضغط على الصوتيات لتحديدها';
     document.getElementById('selectionDetails').textContent = '';
+}
+
+// One selection model: «تحديد متعدد» is a pressed/unpressed toggle with a fixed label,
+// and the selection bar's «إنهاء التحديد» is the one labelled way out
+function setMultiSelectButton(active) {
+    const btn = document.getElementById('multiSelectBtn');
+    if (!btn) return;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', String(active));
 }
 
 // Toggle Multi-Select Mode
@@ -3059,12 +3054,7 @@ function toggleMultiSelectMode() {
         libraryState.selectedTracks.clear();
     }
     
-    // Update button text
-    const btn = document.getElementById('multiSelectBtn');
-    if (btn) {
-        btn.textContent = libraryState.multiSelectMode ? 'إلغاء التحديد' : 'تحديد متعدد';
-        btn.classList.toggle('active', libraryState.multiSelectMode);
-    }
+    setMultiSelectButton(libraryState.multiSelectMode);
     
     // Update selection bar visibility
     updateSelectionBar();
@@ -3078,12 +3068,7 @@ function clearSelection() {
     libraryState.selectedTracks.clear();
     libraryState.multiSelectMode = false;
     
-    // Reset button text
-    const btn = document.getElementById('multiSelectBtn');
-    if (btn) {
-        btn.textContent = 'تحديد متعدد';
-        btn.classList.remove('active');
-    }
+    setMultiSelectButton(false);
     
     document.querySelectorAll('.list-item-checkbox').forEach(cb => cb.checked = false);
     updateSelectionBar();
