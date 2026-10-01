@@ -705,6 +705,7 @@ function createItemCard(item) {
                             ${artistRowsHtml}
                         </div>
                         <button type="button" class="btn-add-artist" data-id="${item.id}">+ إضافة فنان</button>
+                        <p class="artist-hint" aria-live="polite"></p>
                     </div>
 
                     <div class="destination-preview" id="destination-${item.id}" aria-live="polite"></div>
@@ -1359,8 +1360,10 @@ function updateConfirmButton(itemId) {
     const missing = Object.keys(MISSING_FIELD_ACTIONS).filter(key => !present[key]);
 
     confirmBtn.disabled = missing.length > 0;
+    // A failed attempt keeps its "retry" look until the card stops being confirmable
+    if (missing.length > 0) confirmBtn.classList.remove('is-failed');
     // A disabled confirm says what it is waiting for ("أضف فنانًا واختر النوع")
-    if (!confirmBtn.dataset.busy) {
+    if (!confirmBtn.dataset.busy && !confirmBtn.classList.contains('is-failed')) {
         confirmBtn.textContent = missing.length
             ? missing.map(key => MISSING_FIELD_ACTIONS[key]).join(' و')
             : CONFIRM_LABEL;
@@ -1368,6 +1371,15 @@ function updateConfirmButton(itemId) {
     card.querySelectorAll('.review-checklist [data-check]').forEach(li => {
         li.classList.toggle('done', present[li.dataset.check]);
     });
+
+    // Many artists usually means the suggestion split one name (or a title) into several
+    const artistCount = Array.from(artistInputs).filter(input => input.value.trim()).length;
+    const artistHint = card.querySelector('.artist-hint');
+    if (artistHint) {
+        artistHint.textContent = artistCount >= 4
+            ? `في هذه البطاقة ${artistCount} فنانين. تأكد أن الاقتراح لم يقسم اسمًا واحدًا إلى عدة أسماء.`
+            : '';
+    }
     updateConfirmAllButton();
     queueDestinationPreview(itemId);
 }
@@ -1507,6 +1519,8 @@ async function confirmAllReady() {
 
 // Update field via API
 async function updateField(itemId, field, value) {
+    const label = FIELD_LABELS[field] || field;
+    setItemStatus(itemId, `جارٍ حفظ ${label}…`, 'saving');
     try {
         const payload = {};
         payload[field] = typeof value === 'string' ? value.trim() : value;
@@ -1537,21 +1551,29 @@ async function updateField(itemId, field, value) {
         }
         
         updateConfirmButton(itemId);
-        setItemStatus(itemId, 'تم حفظ التعديل', 'success');
+        setItemStatus(itemId, `حُفظ ${label}`, 'success', 3000);
         
     } catch (error) {
-        const label = FIELD_LABELS[field] || field;
         logEvent('error', `Update ${field} failed`, {itemId, error: error.message});
         showError(`لم يُحفظ ${label}`, error);
         setItemStatus(itemId, `لم يُحفظ ${label}. عدّله مجددًا أو أكّد مباشرة.`, 'error');
     }
 }
 
-function setItemStatus(itemId, message, type = 'info') {
+// fadeAfter (ms): routine confirmations clear themselves; errors and warnings stay
+function setItemStatus(itemId, message, type = 'info', fadeAfter = 0) {
     const statusEl = document.getElementById(`itemStatus-${itemId}`);
     if (!statusEl) return;
     statusEl.textContent = message;
     statusEl.className = `item-status ${type}`;
+    if (fadeAfter > 0) {
+        setTimeout(() => {
+            if (statusEl.textContent === message) {
+                statusEl.textContent = '';
+                statusEl.className = 'item-status';
+            }
+        }, fadeAfter);
+    }
 }
 
 async function fetchDryRun(itemId) {
@@ -1636,6 +1658,8 @@ async function confirmItem(itemId, onConflict) {
     // Disable button
     confirmBtn.disabled = true;
     confirmBtn.dataset.busy = '1';
+    confirmBtn.classList.remove('is-failed');
+    confirmBtn.classList.add('is-saving');
     confirmBtn.textContent = 'جارٍ الحفظ والنقل…';
     setItemStatus(itemId, 'تُكتب البيانات الوصفية ثم يُنقل الملف…', 'info');
 
@@ -1656,6 +1680,7 @@ async function confirmItem(itemId, onConflict) {
             if (body.detail?.code === 'destination_exists') {
                 showDestinationChoice(itemId, body.detail.existing_path);
                 delete confirmBtn.dataset.busy;
+                confirmBtn.classList.remove('is-saving');
                 confirmBtn.disabled = false;
                 confirmBtn.textContent = CONFIRM_LABEL;
                 return false;
@@ -1686,9 +1711,10 @@ async function confirmItem(itemId, onConflict) {
         logEvent('error', 'Error confirming item', {itemId, error: error.message});
         showError('لم يُنقل الملف', error);
         delete confirmBtn.dataset.busy;
+        confirmBtn.classList.remove('is-saving');
+        confirmBtn.classList.add('is-failed');
         confirmBtn.disabled = false;
         confirmBtn.textContent = 'أعد محاولة النقل';
-        confirmBtn.style.background = 'var(--error)';
         setItemStatus(itemId, `لم يُنقل: ${describeError(error).message}`, 'error');
         return false;
     }
@@ -1759,7 +1785,7 @@ async function deleteItem(itemId) {
         // Remove item from list (optimistic update)
         pendingItems = pendingItems.filter(i => i.id !== itemId);
         renderItems();
-        showAlert('نُقل الملف إلى سلة المهملات.', 'success');
+        showAlert('نُقل الملف إلى سلة المهملات. يمكنك استعادته من مجلد السلة قبل حذفه التلقائي.', 'success');
         logEvent('info', 'Pending item deleted', {itemId});
         
     } catch (error) {
@@ -2821,7 +2847,7 @@ function renderAlbums(albums) {
             <div class="album-artwork">
                 ${album.artwork_id 
                     ? `<img src="/api/library/tracks/${album.artwork_id}/artwork?t=${Date.now()}" alt="">` 
-                    : '🎵'}
+                    : '<span class="artwork-missing" aria-hidden="true">♪</span>'}
             </div>
             <div class="album-name">${escapeHtml(album.name) || 'بدون اسم'}</div>
             <div class="album-artist">${escapeHtml(album.album_artist) || 'غير معروف'}</div>
@@ -3088,7 +3114,7 @@ async function viewArtistAlbums(artistName, pushToStack = true) {
                 <div class="album-artwork">
                     ${album.artwork_id 
                         ? `<img src="/api/library/tracks/${album.artwork_id}/artwork?t=${Date.now()}" alt="">` 
-                        : '🎵'}
+                        : '<span class="artwork-missing" aria-hidden="true">♪</span>'}
                 </div>
                 <div class="album-name">${escapeHtml(album.name) || 'بدون اسم'}</div>
                 <div class="list-item-meta">${album.track_count} صوتية</div>
@@ -3371,6 +3397,7 @@ function renderBatchSummary() {
     }
     summary.innerHTML = html;
     saveBtn.disabled = batchEdit.saving || changed.length === 0;
+    saveBtn.textContent = batchEdit.saving ? 'جارٍ الحفظ…' : 'حفظ';
 }
 
 // Show Edit Modal
@@ -3392,7 +3419,9 @@ function showEditModal(mode, trackData = null) {
         input.placeholder = '';
         input.closest('.form-group').classList.remove('batch-changed');
     });
-    document.getElementById('saveBatchEdit').disabled = false;
+    const saveBtn = document.getElementById('saveBatchEdit');
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'حفظ';
     
     // Artwork UI Container (Dynamically added if missing)
     let artworkSection = document.getElementById('editArtworkSection');
@@ -3416,7 +3445,7 @@ function showEditModal(mode, trackData = null) {
                 <div class="artwork-preview">
                     ${trackData.has_artwork 
                         ? `<img src="/api/library/tracks/${trackData.id}/artwork?t=${Date.now()}" alt="">` 
-                        : '<span class="artwork-placeholder">🎵</span>'}
+                        : '<span class="artwork-missing" aria-hidden="true">♪</span>'}
                 </div>
                 <div class="artwork-upload-controls">
                     <input type="file" id="artworkUpload" accept="image/jpeg,image/png" style="display: none;">
@@ -3509,6 +3538,19 @@ async function handleEditSubmit(event) {
 // Handle Single Edit
 async function handleSingleEdit() {
     const trackId = libraryState.editTrackData.id;
+    const saveBtn = document.getElementById('saveBatchEdit');
+    if (saveBtn.disabled) return;  // a save is already running
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'جارٍ الحفظ…';
+    try {
+        await saveSingleTrack(trackId);
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'حفظ';
+    }
+}
+
+async function saveSingleTrack(trackId) {
     
     // 1. Upload Artwork if selected
     const fileInput = document.getElementById('artworkUpload');
@@ -3541,7 +3583,7 @@ async function handleSingleEdit() {
         year: parseInt(document.getElementById('batchYear').value, 10) || null
     };
     if (!payload.title || !payload.artist) {
-        showAlert('العنوان والفنان مطلوبان', 'warn');
+        showAlert('أضف العنوان والفنان قبل الحفظ.', 'warn');
         return;
     }
     
@@ -3555,8 +3597,9 @@ async function handleSingleEdit() {
         if (!response.ok) throw await apiError(response, 'الخادم لم يحفظ التعديل.');
         
         closeEditModal();
+        showAlert('حُفظت الصوتية.', 'success');
         refreshLibraryContext();
-        
+
     } catch (error) {
         logEvent('error', 'Error updating track', {trackId, error: error.message});
         showError('تعذّر حفظ الصوتية', error);
