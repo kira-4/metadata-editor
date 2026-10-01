@@ -150,7 +150,7 @@ A cool, low-light palette: four navy surface steps, three grey text tones, and a
 
 ## Typography
 
-**Body Font:** Cairo (400/600/700, Google Fonts) with the system UI stack as fallback.
+**Body Font:** Cairo (400/600/700) with the system UI stack as fallback. It is self-hosted in `app/static/fonts/` as Google Fonts' v31 variable subsets: Arabic, which is preloaded, and Latin, which loads only when a page has Latin text. Both use `font-display: swap`; the licence is SIL OFL 1.1 (`fonts/OFL.txt`). To update the font, give the files a new version suffix (`-v32`), because they are cached as immutable.
 **Label/Mono Font:** system monospace for paths and code fragments.
 
 **Character:** Cairo is a geometric Arabic sans with a matching Latin, legible at small sizes on a phone and neutral enough for religious titles.

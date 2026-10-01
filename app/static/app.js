@@ -256,9 +256,10 @@ function getArtistState(itemId) {
 
 function cleanupArtistState() {
     const activeIds = new Set(pendingItems.map(item => item.id));
-    for (const itemId of artistComboboxState.keys()) {
-        if (!activeIds.has(itemId)) {
-            artistComboboxState.delete(itemId);
+    // Combobox state is per row ("12_artist_0"), not per item
+    for (const rowId of artistComboboxState.keys()) {
+        if (!activeIds.has(getItemIdFromRowId(rowId))) {
+            artistComboboxState.delete(rowId);
         }
     }
 
@@ -591,7 +592,7 @@ function removeItemCardFromDOM(itemId, container) {
     pendingItems = pendingItems.filter(i => i.id !== itemId);
     albumArtistChoice.delete(itemId);
     shownAlbumArtist.delete(itemId);
-    artistComboboxState.delete(itemId);
+    cleanupArtistState();
     artistDraftValues.delete(itemId);
     titleDraftValues.delete(itemId);
     delete selectedGenres[itemId];
@@ -692,6 +693,46 @@ function renderItems(options = {}) {
     }
 }
 
+// The artist rows of one card. Row ids carry the index, so the rows are rebuilt together.
+function renderArtistRowsHtml(itemId, artistList) {
+    return artistList.map((artist, index) => `
+        <div class="artist-row" data-item-id="${itemId}" data-row-index="${index}">
+            <div class="artist-combobox" data-row-id="${itemId}_artist_${index}">
+                <input
+                    type="text"
+                    class="field-input artist-input"
+                    value="${escapeHtml(artist)}"
+                    data-row-id="${itemId}_artist_${index}"
+                    data-item-id="${itemId}"
+                    data-combobox-input="true"
+                    placeholder="الفنان (مطلوب)"
+                    autocomplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded="false"
+                    aria-haspopup="listbox"
+                    aria-controls="artist-suggestions-${itemId}-${index}"
+                >
+                <button type="button" class="artist-dropdown-toggle" data-row-id="${itemId}_artist_${index}" aria-label="اقتراحات الفنان">
+                    <span class="artist-dropdown-icon">▾</span>
+                </button>
+                <div class="artist-suggestions" id="artist-suggestions-${itemId}-${index}" role="listbox"></div>
+            </div>
+            ${artistList.length > 1 ? `<button type="button" class="btn-remove-artist" data-item-id="${itemId}" data-row-index="${index}" aria-label="إزالة فنان">×</button>` : ''}
+        </div>
+    `).join('');
+}
+
+// Artist inputs and their remove buttons (they are rebuilt on add/remove, the card is not)
+function attachArtistRowListeners(itemId, card) {
+    card.querySelectorAll('.artist-input').forEach(input => {
+        setupArtistInput(input.dataset.rowId, input, card);
+    });
+    card.querySelectorAll('.btn-remove-artist').forEach(btn => {
+        btn.addEventListener('click', () => removeArtistRow(itemId, parseInt(btn.dataset.rowIndex, 10)));
+    });
+}
+
 // Create item card HTML
 function createItemCard(item) {
     const hasError = item.status === 'error';
@@ -709,32 +750,7 @@ function createItemCard(item) {
     }
     artistRowsMap.set(item.id, artistList);
 
-    const artistRowsHtml = artistList.map((artist, index) => `
-        <div class="artist-row" data-item-id="${item.id}" data-row-index="${index}">
-            <div class="artist-combobox" data-row-id="${item.id}_artist_${index}">
-                <input
-                    type="text"
-                    class="field-input artist-input"
-                    value="${escapeHtml(artist)}"
-                    data-row-id="${item.id}_artist_${index}"
-                    data-item-id="${item.id}"
-                    data-combobox-input="true"
-                    placeholder="الفنان (مطلوب)"
-                    autocomplete="off"
-                    role="combobox"
-                    aria-autocomplete="list"
-                    aria-expanded="false"
-                    aria-haspopup="listbox"
-                    aria-controls="artist-suggestions-${item.id}-${index}"
-                >
-                <button type="button" class="artist-dropdown-toggle" data-row-id="${item.id}_artist_${index}" aria-label="اقتراحات الفنان">
-                    <span class="artist-dropdown-icon">▾</span>
-                </button>
-                <div class="artist-suggestions" id="artist-suggestions-${item.id}-${index}" role="listbox"></div>
-            </div>
-            ${artistList.length > 1 ? `<button type="button" class="btn-remove-artist" data-item-id="${item.id}" data-row-index="${index}" aria-label="إزالة فنان">×</button>` : ''}
-        </div>
-    `).join('');
+    const artistRowsHtml = renderArtistRowsHtml(item.id, artistList);
 
     const problem = (hasError || isManual) ? describeItemProblem(item) : null;
 
@@ -882,69 +898,51 @@ function rebuildArtistValue(itemId) {
     return joined;
 }
 
-function addArtistRow(itemId) {
-    // Sync from DOM to avoid stale values overwriting what the user typed
-    const existingCard = document.querySelector(`.item-card[data-id="${itemId}"]`);
-    if (existingCard) {
-        const inputs = existingCard.querySelectorAll('.artist-input');
-        const currentRows = [];
-        inputs.forEach(input => currentRows.push(input.value));
-        if (currentRows.length > 0) {
-            artistRowsMap.set(itemId, currentRows);
-        }
-    }
-    const rows = artistRowsMap.get(itemId) || [''];
-    rows.push('');
-    artistRowsMap.set(itemId, rows);
-    const joined = rows.join('; ');
-    const item = pendingItems.find(p => p.id === itemId);
-    if (item) {
-        item.current_artist = joined;
-    }
-    artistDraftValues.set(itemId, joined);
-    // Re-render the card to add the new row
-    const container = document.getElementById('pendingItems');
-    if (existingCard && item) {
-        existingCard.outerHTML = createItemCard(item);
-        attachItemListeners(itemId);
-        // Focus the new artist input
-        const newCard = container.querySelector(`.item-card[data-id="${itemId}"]`);
-        const newInputs = newCard?.querySelectorAll('.artist-input');
-        if (newInputs && newInputs.length > 0) {
-            setTimeout(() => {
-                newInputs[newInputs.length - 1].focus();
-            }, 0);
-        }
-    }
+// Rows as the user sees them right now (the DOM is the truth while they type)
+function readArtistRows(itemId) {
+    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    const rows = card ? Array.from(card.querySelectorAll('.artist-input'), input => input.value) : [];
+    return rows.length ? rows : (artistRowsMap.get(itemId) || ['']);
 }
 
-function removeArtistRow(itemId, rowIndex) {
-    // Sync from DOM to avoid stale values
-    const existingCard = document.querySelector(`.item-card[data-id="${itemId}"]`);
-    if (existingCard) {
-        const inputs = existingCard.querySelectorAll('.artist-input');
-        const currentRows = [];
-        inputs.forEach(input => currentRows.push(input.value));
-        if (currentRows.length > 0) {
-            artistRowsMap.set(itemId, currentRows);
-        }
-    }
-    const rows = artistRowsMap.get(itemId) || [''];
-    if (rows.length <= 1) return;
-    rows.splice(rowIndex, 1);
+// Rebuild only the artist rows of a card. Replacing the whole card used to drop the status
+// line, the destination preview and a typed custom genre, and left confirm disabled.
+function renderArtistRows(itemId, rows, focusIndex = null) {
+    const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
+    const list = card?.querySelector('.multi-artist-list');
+    if (!list) return;
     artistRowsMap.set(itemId, rows);
     const joined = rows.join('; ');
     const item = pendingItems.find(entry => entry.id === itemId);
-    if (item) {
-        item.current_artist = joined;
-    }
+    if (item) item.current_artist = joined;
     artistDraftValues.set(itemId, joined);
-    updateField(itemId, 'artist', joined);
-    // Re-render the card
-    if (existingCard && item) {
-        existingCard.outerHTML = createItemCard(item);
-        attachItemListeners(itemId);
-    }
+
+    // Row ids shift with the indexes: drop the old rows' combobox state with them
+    list.querySelectorAll('.artist-input').forEach(input => {
+        const state = artistComboboxState.get(input.dataset.rowId);
+        if (state) clearTimeout(state.debounceTimer);
+        artistComboboxState.delete(input.dataset.rowId);
+    });
+    // renderArtistRowsHtml escapes every artist value
+    // eslint-disable-next-line no-unsanitized/property
+    list.innerHTML = renderArtistRowsHtml(itemId, rows);
+    attachArtistRowListeners(itemId, card);
+    updateConfirmButton(itemId);
+    if (focusIndex !== null) list.querySelectorAll('.artist-input')[focusIndex]?.focus();
+}
+
+function addArtistRow(itemId) {
+    const rows = readArtistRows(itemId);
+    rows.push('');
+    renderArtistRows(itemId, rows, rows.length - 1);
+}
+
+function removeArtistRow(itemId, rowIndex) {
+    const rows = readArtistRows(itemId);
+    if (rows.length <= 1) return;
+    rows.splice(rowIndex, 1);
+    renderArtistRows(itemId, rows, Math.min(rowIndex, rows.length - 1));
+    updateField(itemId, 'artist', rows.map(r => r.trim()).filter(Boolean).join('; '));
 }
 
 async function fetchArtistSuggestions(query, limit = ARTIST_SUGGEST_LIMIT) {
@@ -1069,7 +1067,9 @@ function formatArtistScore(score) {
 }
 
 function closeArtistDropdown(itemId) {
-    const state = getArtistState(itemId);
+    // Closing must not create state: a removed row's delayed blur would bring it back
+    const state = artistComboboxState.get(itemId);
+    if (!state) return;
     state.isOpen = false;
     state.highlightedIndex = -1;
     renderArtistSuggestions(itemId);
@@ -1318,27 +1318,13 @@ function attachItemListeners(itemId) {
         titleInput.addEventListener('blur', () => updateField(itemId, 'title', titleInput.value));
     }
 
-    // Artist row input listeners
-    const artistInputs = card.querySelectorAll('.artist-input');
-    artistInputs.forEach(input => {
-        const rowId = input.dataset.rowId;
-        setupArtistInput(rowId, input, card);
-    });
+    attachArtistRowListeners(itemId, card);
 
     // Add artist button
     const addArtistBtn = card.querySelector('.btn-add-artist');
     if (addArtistBtn) {
         addArtistBtn.addEventListener('click', () => addArtistRow(itemId));
     }
-
-    // Remove artist buttons
-    const removeArtistBtns = card.querySelectorAll('.btn-remove-artist');
-    removeArtistBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            const idx = parseInt(btn.dataset.rowIndex, 10);
-            removeArtistRow(itemId, idx);
-        });
-    });
 
     // Genre button listeners
     const genreButtons = card.querySelectorAll('.genre-btn');
