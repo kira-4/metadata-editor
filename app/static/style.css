@@ -722,16 +722,21 @@ body {
     width: 100%;
 }
 
+/* Destructive, recoverable (trash) and rare: a quiet text action set apart from confirm */
 .btn-secondary.delete-btn {
-    width: 100%;
-    border-color: var(--error);
+    align-self: center;
+    min-height: 44px;
+    margin-top: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-lg);
+    border-color: transparent;
+    background: transparent;
     color: var(--error);
-    margin-top: var(--spacing-sm);
+    font-size: var(--text-label);
 }
 
 .btn-secondary.delete-btn:hover {
     background: var(--error-tint);
-    border-color: var(--error);
+    border-color: transparent;
 }
 
 .item-status {
