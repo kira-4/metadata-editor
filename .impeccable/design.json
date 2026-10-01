@@ -1,0 +1,398 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-01T01:28:06.175957+00:00",
+  "title": "Design System: محرر الأصوات الولائية",
+  "extensions": {
+    "colorMeta": {
+      "night-ink": {
+        "role": "neutral",
+        "displayName": "Night Ink",
+        "canonical": "#0f0f23",
+        "tonalRamp": [
+          "#09081c",
+          "#222338",
+          "#3e4057",
+          "#5d5f78",
+          "#7e809b",
+          "#a0a3be",
+          "#c4c7e4",
+          "#e9ecff"
+        ]
+      },
+      "archive-navy": {
+        "role": "neutral",
+        "displayName": "Archive Navy",
+        "canonical": "#1a1a2e",
+        "tonalRamp": [
+          "#09081b",
+          "#222337",
+          "#3f4056",
+          "#5e5f77",
+          "#7f8099",
+          "#a1a2bd",
+          "#c5c7e2",
+          "#eaecff"
+        ]
+      },
+      "shelf-navy": {
+        "role": "neutral",
+        "displayName": "Shelf Navy",
+        "canonical": "#16213e",
+        "tonalRamp": [
+          "#030823",
+          "#182341",
+          "#344161",
+          "#526182",
+          "#7382a5",
+          "#95a5ca",
+          "#b8c9ef",
+          "#ddeeff"
+        ]
+      },
+      "lamp-navy": {
+        "role": "neutral",
+        "displayName": "Lamp Navy",
+        "canonical": "#1e2a47",
+        "tonalRamp": [
+          "#030822",
+          "#182440",
+          "#344160",
+          "#526182",
+          "#7382a5",
+          "#95a5c9",
+          "#b8c9ef",
+          "#ddefff"
+        ]
+      },
+      "seam": {
+        "role": "neutral",
+        "displayName": "Seam",
+        "canonical": "#2a2a3e",
+        "tonalRamp": [
+          "#0a091a",
+          "#232336",
+          "#3f4055",
+          "#5e5f76",
+          "#7f8098",
+          "#a2a2bc",
+          "#c6c7e1",
+          "#ebecff"
+        ]
+      },
+      "parchment-text": {
+        "role": "neutral",
+        "displayName": "Parchment Text",
+        "canonical": "#e8e8e8",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "faded-text": {
+        "role": "neutral",
+        "displayName": "Faded Text",
+        "canonical": "#a0a0a0",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "margin-text": {
+        "role": "neutral",
+        "displayName": "Margin Text",
+        "canonical": "#6b6b6b",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "signal-blue": {
+        "role": "primary",
+        "displayName": "Signal Blue",
+        "canonical": "#4a9eff",
+        "tonalRamp": [
+          "#00003b",
+          "#001771",
+          "#003c95",
+          "#005fbb",
+          "#2d83e1",
+          "#53a7ff",
+          "#78cdff",
+          "#b6f3ff"
+        ]
+      },
+      "signal-blue-light": {
+        "role": "primary",
+        "displayName": "Signal Blue Light",
+        "canonical": "#6bb1ff",
+        "tonalRamp": [
+          "#00003b",
+          "#001f62",
+          "#004186",
+          "#1962aa",
+          "#4085d0",
+          "#63a9f6",
+          "#87ceff",
+          "#b3f4ff"
+        ]
+      },
+      "signal-blue-deep": {
+        "role": "primary",
+        "displayName": "Signal Blue Deep",
+        "canonical": "#2d7dd2",
+        "tonalRamp": [
+          "#00003b",
+          "#001c6b",
+          "#003f8e",
+          "#0261b3",
+          "#3584da",
+          "#5aa8ff",
+          "#7ecdff",
+          "#b4f3ff"
+        ]
+      },
+      "settled-teal": {
+        "role": "secondary",
+        "displayName": "Settled Teal",
+        "canonical": "#00d4aa",
+        "tonalRamp": [
+          "#001705",
+          "#00381b",
+          "#005838",
+          "#007a57",
+          "#009e77",
+          "#00c39a",
+          "#39e8bd",
+          "#93ffe5"
+        ]
+      },
+      "settled-teal-deep": {
+        "role": "secondary",
+        "displayName": "Settled Teal Deep",
+        "canonical": "#00b894",
+        "tonalRamp": [
+          "#001705",
+          "#00361d",
+          "#00573a",
+          "#007858",
+          "#009b79",
+          "#1dc09b",
+          "#56e5bf",
+          "#92ffe5"
+        ]
+      },
+      "caution-amber": {
+        "role": "tertiary",
+        "displayName": "Caution Amber",
+        "canonical": "#ffb627",
+        "tonalRamp": [
+          "#230000",
+          "#4c0700",
+          "#6e2d00",
+          "#924f00",
+          "#b77100",
+          "#dc9500",
+          "#ffba2d",
+          "#ffe58f"
+        ]
+      },
+      "fault-red": {
+        "role": "tertiary",
+        "displayName": "Fault Red",
+        "canonical": "#ff5757",
+        "tonalRamp": [
+          "#2d0000",
+          "#680000",
+          "#910000",
+          "#b9001d",
+          "#e33b40",
+          "#ff6462",
+          "#ff8a85",
+          "#ffcfc7"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Brand title and page titles."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Buttons, tabs, list titles, input values."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text and inputs."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Field labels, meta, hints."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Paths and code fragments."
+      }
+    },
+    "shadows": [
+      {
+        "name": "overlay",
+        "value": "0 12px 24px rgba(0,0,0,0.35)",
+        "purpose": "Modals and floating panels."
+      },
+      {
+        "name": "dropdown",
+        "value": "0 4px 16px rgba(0,0,0,0.35)",
+        "purpose": "Suggestion lists."
+      },
+      {
+        "name": "focus-ring",
+        "value": "0 0 0 3px rgba(74,158,255,0.1)",
+        "purpose": "Input focus with a Signal Blue border."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state",
+        "value": "0.2s ease",
+        "purpose": "Hover/focus colour and border changes."
+      },
+      {
+        "name": "spin",
+        "value": "1s linear infinite",
+        "purpose": "Rescan icon while scanning."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "600px"
+      },
+      {
+        "name": "tablet",
+        "value": "768px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Save and other primary actions.",
+      "html": "<button class=\"ds-btn-primary\">حفظ</button>",
+      "css": ".ds-btn-primary { font-family: Cairo, sans-serif; font-size: 1rem; font-weight: 600; border-radius: 0.5rem; padding: 0.75rem 1.5rem; cursor: pointer; transition: background-color 0.2s, border-color 0.2s; border: none; background: #4a9eff; color: #0f0f23; } .ds-btn-primary:hover { background: #6bb1ff; } .ds-btn-primary:focus-visible { outline: 2px solid #6bb1ff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Secondary actions.",
+      "html": "<button class=\"ds-btn-secondary\">إلغاء</button>",
+      "css": ".ds-btn-secondary { font-family: Cairo, sans-serif; font-size: 1rem; font-weight: 600; border-radius: 0.5rem; padding: 0.75rem 1.5rem; cursor: pointer; transition: background-color 0.2s, border-color 0.2s; background: #16213e; color: #e8e8e8; border: 1px solid #2a2a3e; } .ds-btn-secondary:hover { background: #1e2a47; border-color: #4a9eff; } .ds-btn-secondary:focus-visible { outline: 2px solid #4a9eff; outline-offset: 2px; }"
+    },
+    {
+      "name": "Confirm Button",
+      "kind": "button",
+      "refersTo": "button-confirm",
+      "description": "Confirm and move to library; full width at the bottom of the review card.",
+      "html": "<button class=\"ds-btn-confirm\" dir=\"rtl\">✓ تأكيد ونقل إلى المكتبة</button>",
+      "css": ".ds-btn-confirm { width: 100%; font-family: Cairo, sans-serif; font-size: 1rem; font-weight: 700; border: none; border-radius: 0.75rem; padding: 1rem; background: #00d4aa; color: #0f0f23; cursor: pointer; transition: background-color 0.2s; } .ds-btn-confirm:hover { background: #00b894; } .ds-btn-confirm:focus-visible { outline: 2px solid #00d4aa; outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Title, artist and edit fields.",
+      "html": "<input class=\"ds-input\" dir=\"rtl\" value=\"زيارة الحسين\">",
+      "css": ".ds-input { width: 100%; background: #16213e; border: 1px solid #2a2a3e; border-radius: 0.5rem; padding: 0.5rem 0.75rem; color: #e8e8e8; font-family: Cairo, sans-serif; font-size: 1rem; transition: border-color 0.2s, box-shadow 0.2s; } .ds-input:focus { outline: none; border-color: #4a9eff; box-shadow: 0 0 0 3px rgba(74,158,255,0.1); }"
+    },
+    {
+      "name": "Genre Chip",
+      "kind": "chip",
+      "refersTo": "chip-genre",
+      "description": "Genre presets; one selected.",
+      "html": "<div dir=\"rtl\" style=\"display:flex;gap:8px\"><button class=\"ds-chip ds-chip--on\">لطميات</button><button class=\"ds-chip\">شعر</button></div>",
+      "css": ".ds-chip { background: #16213e; border: 2px solid #2a2a3e; border-radius: 0.5rem; padding: 0.75rem 1rem; color: #e8e8e8; font-family: Cairo, sans-serif; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: background-color 0.2s, border-color 0.2s; } .ds-chip:hover { background: #1e2a47; border-color: #4a9eff; } .ds-chip--on { background: #4a9eff; border-color: #4a9eff; color: #0f0f23; }"
+    },
+    {
+      "name": "Navigation",
+      "kind": "nav",
+      "refersTo": "nav-link-active",
+      "description": "Top bar page links; active is a blue fill.",
+      "html": "<nav class=\"ds-nav\" dir=\"rtl\"><a class=\"ds-nav-link ds-nav-link--on\">قائمة الانتظار</a><a class=\"ds-nav-link\">محرر المكتبة</a><a class=\"ds-nav-link\">الإعدادات</a></nav>",
+      "css": ".ds-nav { display: flex; gap: 0.5rem; background: #1a1a2e; border: 1px solid #2a2a3e; border-radius: 1rem; padding: 0.75rem; } .ds-nav-link { padding: 0.75rem 1.5rem; border-radius: 0.5rem; color: #a0a0a0; font-family: Cairo, sans-serif; font-weight: 600; text-decoration: none; cursor: pointer; transition: background-color 0.2s, color 0.2s; } .ds-nav-link:hover { color: #e8e8e8; background: #1e2a47; } .ds-nav-link--on { background: #4a9eff; color: #0f0f23; }"
+    },
+    {
+      "name": "Review Card",
+      "kind": "card",
+      "refersTo": "card-review",
+      "description": "Signature: one pending file under review.",
+      "html": "<article class=\"ds-card\" dir=\"rtl\"><label class=\"ds-card-label\">العنوان</label><div class=\"ds-card-value\">زيارة الحسين</div><div class=\"ds-card-panel\">المجلد: <strong>باسم الكربلائي</strong></div></article>",
+      "css": ".ds-card { background: #1a1a2e; border: 1px solid #2a2a3e; border-radius: 1rem; padding: 1.5rem; font-family: Cairo, sans-serif; color: #e8e8e8; } .ds-card-label { display: block; font-size: 0.85rem; color: #a0a0a0; } .ds-card-value { font-weight: 600; margin-bottom: 0.75rem; } .ds-card-panel { background: #16213e; border-radius: 0.5rem; padding: 0.5rem 0.75rem; font-size: 0.85rem; color: #a0a0a0; } .ds-card-panel strong { color: #e8e8e8; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Night Archive",
+    "overview": "A quiet late-night workroom for cataloguing recordings. The room is deep navy, and the surfaces step up in small tonal increments the way shelves sit in low light. One cool blue marks the thing you can act on. Teal appears only when something is settled: a file confirmed, a save done. Amber and red stay rare and mean exactly one thing each.\n\nThe tool serves devotional content, so it stays calm. Density favours the review card: fields are full width, labels sit above inputs, and the primary action spans the card. Arabic RTL is the native direction. Latin fragments (paths, tokens, IDs, file extensions) are isolated islands inside it, never the other way round.\n\nToday the system mixes this calm base with a few louder habits inherited from earlier iterations: gradient fills on actions, gradient title text, hover lift on cards. They are recorded below as they are and flagged; the design pass decides each case.",
+    "keyCharacteristics": [
+      "Dark only, navy not black; depth from tonal steps and 1px seams.",
+      "One action colour (signal blue), one completion colour (settled teal).",
+      "Cairo for everything Arabic; system mono for paths and code.",
+      "Full-width, thumb-reachable controls on a 390px phone."
+    ],
+    "rules": [
+      {
+        "name": "The One Meaning Rule",
+        "body": "Each signal colour means one thing. Blue is \"you can act\", teal is \"done\", amber is \"look at this\", red is \"failed or destructive\". Never use teal for a neutral action or blue for success.",
+        "section": "colors"
+      },
+      {
+        "name": "The Dark Text On Light Fill Rule",
+        "body": "Text on blue or teal fills is Night Ink, not white. White on Signal Blue measured about 2.5:1.",
+        "section": "colors"
+      },
+      {
+        "name": "The Isolated Latin Rule",
+        "body": "Paths, file extensions, tokens and chat IDs are wrapped in <bdi> or set dir=\"ltr\", so the bidi algorithm never reorders them inside Arabic prose.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-At-Rest Rule",
+        "body": "Surfaces don't cast shadows at rest. Only overlays float.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep text on Signal Blue or Settled Teal fills in Night Ink.",
+      "Do isolate every Latin fragment (path, extension, token, ID) with <bdi> or dir=\"ltr\".",
+      "Do give phone touch targets at least 44px and keep primary actions full width.",
+      "Do use Shelf Navy panels with 0.5rem corners for status and preview blocks inside a card."
+    ],
+    "donts": [
+      "Don't add a light theme. The product is dark only.",
+      "Don't use religious imagery (calligraphy, domes, geometric patterns) as decoration.",
+      "Don't introduce playful motion or celebration effects (no confetti).",
+      "Don't give a signal colour a second meaning (see The One Meaning Rule).",
+      "Don't add shadows to surfaces at rest (see The Flat-At-Rest Rule)."
+    ]
+  }
+}
