@@ -823,6 +823,17 @@ function createItemCard(item) {
     const artistNames = artistList.filter(Boolean);
     const collapsible = item.status === 'pending' && Boolean(titleValue.trim()) && artistNames.length > 0 && Boolean(currentGenre);
     const collapsed = collapsible && !expandedCards.has(item.id);
+    // A genre decided before review (from the file) folds to one line on needs-review cards;
+    // title and artists stay open, since the banner asks the operator to check them
+    const genreFolded = isManual && Boolean(currentGenre) && !openedGenres.has(item.id);
+    const technical = `
+                <details class="alert-technical source-details">
+                    <summary>التفاصيل التقنية</summary>
+                    <dl class="source-list">${formatItemSource(item)}</dl>
+                    ${item.error_message ? `<code dir="ltr">${escapeHtml(item.error_message)}</code>` : ''}
+                </details>`;
+    // With no artwork, the header row would hold only a placeholder; the fold joins the banner
+    const technicalInProblem = Boolean(problem) && !artworkUrl;
 
     return `
         <div class="item-card ${isManual ? 'needs-review' : ''} ${hasError ? 'has-error' : ''} ${collapsed ? 'is-collapsed' : ''}" data-id="${item.id}" tabindex="-1">
@@ -837,19 +848,17 @@ function createItemCard(item) {
             <div class="item-problem ${hasError ? 'error' : 'warn'}" role="note">
                 <strong>${hasError ? 'تعذّرت معالجة هذا الملف' : 'يحتاج مراجعة'}</strong>
                 <p>${escapeHtml(problem.text)}</p>
+                ${technicalInProblem ? technical : ''}
             </div>` : ''}
 
+            ${technicalInProblem ? '' : `
             <div class="item-header">
                 ${artworkUrl
                     ? `<img src="${artworkUrl}" alt="" class="artwork">`
                     : '<div class="artwork-placeholder" aria-hidden="true">♪</div>'
                 }
-                <details class="alert-technical source-details">
-                    <summary>التفاصيل التقنية</summary>
-                    <dl class="source-list">${formatItemSource(item)}</dl>
-                    ${item.error_message ? `<code dir="ltr">${escapeHtml(item.error_message)}</code>` : ''}
-                </details>
-            </div>
+                ${technical}
+            </div>`}
 
             <section class="card-group card-group-identity" aria-label="العنوان والفنانون">
                 <div class="field-group">

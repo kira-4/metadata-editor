@@ -310,6 +310,13 @@ body {
     gap: var(--spacing-md);
 }
 
+/* Straight under the banner (no artwork row), the banner's own edge is the divider */
+.item-problem + .card-group-identity {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
 /* A label and, on needs-review cards, its ✓/✗ check on one line */
 .field-head {
     display: flex;
