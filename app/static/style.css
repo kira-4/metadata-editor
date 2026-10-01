@@ -177,7 +177,6 @@ body {
     display: flex;
     flex-wrap: wrap;
     gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-md);
 }
 
 .global-alert {
@@ -1772,6 +1771,7 @@ body {
 }
 
 .token-input-wrapper .field-input {
+    min-height: 3rem;
     padding-inline-end: 4.25rem;
     letter-spacing: 0.05em;
 }
@@ -1783,7 +1783,7 @@ body {
     top: 50%;
     transform: translateY(-50%);
     min-width: 3.5rem;
-    height: 2.25rem;
+    height: 2.75rem;
     padding: 0 var(--spacing-xs);
     font-family: var(--font-family);
     border: none;
@@ -2513,7 +2513,8 @@ textarea.title-input {
 
     .card-summary-edit {
         align-self: start;
-        padding: 0.125rem var(--spacing-xs);
+        padding: var(--spacing-xs) var(--spacing-sm);
+        line-height: 1.2;
         border: 1px solid var(--border-color);
         border-radius: var(--radius-sm);
         font-size: var(--text-label);
