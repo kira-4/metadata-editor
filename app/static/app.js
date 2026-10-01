@@ -338,6 +338,27 @@ function restoreFocusSnapshot(snapshot) {
     }
 }
 
+const DEBUG_STORAGE_KEY = 'metadataEditor.debug';
+
+function readDebugPreference() {
+    try {
+        return localStorage.getItem(DEBUG_STORAGE_KEY) === '1';
+    } catch {
+        return false;  // private mode or blocked storage: debug simply starts off
+    }
+}
+
+function setDebugEnabled(enabled) {
+    debugEnabled = enabled;
+    try {
+        localStorage.setItem(DEBUG_STORAGE_KEY, enabled ? '1' : '0');
+    } catch {
+        // Not persisted; the toggle still works for this page load
+    }
+    applyDebugUIState();
+    renderItems();
+}
+
 function setupGlobalUI() {
     const refreshBtn = document.getElementById('refreshPendingBtn');
     if (refreshBtn) {
@@ -349,27 +370,21 @@ function setupGlobalUI() {
         confirmAllReadyBtn.addEventListener('click', confirmAllReady);
     }
 
-    const debugModeBtn = document.getElementById('debugModeBtn');
-    if (debugModeBtn) {
-        debugModeBtn.addEventListener('click', () => {
-            debugEnabled = !debugEnabled;
-            applyDebugUIState();
-            renderItems();
-            showAlert(
-                debugEnabled ? 'تم تفعيل وضع التصحيح.' : 'تم تعطيل وضع التصحيح.',
-                debugEnabled ? 'info' : 'success'
-            );
-        });
+    // Diagnostics live in Settings; the queue only shows their effect (the per-card preview button)
+    debugEnabled = readDebugPreference();
+    const debugToggle = document.getElementById('debugModeToggle');
+    if (debugToggle) {
+        debugToggle.addEventListener('change', () => setDebugEnabled(debugToggle.checked));
     }
 
     const toggleLogsBtn = document.getElementById('toggleLogsBtn');
     const logPanel = document.getElementById('logPanel');
     if (toggleLogsBtn && logPanel) {
         toggleLogsBtn.addEventListener('click', () => {
-            const visible = logPanel.style.display === 'block';
-            logPanel.style.display = visible ? 'none' : 'block';
-            toggleLogsBtn.textContent = visible ? 'إظهار السجلات' : 'إخفاء السجلات';
-            if (!visible) {
+            logPanel.hidden = !logPanel.hidden;
+            toggleLogsBtn.textContent = logPanel.hidden ? 'إظهار سجل العمليات' : 'إخفاء سجل العمليات';
+            toggleLogsBtn.setAttribute('aria-expanded', String(!logPanel.hidden));
+            if (!logPanel.hidden) {
                 renderLogPanel();
             }
         });
@@ -386,39 +401,25 @@ function setupGlobalUI() {
         }
     });
 
+    // Artwork that fails to load (file moved, unreadable) falls back to the placeholder
+    document.addEventListener('error', event => {
+        const img = event.target;
+        if (!(img instanceof HTMLImageElement) || !img.closest('.item-card, .album-artwork, .artwork-preview')) return;
+        const placeholder = document.createElement(img.classList.contains('artwork') ? 'div' : 'span');
+        placeholder.className = img.classList.contains('artwork') ? 'artwork-placeholder' : 'artwork-missing';
+        placeholder.setAttribute('aria-hidden', 'true');
+        placeholder.textContent = '♪';
+        img.replaceWith(placeholder);
+    }, true);
+
     applyDebugUIState();
 }
 
 function applyDebugUIState() {
-    const debugModeBtn = document.getElementById('debugModeBtn');
+    const debugToggle = document.getElementById('debugModeToggle');
     const workflowSteps = document.getElementById('workflowSteps');
-    const toggleLogsBtn = document.getElementById('toggleLogsBtn');
-    const downloadLogsBtn = document.getElementById('downloadLogsBtn');
-    const logPanel = document.getElementById('logPanel');
-
-    if (debugModeBtn) {
-        debugModeBtn.textContent = debugEnabled ? 'تعطيل وضع التصحيح' : 'تفعيل وضع التصحيح';
-        debugModeBtn.classList.toggle('active', debugEnabled);
-    }
-
-    if (workflowSteps) {
-        workflowSteps.style.display = debugEnabled ? 'flex' : 'none';
-    }
-
-    if (toggleLogsBtn) {
-        toggleLogsBtn.style.display = debugEnabled ? 'inline-flex' : 'none';
-        if (!debugEnabled) {
-            toggleLogsBtn.textContent = 'إظهار السجلات';
-        }
-    }
-
-    if (downloadLogsBtn) {
-        downloadLogsBtn.style.display = debugEnabled ? 'inline-flex' : 'none';
-    }
-
-    if (logPanel && !debugEnabled) {
-        logPanel.style.display = 'none';
-    }
+    if (debugToggle) debugToggle.checked = debugEnabled;
+    if (workflowSteps) workflowSteps.hidden = !debugEnabled;
 }
 
 // Initialize app
