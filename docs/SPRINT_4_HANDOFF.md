@@ -108,7 +108,12 @@ Tests went from 123 to 161 (new: `test_batch_edit`, `test_rescan_status`, `test_
 
 ## Next (in order)
 
-Sprint 4 is done. These come from the closing critique, for the next sprint to pick from:
+Sprint 4 is done. These come from the closing critique.
+
+**Decided 2026-10-01 for the next round:**
+- **Focus: review throughput.** Items 1, 2 and 5 first: the needs-review layout, removing the repeated title text, then focus on the next card and genre carry-over.
+- **Tone: one signature detail.** Add a single recognisable element within the Night Archive rules: no religious ornament, no gradients on controls, calm. Pick it during `/impeccable shape` or `bolder` (restrained), not by decorating.
+
 1. **[P1] Needs-review card layout** (`/impeccable layout`): group identity (title, artists), destination (folder, path) and genre. Offer the last-used or channel genre first. Move each ✗ checklist chip next to its field.
 2. **[P1] Redundant text** (`/impeccable distill`): a long title appears in the title, the source line and the destination path. Show the source once (inside «التفاصيل التقنية»). Shorten the path to folder + file.
 3. **[P2] Delete under confirm** (`/impeccable harden`): demote it to a text action with space from confirm, or use an undo toast (deletes already go to trash).
