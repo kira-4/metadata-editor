@@ -335,6 +335,40 @@ function restoreFocusSnapshot(snapshot) {
 
 const DEBUG_STORAGE_KEY = 'metadataEditor.debug';
 
+// The genre confirmed last, overall and per channel. It only orders the chips:
+// the suggestion goes first, but nothing is selected for the operator.
+const GENRE_MEMORY_KEY = 'metadataEditor.genreMemory';
+
+function readGenreMemory() {
+    try {
+        const memory = JSON.parse(localStorage.getItem(GENRE_MEMORY_KEY) || '{}');
+        return {last: memory.last || '', byChannel: memory.byChannel || {}};
+    } catch {
+        return {last: '', byChannel: {}};  // blocked or corrupt storage: default order
+    }
+}
+
+function rememberGenre(channel, genre) {
+    if (!GENRE_PRESETS.includes(genre)) return;
+    const memory = readGenreMemory();
+    memory.last = genre;
+    if (channel && channel !== 'Unknown') memory.byChannel[channel] = genre;
+    try {
+        localStorage.setItem(GENRE_MEMORY_KEY, JSON.stringify(memory));
+    } catch {
+        // Not persisted; the order falls back to the default next time
+    }
+}
+
+// {genre, reason}: this channel's last genre, else the last genre confirmed at all
+function suggestedGenre(item) {
+    const memory = readGenreMemory();
+    const byChannel = memory.byChannel[item.channel];
+    if (GENRE_PRESETS.includes(byChannel)) return {genre: byChannel, reason: 'هذه القناة'};
+    if (GENRE_PRESETS.includes(memory.last)) return {genre: memory.last, reason: 'آخر اختيار'};
+    return {genre: '', reason: ''};
+}
+
 function readDebugPreference() {
     try {
         return localStorage.getItem(DEBUG_STORAGE_KEY) === '1';
@@ -1814,6 +1848,7 @@ async function confirmItem(itemId, onConflict) {
         const {new_path: newPath} = await response.json().catch(() => ({}));
         // {album artist}/{title}/{file}: the folder is the third part from the end
         confirmedFolders.push(String(newPath || '').split('/').slice(-3)[0] || shown || '');
+        rememberGenre(pendingItems.find(entry => entry.id === itemId)?.channel, genre);
         
         // The file left the queue: its card leaves, the others close the gap
         removeItemCardFromDOM(itemId);
