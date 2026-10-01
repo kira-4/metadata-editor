@@ -441,7 +441,7 @@ async function loadPendingItems(options = {}) {
         if (showLoading && container) {
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'loading';
-            loadingDiv.textContent = 'جاري تحميل الملفات...';
+            loadingDiv.textContent = 'جارٍ تحميل الملفات…';
             container.replaceChildren(loadingDiv);
         }
 
@@ -630,6 +630,7 @@ function updatePendingCountUI() {
     if (badge) {
         if (pendingItems.length > 0) {
             badge.textContent = pendingItems.length;
+            badge.setAttribute('aria-label', `${arabicCount(pendingItems.length, FILE_FORMS)} في الانتظار`);
             badge.style.display = 'inline-flex';
         } else {
             badge.style.display = 'none';
@@ -662,6 +663,7 @@ function renderItems(options = {}) {
     if (badge) {
         if (pendingItems.length > 0) {
             badge.textContent = pendingItems.length;
+            badge.setAttribute('aria-label', `${arabicCount(pendingItems.length, FILE_FORMS)} في الانتظار`);
             badge.style.display = 'inline-flex';
         } else {
             badge.style.display = 'none';
@@ -1513,13 +1515,15 @@ async function refreshDestinationPreview(itemId) {
     }
 }
 
-// Arabic path segments read right-to-left; each is isolated and the extension kept as one LTR unit
+// Arabic path segments read right-to-left; each is isolated and the extension kept as one LTR unit.
+// The dot stays outside the extension's isolate so it sits between name and extension
+// («mp3.العنوان»); inside it, the dot ended up on the far side («.mp3العنوان»).
 function formatLibraryPath(relativePath) {
     const parts = relativePath.split('/').filter(Boolean);
     return parts.map((part, i) => {
         const dot = i === parts.length - 1 ? part.lastIndexOf('.') : -1;
         return dot > 0
-            ? `<bdi>${escapeHtml(part.slice(0, dot))}<bdi dir="ltr">${escapeHtml(part.slice(dot))}</bdi></bdi>`
+            ? `<bdi>${escapeHtml(part.slice(0, dot))}.<bdi dir="ltr">${escapeHtml(part.slice(dot + 1))}</bdi></bdi>`
             : `<bdi>${escapeHtml(part)}</bdi>`;
     }).join(' <span class="path-sep">/</span> ');
 }
@@ -2425,7 +2429,7 @@ async function loadViewData() {
     try {
         // Show loading state
         const container = document.getElementById(`${view}List`) || document.getElementById('tracksList');
-        if (container) container.innerHTML = '<div class="loading"><span class="spinning">🔄</span> جاري التحميل...</div>';
+        if (container) container.innerHTML = '<div class="loading">جارٍ التحميل…</div>';
         
         let endpoint = `/api/library/${view}`;
         const params = new URLSearchParams();
