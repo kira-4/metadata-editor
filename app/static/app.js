@@ -15,6 +15,12 @@ const FIELD_LABELS = {title: 'العنوان', artist: 'الفنان', genre: '�
 // What each missing field asks of the operator, in the order the card shows them
 const MISSING_FIELD_ACTIONS = {title: 'أضف العنوان', artist: 'أضف فنانًا', genre: 'اختر النوع'};
 const CONFIRM_LABEL = '✓ تأكيد ونقل إلى المكتبة';
+// The check beside each required field on a needs-review card: [missing, done]
+const FIELD_CHECK_TEXT = {
+    title: ['✗ مطلوب', '✓'],
+    artist: ['✗ فنان واحد على الأقل', '✓'],
+    genre: ['✗ اختر نوعًا', '✓'],
+};
 
 // State
 let pendingItems = [];
@@ -334,6 +340,40 @@ function restoreFocusSnapshot(snapshot) {
 }
 
 const DEBUG_STORAGE_KEY = 'metadataEditor.debug';
+
+// The genre confirmed last, overall and per channel. It only orders the chips:
+// the suggestion goes first, but nothing is selected for the operator.
+const GENRE_MEMORY_KEY = 'metadataEditor.genreMemory';
+
+function readGenreMemory() {
+    try {
+        const memory = JSON.parse(localStorage.getItem(GENRE_MEMORY_KEY) || '{}');
+        return {last: memory.last || '', byChannel: memory.byChannel || {}};
+    } catch {
+        return {last: '', byChannel: {}};  // blocked or corrupt storage: default order
+    }
+}
+
+function rememberGenre(channel, genre) {
+    if (!GENRE_PRESETS.includes(genre)) return;
+    const memory = readGenreMemory();
+    memory.last = genre;
+    if (channel && channel !== 'Unknown') memory.byChannel[channel] = genre;
+    try {
+        localStorage.setItem(GENRE_MEMORY_KEY, JSON.stringify(memory));
+    } catch {
+        // Not persisted; the order falls back to the default next time
+    }
+}
+
+// {genre, reason}: this channel's last genre, else the last genre confirmed at all
+function suggestedGenre(item) {
+    const memory = readGenreMemory();
+    const byChannel = memory.byChannel[item.channel];
+    if (GENRE_PRESETS.includes(byChannel)) return {genre: byChannel, reason: 'هذه القناة'};
+    if (GENRE_PRESETS.includes(memory.last)) return {genre: memory.last, reason: 'آخر اختيار'};
+    return {genre: '', reason: ''};
+}
 
 function readDebugPreference() {
     try {
@@ -755,6 +795,14 @@ function createItemCard(item) {
     const artistRowsHtml = renderArtistRowsHtml(item.id, artistList);
 
     const problem = (hasError || isManual) ? describeItemProblem(item) : null;
+    // Needs-review cards mark each required field beside its label; updateConfirmButton keeps them current
+    const fieldCheck = key => isManual
+        ? `<span class="field-check" data-check="${key}">${FIELD_CHECK_TEXT[key][0]}</span>`
+        : '';
+    const suggestion = suggestedGenre(item);
+    const orderedGenres = suggestion.genre
+        ? [suggestion.genre, ...GENRE_PRESETS.filter(g => g !== suggestion.genre)]
+        : GENRE_PRESETS;
 
     // A complete suggestion collapses to a summary on phones: read it, confirm it, or open it to edit
     const artistNames = artistList.filter(Boolean);
@@ -774,12 +822,6 @@ function createItemCard(item) {
             <div class="item-problem ${hasError ? 'error' : 'warn'}" role="note">
                 <strong>${hasError ? 'تعذّرت معالجة هذا الملف' : 'يحتاج مراجعة'}</strong>
                 <p>${escapeHtml(problem.text)}</p>
-                ${isManual ? `
-                <ul class="review-checklist" aria-label="المطلوب قبل التأكيد">
-                    <li data-check="title">العنوان</li>
-                    <li data-check="artist">فنان واحد على الأقل</li>
-                    <li data-check="genre">النوع</li>
-                </ul>` : ''}
                 ${item.error_message ? `<details class="alert-technical"><summary>التفاصيل التقنية</summary><code dir="ltr">${escapeHtml(item.error_message)}</code></details>` : ''}
             </div>` : ''}
 
@@ -788,57 +830,70 @@ function createItemCard(item) {
                     ? `<img src="${artworkUrl}" alt="" class="artwork">`
                     : '<div class="artwork-placeholder" aria-hidden="true">♪</div>'
                 }
-
-                <div class="item-info">
-                    <div class="field-group">
-                        <label class="field-label" for="title-${item.id}">العنوان</label>
-                        <textarea
-                            id="title-${item.id}"
-                            class="field-input title-input"
-                            rows="1"
-                            data-id="${item.id}"
-                            placeholder="العنوان (مطلوب)"
-                        >${escapeHtml(titleValue)}</textarea>
-                    </div>
-
-                    <div class="field-group">
-                        <label class="field-label">الفنانون</label>
-                        <div class="multi-artist-list" data-id="${item.id}">
-                            ${artistRowsHtml}
-                        </div>
-                        <button type="button" class="btn-add-artist" data-id="${item.id}">+ إضافة فنان</button>
-                        <p class="artist-hint" aria-live="polite"></p>
-                    </div>
-
-                    <div class="destination-preview" id="destination-${item.id}" aria-live="polite"></div>
-
-                    <div class="source-text">${formatItemSource(item)}</div>
-                </div>
+                <div class="source-text">${formatItemSource(item)}</div>
             </div>
-            
-            <div class="genre-section">
-                <label class="genre-label">اختر النوع الموسيقي</label>
-                <div class="genre-buttons">
-                    ${GENRE_PRESETS.map(genre => `
-                        <button class="genre-btn ${currentGenre === genre ? 'selected' : ''}" data-id="${item.id}" data-genre="${genre}">
-                            ${genre}
+
+            <section class="card-group card-group-identity" aria-label="العنوان والفنانون">
+                <div class="field-group">
+                    <div class="field-head">
+                        <label class="field-label" for="title-${item.id}">العنوان</label>
+                        ${fieldCheck('title')}
+                    </div>
+                    <textarea
+                        id="title-${item.id}"
+                        class="field-input title-input"
+                        rows="1"
+                        data-id="${item.id}"
+                        placeholder="العنوان (مطلوب)"
+                    >${escapeHtml(titleValue)}</textarea>
+                </div>
+
+                <div class="field-group">
+                    <div class="field-head">
+                        <span class="field-label" id="artists-label-${item.id}">الفنانون</span>
+                        ${fieldCheck('artist')}
+                    </div>
+                    <div class="multi-artist-list" data-id="${item.id}" role="group" aria-labelledby="artists-label-${item.id}">
+                        ${artistRowsHtml}
+                    </div>
+                    <button type="button" class="btn-add-artist" data-id="${item.id}">+ إضافة فنان</button>
+                    <p class="artist-hint" aria-live="polite"></p>
+                </div>
+            </section>
+
+            <section class="card-group card-group-destination" aria-labelledby="destination-label-${item.id}">
+                <h3 class="field-label group-label" id="destination-label-${item.id}">الوجهة</h3>
+                <div class="destination-preview" id="destination-${item.id}" aria-live="polite"></div>
+                <p class="destination-pending">يظهر المجلد والمسار بعد كتابة العنوان والفنان.</p>
+            </section>
+
+            <section class="card-group genre-section" aria-labelledby="genre-label-${item.id}">
+                <div class="field-head">
+                    <h3 class="field-label group-label" id="genre-label-${item.id}">النوع</h3>
+                    ${fieldCheck('genre')}
+                </div>
+                <div class="genre-buttons" role="group" aria-labelledby="genre-label-${item.id}">
+                    ${orderedGenres.map(genre => `
+                        <button type="button" class="genre-btn ${currentGenre === genre ? 'selected' : ''}" data-id="${item.id}" data-genre="${genre}" aria-pressed="${currentGenre === genre}">
+                            ${genre}${genre === suggestion.genre ? `<small class="genre-hint">${suggestion.reason}</small>` : ''}
                         </button>
                     `).join('')}
-                    <button class="genre-btn ${isCustomGenre ? 'selected' : ''}" data-id="${item.id}" data-genre="custom">
+                    <button type="button" class="genre-btn ${isCustomGenre ? 'selected' : ''}" data-id="${item.id}" data-genre="custom" aria-pressed="${Boolean(isCustomGenre)}">
                         أخرى…
                     </button>
                 </div>
                 <div class="custom-genre-wrapper">
-                    <input 
-                        type="text" 
-                        class="custom-genre-input ${isCustomGenre ? 'show' : ''}" 
+                    <input
+                        type="text"
+                        class="custom-genre-input ${isCustomGenre ? 'show' : ''}"
                         placeholder="أدخل النوع الموسيقي"
+                        aria-label="نوع آخر"
                         value="${isCustomGenre ? escapeHtml(currentGenre) : ''}"
                         data-id="${item.id}"
                     >
                 </div>
-            </div>
-            
+            </section>
+
             <div class="action-buttons">
                 ${debugEnabled ? `
                 <button class="btn-secondary dry-run-btn" data-id="${item.id}">
@@ -1402,6 +1457,7 @@ function handleGenreClick(itemId, genre) {
     const buttons = card.querySelectorAll('.genre-btn');
     buttons.forEach(btn => {
         btn.classList.toggle('selected', btn.dataset.genre === genre);
+        btn.setAttribute('aria-pressed', String(btn.dataset.genre === genre));
     });
     
     // Handle custom genre
@@ -1453,8 +1509,10 @@ function updateConfirmButton(itemId) {
             ? missing.map(key => MISSING_FIELD_ACTIONS[key]).join(' و')
             : CONFIRM_LABEL;
     }
-    card.querySelectorAll('.review-checklist [data-check]').forEach(li => {
-        li.classList.toggle('done', present[li.dataset.check]);
+    card.querySelectorAll('.field-check[data-check]').forEach(chip => {
+        const done = present[chip.dataset.check];
+        chip.classList.toggle('done', done);
+        chip.textContent = FIELD_CHECK_TEXT[chip.dataset.check][done ? 1 : 0];
     });
 
     // Many artists usually means the suggestion split one name (or a title) into several
@@ -1814,6 +1872,7 @@ async function confirmItem(itemId, onConflict) {
         const {new_path: newPath} = await response.json().catch(() => ({}));
         // {album artist}/{title}/{file}: the folder is the third part from the end
         confirmedFolders.push(String(newPath || '').split('/').slice(-3)[0] || shown || '');
+        rememberGenre(pendingItems.find(entry => entry.id === itemId)?.channel, genre);
         
         // The file left the queue: its card leaves, the others close the gap
         removeItemCardFromDOM(itemId);
