@@ -61,6 +61,11 @@ scales). This captures the *current* identity so later passes refine it instead 
 ```
 Scored UX review. Use it to adjust the order below. Don't fix anything in this step.
 
+**B1 result (2026-09-30):** 24/40 (Acceptable). Snapshot: `.impeccable/critique/2026-10-01T01-32-20Z__app-static-index-html.md`.
+Decisions: keep the plan order; move the debug toolbar into Settings (B3); flatten all gradients to solid
+signal colours with confirm as the only saturated fill (B9 polish, earlier where a step touches them);
+include collapsed ready cards + a sticky "N ready" bar on phones, needs-review sorted last (B5).
+
 ### 2. Words before pixels
 
 ```
@@ -144,4 +149,4 @@ Same as before: one ticket = one branch = one PR, a failing test first for Track
 - [x] S4-5 favicon
 - [x] S4-6 detail-view refresh
 - [x] S4-7 clear-field semantics, byte-safe filenames
-- [ ] B0 init + document · B1 critique · B2 clarify · B3 harden · B4 typeset · B5 layout · B6 animate · B7 delight · B8 optimize · B9 audit + polish
+- [x] B0 init + document · [x] B1 critique (24/40) · B2 clarify · B3 harden · B4 typeset · B5 layout · B6 animate · B7 delight · B8 optimize · B9 audit + polish
