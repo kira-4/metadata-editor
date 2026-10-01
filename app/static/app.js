@@ -1446,7 +1446,7 @@ function attachItemListeners(itemId) {
     // Genre button listeners
     const genreButtons = card.querySelectorAll('.genre-btn');
     genreButtons.forEach(btn => {
-        btn.addEventListener('click', () => handleGenreClick(itemId, btn.dataset.genre));
+        btn.addEventListener('click', () => handleGenreClick(itemId, btn.dataset.genre, {offer: true}));
     });
     
     // Custom genre input
@@ -1477,6 +1477,7 @@ function attachItemListeners(itemId) {
             if (value.length > 0) {
                 updateField(itemId, 'genre', value);
             }
+            renderChannelGenreOffer(itemId);
         });
     }
     
@@ -1511,8 +1512,8 @@ function autosizeTitle(textarea) {
     textarea.style.height = `${textarea.scrollHeight + 2}px`;
 }
 
-// Handle genre button click
-function handleGenreClick(itemId, genre) {
+// Handle genre button click. offer: the operator picked it here, so offer it to the channel.
+function handleGenreClick(itemId, genre, {offer = false} = {}) {
     const card = document.querySelector(`.item-card[data-id="${itemId}"]`);
     if (!card) return;
     
@@ -1543,6 +1544,61 @@ function handleGenreClick(itemId, genre) {
     }
     
     updateConfirmButton(itemId);
+    if (offer) renderChannelGenreOffer(itemId);
+}
+
+// One channel usually means one genre. Picking a genre offers it to the other cards from the
+// same channel that have none yet: one tap selects it there too (and saves it as a draft on
+// each card, like a tap would). Nothing is confirmed, and a genre already chosen is never replaced.
+const CARD_FORMS_OTHER = ['بطاقة واحدة أخرى', 'بطاقتين أخريين', 'بطاقات أخرى', 'بطاقة أخرى', 'بطاقة أخرى'];  // after «على» / «في»
+
+function channelCardsWithoutGenre(itemId) {
+    const channel = pendingItems.find(i => i.id === itemId)?.channel;
+    if (!channel || channel === 'Unknown') return [];
+    return pendingItems
+        .filter(other => other.id !== itemId && other.channel === channel && !(selectedGenres[other.id] || '').trim())
+        .map(other => other.id)
+        .filter(id => document.querySelector(`.item-card[data-id="${id}"]:not(.card-removing)`));
+}
+
+function renderChannelGenreOffer(itemId) {
+    const section = document.querySelector(`.item-card[data-id="${itemId}"] .genre-section`);
+    if (!section) return;
+    section.querySelector('.channel-genre-offer, .channel-genre-done')?.remove();
+    const genre = (selectedGenres[itemId] || '').trim();
+    const others = genre ? channelCardsWithoutGenre(itemId) : [];
+    if (others.length === 0) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'channel-genre-offer';
+    btn.textContent = `طبّق «${genre}» على ${arabicCount(others.length, CARD_FORMS_OTHER)} من القناة`;
+    btn.addEventListener('click', () => applyGenreToChannel(itemId, genre));
+    section.appendChild(btn);
+}
+
+function applyGenreToChannel(itemId, genre) {
+    const others = channelCardsWithoutGenre(itemId);  // counted again: some may have been filled meanwhile
+    others.forEach(id => {
+        if (GENRE_PRESETS.includes(genre)) {
+            handleGenreClick(id, genre);
+            return;
+        }
+        const customInput = document.querySelector(`.item-card[data-id="${id}"] .custom-genre-input`);
+        if (customInput) customInput.value = genre;
+        handleGenreClick(id, 'custom');
+    });
+    const section = document.querySelector(`.item-card[data-id="${itemId}"] .genre-section`);
+    const offer = section?.querySelector('.channel-genre-offer');
+    if (!offer) return;
+    const done = document.createElement('p');
+    done.className = 'channel-genre-done';
+    done.setAttribute('role', 'status');
+    done.textContent = others.length
+        ? `اختير «${genre}» في ${arabicCount(others.length, CARD_FORMS_OTHER)} من القناة.`
+        : 'لم تبقَ بطاقات من القناة بلا نوع.';
+    offer.replaceWith(done);
+    section.querySelector('.genre-btn.selected, .custom-genre-input.show')?.focus();  // the button left; focus stays in the group
+    setTimeout(() => done.remove(), 6000);
 }
 
 // Update confirm button state
