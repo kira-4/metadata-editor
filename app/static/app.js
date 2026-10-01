@@ -621,13 +621,30 @@ function removeCardAndCloseGap(card) {
     updatePendingCountUI();
 }
 
+function nextQueueCard(card) {
+    const live = el => el && !el.classList.contains('card-removing');
+    let el = card.nextElementSibling;
+    while (el && !live(el)) el = el.nextElementSibling;
+    if (el) return el;
+    el = card.previousElementSibling;
+    while (el && !live(el)) el = el.previousElementSibling;
+    return el;
+}
+
 // Remove a single item card from the DOM: it fades out, then the rest close the gap.
 // Safe to call twice (the confirm response and its SSE event both land here).
 function removeItemCardFromDOM(itemId, container) {
     const card = (container || document).querySelector(`.item-card[data-id="${itemId}"]`);
     if (card && !card.classList.contains('card-removing')) {
         card.classList.add('card-removing');
-        setTimeout(() => removeCardAndCloseGap(card), CARD_EXIT_MS);
+        setTimeout(() => {
+            // Focus was on this card (or dropped to the page when its button disabled):
+            // hand it to the card that takes its place, so a keyboard session carries on
+            const focusHere = card.contains(document.activeElement) || document.activeElement === document.body;
+            const next = nextQueueCard(card);
+            removeCardAndCloseGap(card);
+            if (focusHere && next) next.focus({preventScroll: true});
+        }, CARD_EXIT_MS);
     }
     pendingItems = pendingItems.filter(i => i.id !== itemId);
     albumArtistChoice.delete(itemId);
