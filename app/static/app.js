@@ -565,10 +565,10 @@ function updatePendingCountUI() {
     if (pendingItems.length === 0) {
         if (container) container.replaceChildren();
         if (emptyState) emptyState.classList.add('show');
-        if (itemCount) itemCount.textContent = '0 ملف';
+        if (itemCount) itemCount.textContent = 'فارغة';
     } else {
         if (emptyState) emptyState.classList.remove('show');
-        if (itemCount) itemCount.textContent = `${pendingItems.length} ملف`;
+        if (itemCount) itemCount.textContent = arabicCount(pendingItems.length, FILE_FORMS);
     }
 }
 
@@ -594,13 +594,13 @@ function renderItems(options = {}) {
     if (pendingItems.length === 0) {
         container.innerHTML = '';
         emptyState.classList.add('show');
-        itemCount.textContent = '0 ملف';
+        itemCount.textContent = 'فارغة';
         updateConfirmAllButton();
         return;
     }
     
     emptyState.classList.remove('show');
-    itemCount.textContent = `${pendingItems.length} ملف`;
+    itemCount.textContent = arabicCount(pendingItems.length, FILE_FORMS);
     
     container.innerHTML = pendingItems.map(item => createItemCard(item)).join('');
     
@@ -737,9 +737,7 @@ function createItemCard(item) {
                     معاينة (Dry Run)
                 </button>
                 ` : ''}
-                <button class="confirm-btn" data-id="${item.id}" disabled>
-                    ✓ تأكيد ونقل إلى المكتبة
-                </button>
+                <button class="confirm-btn" data-id="${item.id}" disabled>${CONFIRM_LABEL}</button>
                 <div class="item-status" id="itemStatus-${item.id}"></div>
                 <button class="btn-secondary delete-btn" onclick="deleteItem(${Number(item.id)})">
                     حذف الملف
@@ -1332,11 +1330,23 @@ function updateConfirmButton(itemId) {
 
     if (!confirmBtn || !titleInput || artistInputs.length === 0) return;
 
-    const hasGenre = selectedGenres[itemId] && selectedGenres[itemId].trim().length > 0;
-    const hasTitle = titleInput.value.trim().length > 0;
-    const hasArtist = Array.from(artistInputs).some(input => input.value.trim().length > 0);
+    const present = {
+        title: titleInput.value.trim().length > 0,
+        artist: Array.from(artistInputs).some(input => input.value.trim().length > 0),
+        genre: Boolean(selectedGenres[itemId] && selectedGenres[itemId].trim().length > 0),
+    };
+    const missing = Object.keys(MISSING_FIELD_ACTIONS).filter(key => !present[key]);
 
-    confirmBtn.disabled = !(hasGenre && hasTitle && hasArtist);
+    confirmBtn.disabled = missing.length > 0;
+    // A disabled confirm says what it is waiting for ("أضف فنانًا واختر النوع")
+    if (!confirmBtn.dataset.busy) {
+        confirmBtn.textContent = missing.length
+            ? missing.map(key => MISSING_FIELD_ACTIONS[key]).join(' و')
+            : CONFIRM_LABEL;
+    }
+    card.querySelectorAll('.review-checklist [data-check]').forEach(li => {
+        li.classList.toggle('done', present[li.dataset.check]);
+    });
     updateConfirmAllButton();
     queueDestinationPreview(itemId);
 }
@@ -1440,7 +1450,7 @@ async function confirmAllReady() {
     const btn = document.getElementById('confirmAllReadyBtn');
     if (btn) {
         btn.disabled = true;
-        btn.textContent = 'جاري النقل...';
+        btn.textContent = 'جارٍ نقل الجاهزة…';
     }
 
     // Collect IDs of ready items at the moment the button is clicked
@@ -1466,9 +1476,9 @@ async function confirmAllReady() {
     if (btn) btn.disabled = false;
 
     if (failCount === 0) {
-        showAlert(`تم تأكيد ونقل ${successCount} ملف بنجاح.`, 'success');
+        showAlert(`نُقل ${arabicCount(successCount, FILE_FORMS)} إلى المكتبة.`, 'success');
     } else {
-        showAlert(`تم نقل ${successCount} ملف، فشل ${failCount}.`, 'warn');
+        showAlert(`نُقل ${arabicCount(successCount, FILE_FORMS)}، وبقي ${arabicCount(failCount, FILE_FORMS)} في القائمة بسبب خطأ.`, 'warn');
     }
 
     updateConfirmAllButton();
@@ -1592,15 +1602,15 @@ async function confirmItem(itemId, onConflict) {
     const albumArtist = shown && draftArtists(itemId).includes(shown) ? shown : null;
 
     if (!title || !artist || !genre) {
-        showAlert('لا يمكن التأكيد: العنوان والفنان والنوع مطلوبة.', 'warn');
-        setItemStatus(itemId, 'أكمل الحقول المطلوبة أولاً', 'warn');
+        setItemStatus(itemId, 'أكمل العنوان والفنان والنوع أولًا.', 'warn');
         return false;
     }
     
     // Disable button
     confirmBtn.disabled = true;
-    confirmBtn.textContent = 'جاري النقل...';
-    setItemStatus(itemId, 'جاري كتابة البيانات الوصفية...', 'info');
+    confirmBtn.dataset.busy = '1';
+    confirmBtn.textContent = 'جارٍ الحفظ والنقل…';
+    setItemStatus(itemId, 'تُكتب البيانات الوصفية ثم يُنقل الملف…', 'info');
 
     try {
         // Send exactly what the user sees; the server saves it and confirms in one step
@@ -2468,7 +2478,8 @@ async function runArtistMerge(groupEl, group, apply) {
         const r = body.results;
         libraryState.stale = true;
         if (r.failed) {
-            showAlert(`دُمج ${r.successful} صوتية، وتعذّر ${r.failed}: ${r.errors.map(e => e.error).join('، ')}`, 'warn', 0);
+            showAlert(`دُمجت ${arabicCount(r.successful, TRACK_FORMS)}، وتعذّر دمج ${arabicCount(r.failed, TRACK_FORMS)}. أعد المحاولة بعد مسح المكتبة.`,
+                'warn', 0, r.errors.map(e => e.error).join('\n'));
         } else {
             showAlert(`تم توحيد ${arabicCount(r.successful, TRACK_FORMS)} باسم «${target}».`, 'success');
         }
@@ -2721,7 +2732,7 @@ function renderAlbums(albums) {
         <div class="album-card" role="button" tabindex="0" data-nav="album" data-name="${escapeHtml(album.name)}" data-album-artist="${escapeHtml(album.album_artist)}">
             <div class="album-artwork">
                 ${album.artwork_id 
-                    ? `<img src="/api/library/tracks/${album.artwork_id}/artwork?t=${Date.now()}" alt="Cover">` 
+                    ? `<img src="/api/library/tracks/${album.artwork_id}/artwork?t=${Date.now()}" alt="">` 
                     : '🎵'}
             </div>
             <div class="album-name">${escapeHtml(album.name) || 'بدون اسم'}</div>
@@ -2988,7 +2999,7 @@ async function viewArtistAlbums(artistName, pushToStack = true) {
             <div class="album-card" role="button" tabindex="0" data-nav="album" data-name="${escapeHtml(album.name)}" data-album-artist="${escapeHtml(album.album_artist)}">
                 <div class="album-artwork">
                     ${album.artwork_id 
-                        ? `<img src="/api/library/tracks/${album.artwork_id}/artwork?t=${Date.now()}" alt="Cover">` 
+                        ? `<img src="/api/library/tracks/${album.artwork_id}/artwork?t=${Date.now()}" alt="">` 
                         : '🎵'}
                 </div>
                 <div class="album-name">${escapeHtml(album.name) || 'بدون اسم'}</div>
@@ -3316,7 +3327,7 @@ function showEditModal(mode, trackData = null) {
             <div class="artwork-preview-container">
                 <div class="artwork-preview">
                     ${trackData.has_artwork 
-                        ? `<img src="/api/library/tracks/${trackData.id}/artwork?t=${Date.now()}" alt="Cover">` 
+                        ? `<img src="/api/library/tracks/${trackData.id}/artwork?t=${Date.now()}" alt="">` 
                         : '<span class="artwork-placeholder">🎵</span>'}
                 </div>
                 <div class="artwork-upload-controls">
@@ -3341,7 +3352,7 @@ function showEditModal(mode, trackData = null) {
                         const reader = new FileReader();
                         reader.onload = (e) => {
                             const container = document.querySelector('.artwork-preview');
-                            container.innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+                            container.innerHTML = `<img src="${e.target.result}" alt="معاينة صورة الغلاف">`;
                         };
                         reader.readAsDataURL(file);
                     }
@@ -3821,11 +3832,14 @@ async function sendTelegramTestMessage() {
 
 function toggleTelegramTokenVisibility() {
     const tokenInput = document.getElementById('telegramBotToken');
-    const icon = document.getElementById('telegramTokenToggleIcon');
+    const toggle = document.getElementById('telegramTokenToggle');
     if (!tokenInput) return;
     const isHidden = tokenInput.type === 'password';
     tokenInput.type = isHidden ? 'text' : 'password';
-    if (icon) icon.textContent = isHidden ? '🙈' : '👁';
+    if (toggle) {
+        toggle.textContent = isHidden ? 'إخفاء' : 'إظهار';
+        toggle.setAttribute('aria-pressed', String(isHidden));
+    }
 }
 
 function initSettingsPage() {
