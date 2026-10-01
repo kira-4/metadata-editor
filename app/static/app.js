@@ -684,19 +684,19 @@ function createItemCard(item) {
             <div class="item-header">
                 ${artworkUrl
                     ? `<img src="${artworkUrl}" alt="" class="artwork">`
-                    : '<div class="artwork-placeholder">🎵</div>'
+                    : '<div class="artwork-placeholder" aria-hidden="true">♪</div>'
                 }
 
                 <div class="item-info">
                     <div class="field-group">
-                        <label class="field-label">العنوان</label>
-                        <input
-                            type="text"
+                        <label class="field-label" for="title-${item.id}">العنوان</label>
+                        <textarea
+                            id="title-${item.id}"
                             class="field-input title-input"
-                            value="${escapeHtml(titleValue)}"
+                            rows="1"
                             data-id="${item.id}"
                             placeholder="العنوان (مطلوب)"
-                        >
+                        >${escapeHtml(titleValue)}</textarea>
                     </div>
 
                     <div class="field-group">
@@ -1202,7 +1202,14 @@ function attachItemListeners(itemId) {
     const titleInput = card.querySelector('.title-input');
 
     if (titleInput) {
+        // A title is one line of metadata: Enter must not add a newline, and the box grows to show it all
+        autosizeTitle(titleInput);
+        titleInput.addEventListener('keydown', event => {
+            if (event.key === 'Enter') event.preventDefault();
+        });
         titleInput.addEventListener('input', () => {
+            if (titleInput.value.includes('\n')) titleInput.value = titleInput.value.replace(/\s*\n\s*/g, ' ');
+            autosizeTitle(titleInput);
             titleDraftValues.set(itemId, titleInput.value);
             const item = pendingItems.find(entry => entry.id === itemId);
             if (item) {
@@ -1292,6 +1299,12 @@ function attachItemListeners(itemId) {
     if (item && item.genre && item.genre.trim()) {
         selectedGenres[itemId] = item.genre.trim();
     }
+}
+
+function autosizeTitle(textarea) {
+    if (!textarea.offsetParent) return;  // hidden page: measured again when the queue is shown
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight + 2}px`;
 }
 
 // Handle genre button click
@@ -2220,6 +2233,7 @@ function initRouter() {
             pendingPage.style.display = 'block';
             libraryPage.style.display = 'none';
             if (settingsPage) settingsPage.style.display = 'none';
+            document.querySelectorAll('.title-input').forEach(autosizeTitle);
         }
     }
     
