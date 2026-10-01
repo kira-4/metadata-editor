@@ -115,7 +115,7 @@ Sprint 4 is done. These come from the closing critique.
 - **Tone: one signature detail.** Add a single recognisable element within the Night Archive rules: no religious ornament, no gradients on controls, calm. Pick it during `/impeccable shape` or `bolder` (restrained), not by decorating.
 
 1. ~~**[P1] Needs-review card layout**~~ **done** (`feature/needs-review-layout`): three seam-separated groups (name, الوجهة, النوع); checks beside each label; remembered genre first (`metadataEditor.genreMemory`: `last` + `byChannel`, written on a successful single confirm, which confirm-all uses too). Check script: `.playwright-mcp/l1check.cjs`.
-2. **[P1] Redundant text** (`/impeccable distill`): a long title appears in the title, the source line and the destination path. Show the source once (inside «التفاصيل التقنية»). Shorten the path to folder + file.
+2. ~~**[P1] Redundant text**~~ **done** (`feature/distill-long-title`): the source (video title, channel) and the scanner's raw error share one «التفاصيل التقنية» fold beside the artwork; the path shows folder / file on one line, with the stem ellipsised and the extension kept (full path in `title`). Check script: `.playwright-mcp/d1check.cjs`.
 3. **[P2] Delete under confirm** (`/impeccable harden`): demote it to a text action with space from confirm, or use an undo toast (deletes already go to trash).
 4. **[P2] Dead disabled confirm** (`/impeccable clarify`): a tap should focus the first missing field.
 5. **[P2] Throughput for 50-card sessions:** move focus to the next card after confirm, carry the genre over, and deep-link from the Telegram ping to its card.

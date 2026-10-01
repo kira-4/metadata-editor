@@ -822,7 +822,6 @@ function createItemCard(item) {
             <div class="item-problem ${hasError ? 'error' : 'warn'}" role="note">
                 <strong>${hasError ? 'تعذّرت معالجة هذا الملف' : 'يحتاج مراجعة'}</strong>
                 <p>${escapeHtml(problem.text)}</p>
-                ${item.error_message ? `<details class="alert-technical"><summary>التفاصيل التقنية</summary><code dir="ltr">${escapeHtml(item.error_message)}</code></details>` : ''}
             </div>` : ''}
 
             <div class="item-header">
@@ -830,7 +829,11 @@ function createItemCard(item) {
                     ? `<img src="${artworkUrl}" alt="" class="artwork">`
                     : '<div class="artwork-placeholder" aria-hidden="true">♪</div>'
                 }
-                <div class="source-text">${formatItemSource(item)}</div>
+                <details class="alert-technical source-details">
+                    <summary>التفاصيل التقنية</summary>
+                    <dl class="source-list">${formatItemSource(item)}</dl>
+                    ${item.error_message ? `<code dir="ltr">${escapeHtml(item.error_message)}</code>` : ''}
+                </details>
             </div>
 
             <section class="card-group card-group-identity" aria-label="العنوان والفنانون">
@@ -923,12 +926,14 @@ function describeItemProblem(item) {
     return {text: match ? match[1] : 'أكمل الحقول الناقصة قبل التأكيد.'};
 }
 
-// "Unknown" is the scanner's placeholder when the filename had no "###channel" part
+// "Unknown" is the scanner's placeholder when the filename had no "###channel" part.
+// The source (and the scanner's raw error, if any) is reference, so it stays folded.
 function formatItemSource(item) {
-    if (!item.channel || item.channel === 'Unknown') {
-        return `المصدر: اسم الملف <bdi>${escapeHtml(item.video_title)}</bdi> · القناة غير معروفة`;
-    }
-    return `المصدر: <bdi>${escapeHtml(item.video_title)}</bdi> · <bdi>${escapeHtml(item.channel)}</bdi>`;
+    const unknownChannel = !item.channel || item.channel === 'Unknown';
+    return `
+        <div><dt>${unknownChannel ? 'اسم الملف' : 'عنوان الفيديو'}</dt><dd><bdi>${escapeHtml(item.video_title)}</bdi></dd></div>
+        <div><dt>القناة</dt><dd>${unknownChannel ? 'غير معروفة' : `<bdi>${escapeHtml(item.channel)}</bdi>`}</dd></div>
+    `;
 }
 
 function getItemIdFromRowId(rowId) {
@@ -1576,14 +1581,17 @@ async function refreshDestinationPreview(itemId) {
 // Arabic path segments read right-to-left; each is isolated and the extension kept as one LTR unit.
 // The dot stays outside the extension's isolate so it sits between name and extension
 // («mp3.العنوان»); inside it, the dot ended up on the far side («.mp3العنوان»).
+// Folder and file on one line: the title folder in between repeats the file name, and the
+// file name repeats the title above it, so its stem truncates while the extension stays
 function formatLibraryPath(relativePath) {
     const parts = relativePath.split('/').filter(Boolean);
-    return parts.map((part, i) => {
-        const dot = i === parts.length - 1 ? part.lastIndexOf('.') : -1;
-        return dot > 0
-            ? `<bdi>${escapeHtml(part.slice(0, dot))}.<bdi dir="ltr">${escapeHtml(part.slice(dot + 1))}</bdi></bdi>`
-            : `<bdi>${escapeHtml(part)}</bdi>`;
-    }).join(' <span class="path-sep">/</span> ');
+    if (!parts.length) return '';
+    const file = parts[parts.length - 1];
+    const dot = file.lastIndexOf('.');
+    const stem = dot > 0 ? file.slice(0, dot) : file;
+    const folder = parts.length > 1 ? `<bdi class="path-folder">${escapeHtml(parts[0])}</bdi><span class="path-sep">/</span>` : '';
+    const ext = dot > 0 ? `<span>.</span><bdi dir="ltr">${escapeHtml(file.slice(dot + 1))}</bdi>` : '';
+    return `<span class="path-line">${folder}<bdi class="path-stem">${escapeHtml(stem)}</bdi>${ext}</span>`;
 }
 
 function renderDestinationPreview(itemId, dryRun) {

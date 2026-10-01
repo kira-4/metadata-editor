@@ -259,10 +259,11 @@ body {
     overflow: hidden;
 }
 
-/* Artwork and the source line: context, not something to edit */
+/* Artwork and the folded source: context, not something to edit.
+   Top-aligned so opening the fold does not move the artwork. */
 .item-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: var(--spacing-md);
 }
 
@@ -484,11 +485,30 @@ body {
     font-size: var(--text-label);
 }
 
-.source-text {
+.source-details {
     flex: 1;
     min-width: 0;
-    font-size: var(--text-label);
+    margin-top: 0;
+}
+
+.source-details:not([open]) {
+    align-self: center;
+}
+
+.source-list {
+    display: grid;
+    gap: 0.25rem;
+    margin: 0.25rem 0 0;
+}
+
+.source-list dt {
     color: var(--text-muted);
+}
+
+.source-list dd {
+    margin: 0;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
 }
 
 .genre-section {
@@ -2059,6 +2079,32 @@ body {
     opacity: 0.5;
 }
 
+/* One line: folder and extension stay whole, the file stem gives way with an ellipsis */
+.path-line {
+    display: flex;
+    gap: 0;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.path-line .path-folder {
+    flex-shrink: 0;
+    max-width: 50%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.path-line .path-sep {
+    flex-shrink: 0;
+    padding-inline: 0.375em;
+}
+
+.path-line .path-stem {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .destination-warning {
     margin-top: 0.25rem;
     color: var(--warning);
@@ -2084,7 +2130,7 @@ body {
         padding: var(--spacing-md);
     }
 
-    /* Small artwork beside the source line; the groups below are already full width */
+    /* Small artwork beside the source fold; the groups below are already full width */
     .item-header {
         gap: var(--spacing-sm);
     }
@@ -2096,13 +2142,6 @@ body {
         font-size: var(--glyph-md);
     }
 
-    .item-header .source-text {
-        font-size: var(--text-caption);
-        display: -webkit-box;
-        -webkit-line-clamp: 3;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-    }
 
     .card-group {
         margin-top: var(--spacing-md);
@@ -2297,10 +2336,6 @@ body {
 /* Long Arabic titles and channel names must wrap, never widen the card */
 .item-card {
     min-width: 0;
-}
-
-.source-text {
-    overflow-wrap: anywhere;
 }
 
 .artist-hint:empty {
